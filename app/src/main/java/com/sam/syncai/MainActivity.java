@@ -22,12 +22,16 @@ import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_MODEL = 1201;
+    private static final int REQ_CAMERA_PERMISSION = 1301;
+    private static final int MAX_TOOL_CALLS = 4;
     private static final int BG = Color.rgb(7, 8, 14);
     private static final int SURFACE = Color.rgb(15, 18, 28);
     private static final int SURFACE_2 = Color.rgb(21, 25, 38);
@@ -41,6 +45,17 @@ public final class MainActivity extends Activity {
 
     private ModelManager modelManager;
     private GgufModelBackend backend;
+    private ToolRegistry toolRegistry;
+    private ToolCall pendingPermissionToolCall;
+    private List<ChatMessage> pendingWorkingMessages;
+    private TextView pendingToolBubble;
+    private int pendingToolDepth;
+    private ToolCall pendingConfirmationToolCall;
+    private List<ChatMessage> pendingConfirmationMessages;
+    private TextView pendingConfirmationBubble;
+    private int pendingConfirmationDepth;
+    private String pendingConfirmationPackage;
+    private String pendingConfirmationLabel;
 
     private TextView statusText;
     private TextView modelText;
@@ -56,7 +71,8 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         modelManager = new ModelManager(this);
-        backend = new GgufModelBackend();
+        backend = new GgufModelBackend(this);
+        toolRegistry = new ToolRegistry(this);
         buildUi();
         addMessageView(ChatMessage.Role.ASSISTANT,
                 "Sync//AI is ready.\nImport a GGUF model to start chatting locally.");
@@ -289,21 +305,71 @@ public final class MainActivity extends Activity {
         sendButton.setEnabled(false);
         importButton.setEnabled(false);
 
+        List<ChatMessage> working = new ArrayList<>();
+        working.add(new ChatMessage(ChatMessage.Role.SYSTEM, toolRegistry.systemPrompt()));
+        working.addAll(conversation);
+        runGeneration(working, 0, activeAssistantBubble);
+    }
+
+    private void runGeneration(List<ChatMessage> working, int toolDepth, TextView bubble) {
         StringBuilder response = new StringBuilder();
         GenerationConfig config = new GenerationConfig();
 
-        backend.generate(conversation, config, new LocalModelBackend.GenerateCallback() {
+        backend.generate(working, config, new LocalModelBackend.GenerateCallback() {
             @Override public void onToken(String token) {
                 response.append(token);
                 runOnUiThread(() -> {
-                    activeAssistantBubble.setText(response.toString());
-                    activeAssistantBubble.setTextColor(TEXT);
+                    bubble.setText(response.toString());
+                    bubble.setTextColor(TEXT);
                     scrollToBottom();
                 });
             }
 
             @Override public void onComplete() {
-                conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, response.toString()));
+                String text = response.toString().trim();
+                ToolCall toolCall = ToolCallParser.parse(text);
+
+                if (toolCall != null) {
+                    SyncTool tool = toolRegistry.get(toolCall.name);
+                    if (tool == null) {
+                        finishGenerationWithError(
+                                bubble,
+                                "Unknown tool requested: " + toolCall.name + ".",
+                                null);
+                        return;
+                    }
+                    if (toolDepth >= MAX_TOOL_CALLS) {
+                        finishGenerationWithError(
+                                bubble,
+                                "Tool-call limit reached for this request.",
+                                null);
+                        return;
+                    }
+
+                    working.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
+                    if ("flashlight".equals(toolCall.name) &&
+                            checkSelfPermission(android.Manifest.permission.CAMERA)
+                                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        pendingPermissionToolCall = toolCall;
+                        pendingWorkingMessages = working;
+                        pendingToolBubble = bubble;
+                        pendingToolDepth = toolDepth;
+                        runOnUiThread(() -> requestPermissions(
+                                new String[]{android.Manifest.permission.CAMERA},
+                                REQ_CAMERA_PERMISSION));
+                        return;
+                    }
+
+                    executeToolAndContinue(toolCall, working, toolDepth, bubble);
+                    return;
+                }
+
+                if (text.isEmpty()) {
+                    finishGenerationWithError(bubble, "Model returned an empty response.", null);
+                    return;
+                }
+
+                conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
                 runOnUiThread(() -> {
                     sendButton.setEnabled(true);
                     importButton.setEnabled(true);
@@ -312,15 +378,165 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onError(Exception error) {
-                runOnUiThread(() -> {
-                    activeAssistantBubble.setText("Generation failed.");
-                    activeAssistantBubble.setTextColor(Color.rgb(255, 130, 145));
-                    sendButton.setEnabled(true);
-                    importButton.setEnabled(true);
-                    showError("Generation failed", error);
-                });
+                finishGenerationWithError(bubble, "Generation failed.", error);
             }
         });
+    }
+
+    private void executeToolAndContinue(
+            ToolCall toolCall,
+            List<ChatMessage> working,
+            int toolDepth,
+            TextView bubble) {
+        SyncTool tool = toolRegistry.get(toolCall.name);
+        String result;
+        try {
+            result = tool.execute(toolCall.arguments);
+        } catch (Throwable t) {
+            String message = t.getMessage();
+            result = "ERROR: " + (message == null ? t.toString() : message);
+        }
+
+        if (result.startsWith("OPEN_APP_CONFIRM|")) {
+            String[] parts = result.split("\\|", -1);
+            if (parts.length >= 4) {
+                String requested = parts[1];
+                String candidateLabel = parts[2];
+                String candidatePackage = parts[3];
+                pendingConfirmationToolCall = toolCall;
+                pendingConfirmationMessages = working;
+                pendingConfirmationBubble = bubble;
+                pendingConfirmationDepth = toolDepth;
+                pendingConfirmationPackage = candidatePackage;
+                pendingConfirmationLabel = candidateLabel;
+
+                runOnUiThread(() -> showAppFallbackConfirmation(
+                        requested, candidateLabel, candidatePackage));
+                return;
+            }
+            result = "ERROR: App fallback confirmation data was malformed.";
+        }
+
+        working.add(new ChatMessage(
+                ChatMessage.Role.SYSTEM,
+                "Tool result for " + toolCall.name + ": " + result));
+
+        runOnUiThread(() -> {
+            bubble.setText("Using " + toolCall.name + "…");
+            bubble.setTextColor(MUTED);
+            scrollToBottom();
+        });
+
+        runGeneration(working, toolDepth + 1, bubble);
+    }
+
+    private void showAppFallbackConfirmation(
+            String requested,
+            String candidateLabel,
+            String candidatePackage) {
+        new AlertDialog.Builder(this)
+                .setTitle("App not found")
+                .setMessage("I couldn't find \"" + requested + "\".\n\nDo you want me to open \"" +
+                        candidateLabel + "\" instead?")
+                .setNegativeButton("NO", (dialog, which) -> {
+                    List<ChatMessage> messages = pendingConfirmationMessages;
+                    TextView bubble = pendingConfirmationBubble;
+                    int depth = pendingConfirmationDepth;
+
+                    clearAppConfirmation();
+                    if (messages == null || bubble == null) return;
+
+                    messages.add(new ChatMessage(
+                            ChatMessage.Role.SYSTEM,
+                            "Tool result for open_app: ERROR: User declined opening " +
+                                    candidateLabel + " as a substitute for " + requested + "."));
+                    runGeneration(messages, depth + 1, bubble);
+                })
+                .setPositiveButton("OPEN", (dialog, which) -> {
+                    ToolCall original = pendingConfirmationToolCall;
+                    List<ChatMessage> messages = pendingConfirmationMessages;
+                    TextView bubble = pendingConfirmationBubble;
+                    int depth = pendingConfirmationDepth;
+                    String packageName = pendingConfirmationPackage;
+                    String label = pendingConfirmationLabel;
+
+                    clearAppConfirmation();
+                    if (original == null || messages == null || bubble == null) return;
+
+                    Map<String, String> confirmedArgs = new HashMap<>(original.arguments);
+                    confirmedArgs.put("confirmed_package", packageName);
+                    confirmedArgs.put("confirmed_label", label);
+                    ToolCall confirmed = new ToolCall(original.name, confirmedArgs);
+                    executeToolAndContinue(confirmed, messages, depth, bubble);
+                })
+                .setOnCancelListener(dialog -> {
+                    List<ChatMessage> messages = pendingConfirmationMessages;
+                    TextView bubble = pendingConfirmationBubble;
+                    int depth = pendingConfirmationDepth;
+                    String requestedText = requested;
+                    String candidateText = candidateLabel;
+
+                    clearAppConfirmation();
+                    if (messages == null || bubble == null) return;
+
+                    messages.add(new ChatMessage(
+                            ChatMessage.Role.SYSTEM,
+                            "Tool result for open_app: ERROR: User cancelled opening " +
+                                    candidateText + " as a substitute for " + requestedText + "."));
+                    runGeneration(messages, depth + 1, bubble);
+                })
+                .show();
+    }
+
+    private void clearAppConfirmation() {
+        pendingConfirmationToolCall = null;
+        pendingConfirmationMessages = null;
+        pendingConfirmationBubble = null;
+        pendingConfirmationDepth = 0;
+        pendingConfirmationPackage = null;
+        pendingConfirmationLabel = null;
+    }
+
+    private void finishGenerationWithError(TextView bubble, String message, Exception error) {
+        runOnUiThread(() -> {
+            bubble.setText(message);
+            bubble.setTextColor(Color.rgb(255, 130, 145));
+            sendButton.setEnabled(true);
+            importButton.setEnabled(true);
+            if (error != null) showError("Generation failed", error);
+            scrollToBottom();
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_CAMERA_PERMISSION) return;
+
+        ToolCall toolCall = pendingPermissionToolCall;
+        List<ChatMessage> working = pendingWorkingMessages;
+        TextView bubble = pendingToolBubble;
+        int depth = pendingToolDepth;
+
+        pendingPermissionToolCall = null;
+        pendingWorkingMessages = null;
+        pendingToolBubble = null;
+        pendingToolDepth = 0;
+
+        if (toolCall == null || working == null || bubble == null) return;
+
+        boolean granted = grantResults.length > 0 &&
+                grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+
+        if (!granted) {
+            working.add(new ChatMessage(
+                    ChatMessage.Role.SYSTEM,
+                    "Tool result for flashlight: ERROR: CAMERA permission was denied."));
+            runGeneration(working, depth + 1, bubble);
+            return;
+        }
+
+        executeToolAndContinue(toolCall, working, depth, bubble);
     }
 
     private TextView addMessageView(ChatMessage.Role role, String value) {
