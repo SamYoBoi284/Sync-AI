@@ -23,7 +23,6 @@
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            </intent-filter>
         </activity>
         <service
             android:name=".SyncVoiceInteractionService"
