@@ -22,6 +22,8 @@ import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -48,6 +50,12 @@ public final class MainActivity extends Activity {
     private List<ChatMessage> pendingWorkingMessages;
     private TextView pendingToolBubble;
     private int pendingToolDepth;
+    private ToolCall pendingConfirmationToolCall;
+    private List<ChatMessage> pendingConfirmationMessages;
+    private TextView pendingConfirmationBubble;
+    private int pendingConfirmationDepth;
+    private String pendingConfirmationPackage;
+    private String pendingConfirmationLabel;
 
     private TextView statusText;
     private TextView modelText;
@@ -389,6 +397,26 @@ public final class MainActivity extends Activity {
             result = "ERROR: " + (message == null ? t.toString() : message);
         }
 
+        if (result.startsWith("OPEN_APP_CONFIRM|")) {
+            String[] parts = result.split("\\|", -1);
+            if (parts.length >= 4) {
+                String requested = parts[1];
+                String candidateLabel = parts[2];
+                String candidatePackage = parts[3];
+                pendingConfirmationToolCall = toolCall;
+                pendingConfirmationMessages = working;
+                pendingConfirmationBubble = bubble;
+                pendingConfirmationDepth = toolDepth;
+                pendingConfirmationPackage = candidatePackage;
+                pendingConfirmationLabel = candidateLabel;
+
+                runOnUiThread(() -> showAppFallbackConfirmation(
+                        requested, candidateLabel, candidatePackage));
+                return;
+            }
+            result = "ERROR: App fallback confirmation data was malformed.";
+        }
+
         working.add(new ChatMessage(
                 ChatMessage.Role.SYSTEM,
                 "Tool result for " + toolCall.name + ": " + result));
@@ -400,6 +428,73 @@ public final class MainActivity extends Activity {
         });
 
         runGeneration(working, toolDepth + 1, bubble);
+    }
+
+    private void showAppFallbackConfirmation(
+            String requested,
+            String candidateLabel,
+            String candidatePackage) {
+        new AlertDialog.Builder(this)
+                .setTitle("App not found")
+                .setMessage("I couldn't find \"" + requested + "\".\n\nDo you want me to open \"" +
+                        candidateLabel + "\" instead?")
+                .setNegativeButton("NO", (dialog, which) -> {
+                    List<ChatMessage> messages = pendingConfirmationMessages;
+                    TextView bubble = pendingConfirmationBubble;
+                    int depth = pendingConfirmationDepth;
+
+                    clearAppConfirmation();
+                    if (messages == null || bubble == null) return;
+
+                    messages.add(new ChatMessage(
+                            ChatMessage.Role.SYSTEM,
+                            "Tool result for open_app: ERROR: User declined opening " +
+                                    candidateLabel + " as a substitute for " + requested + "."));
+                    runGeneration(messages, depth + 1, bubble);
+                })
+                .setPositiveButton("OPEN", (dialog, which) -> {
+                    ToolCall original = pendingConfirmationToolCall;
+                    List<ChatMessage> messages = pendingConfirmationMessages;
+                    TextView bubble = pendingConfirmationBubble;
+                    int depth = pendingConfirmationDepth;
+                    String packageName = pendingConfirmationPackage;
+                    String label = pendingConfirmationLabel;
+
+                    clearAppConfirmation();
+                    if (original == null || messages == null || bubble == null) return;
+
+                    Map<String, String> confirmedArgs = new HashMap<>(original.arguments);
+                    confirmedArgs.put("confirmed_package", packageName);
+                    confirmedArgs.put("confirmed_label", label);
+                    ToolCall confirmed = new ToolCall(original.name, confirmedArgs);
+                    executeToolAndContinue(confirmed, messages, depth, bubble);
+                })
+                .setOnCancelListener(dialog -> {
+                    List<ChatMessage> messages = pendingConfirmationMessages;
+                    TextView bubble = pendingConfirmationBubble;
+                    int depth = pendingConfirmationDepth;
+                    String requestedText = requested;
+                    String candidateText = candidateLabel;
+
+                    clearAppConfirmation();
+                    if (messages == null || bubble == null) return;
+
+                    messages.add(new ChatMessage(
+                            ChatMessage.Role.SYSTEM,
+                            "Tool result for open_app: ERROR: User cancelled opening " +
+                                    candidateText + " as a substitute for " + requestedText + "."));
+                    runGeneration(messages, depth + 1, bubble);
+                })
+                .show();
+    }
+
+    private void clearAppConfirmation() {
+        pendingConfirmationToolCall = null;
+        pendingConfirmationMessages = null;
+        pendingConfirmationBubble = null;
+        pendingConfirmationDepth = 0;
+        pendingConfirmationPackage = null;
+        pendingConfirmationLabel = null;
     }
 
     private void finishGenerationWithError(TextView bubble, String message, Exception error) {
