@@ -268,7 +268,9 @@ public final class OpenAppTool implements SyncTool {
                 }
             }
         }
+        if (cleaned.startsWith("the ")) cleaned = cleaned.substring(4).trim();
         if (cleaned.endsWith(" app")) cleaned = cleaned.substring(0, cleaned.length() - 4).trim();
+        if (cleaned.startsWith("the ")) cleaned = cleaned.substring(4).trim();
         return cleaned;
     }
 
