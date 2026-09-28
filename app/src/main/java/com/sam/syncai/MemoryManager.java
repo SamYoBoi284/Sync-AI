@@ -11,8 +11,8 @@ import java.nio.charset.StandardCharsets;
 
 public final class MemoryManager {
     private static final String FILE_NAME = "sync_memory.txt";
-    private static final int MAX_BYTES = 1024 * 1024;
-    private static final int MAX_PROMPT_CHARS = 12000;
+    private static final int MAX_BYTES = 16 * 1024 * 1024;
+    private static final int MAX_PROMPT_CHARS = 32000;
 
     private final Context context;
 
@@ -34,7 +34,7 @@ public final class MemoryManager {
     public void write(String text) throws Exception {
         if (text == null || text.trim().isEmpty()) throw new IllegalArgumentException("Memory cannot be empty.");
         byte[] data = text.getBytes(StandardCharsets.UTF_8);
-        if (data.length > MAX_BYTES) throw new IllegalArgumentException("Memory file is too large. Maximum is 1 MB.");
+        if (data.length > MAX_BYTES) throw new IllegalArgumentException("Memory file is too large. Maximum is 16 MB.");
         java.nio.file.Files.write(new File(context.getFilesDir(), FILE_NAME).toPath(), data);
     }
 
