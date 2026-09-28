@@ -69,6 +69,7 @@ public final class MainActivity extends Activity {
     private ScrollView chatScroll;
     private EditText input;
     private Button sendButton;
+    private Button attachButton;
     private Button importButton;
     private ProgressBar progress;
     private TextView activeAssistantBubble;
@@ -174,7 +175,7 @@ public final class MainActivity extends Activity {
         input.setBackground(round(SURFACE_2, dp(15)));
         composer.addView(input, new LinearLayout.LayoutParams(0, dp(52), 1));
 
-        Button attachButton = actionButton("FILE");
+        attachButton = actionButton("FILE");
         attachButton.setOnClickListener(v -> openAttachmentPicker());
         LinearLayout.LayoutParams attachLp = new LinearLayout.LayoutParams(dp(58), dp(52));
         attachLp.leftMargin = dp(5);
@@ -316,6 +317,7 @@ public final class MainActivity extends Activity {
                     for (Uri uri : uris) loaded.add(FileAttachmentReader.read(this, uri));
                     runOnUiThread(() -> {
                         pendingAttachments.addAll(loaded);
+                        if (attachButton != null) attachButton.setText("FILE " + pendingAttachments.size());
                         showToast("Attached " + loaded.size() + " file" + (loaded.size() == 1 ? "" : "s") + ".");
                     });
                 } catch (Exception e) {
@@ -408,6 +410,7 @@ public final class MainActivity extends Activity {
         hideKeyboard();
         List<FileAttachment> attachmentsForMessage = new ArrayList<>(pendingAttachments);
         pendingAttachments.clear();
+        if (attachButton != null) attachButton.setText("FILE");
         conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
         addMessageView(ChatMessage.Role.USER, message);
 
@@ -699,6 +702,15 @@ public final class MainActivity extends Activity {
     private void scrollToBottom() {
         if (chatScroll == null) return;
         chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (Intent.ACTION_ASSIST.equals(intent.getAction())) {
+            input.requestFocus();
+        }
     }
 
     private void showModelsDialog() {
