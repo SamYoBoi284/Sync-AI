@@ -1,0 +1,22 @@
+# Android / Gradle
+.gradle/
+build/
+**/build/
+local.properties
+
+# Local IDE files
+.idea/
+*.iml
+
+# User-imported AI model files — NEVER commit these
+models/
+*.gguf
+*.ggml
+*.bin
+*.safetensors
+*.onnx
+*.tflite
+
+# OS
+.DS_Store
+Thumbs.db
