@@ -25,7 +25,7 @@ jobs:
           java-version: "17"
 
       - name: Accept Android SDK licenses
-        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses </dev/null || true
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
 
       - name: Install Android native toolchain
         run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
