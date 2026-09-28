@@ -5,7 +5,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
-#include <vector>
+#include <vector>\n#include <unistd.h>\n#include <cstdio>
 
 #include "llama.h"
 
