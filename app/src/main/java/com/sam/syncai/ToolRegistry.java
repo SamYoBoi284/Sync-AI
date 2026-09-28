@@ -13,11 +13,16 @@ public final class ToolRegistry {
 
     public ToolRegistry(Context context) {
         register(new CalculatorTool());
+        WorkspaceManager workspace = new WorkspaceManager(context);
+
         register(new FlashlightTool(context));
         register(new AlarmTool(context));
         register(new TimerTool(context));
         register(new OpenSettingsTool(context));
         register(new OpenAppTool(context));
+        register(new WorkspaceReadTool(workspace));
+        register(new WorkspaceWriteTool(workspace));
+        register(new OpenCanvasTool(context));
     }
 
     public void register(SyncTool tool) {
