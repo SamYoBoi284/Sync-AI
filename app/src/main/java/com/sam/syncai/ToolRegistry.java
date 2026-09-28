@@ -43,9 +43,9 @@ public final class ToolRegistry {
         out.append("<tool_call>{\"name\":\"TOOL_NAME\",\"arguments\":{...}}</tool_call>. ");
         out.append("Use one tool call at a time. Do not claim an action succeeded until a tool result is provided. ");
         out.append("For normal conversation, do not output tool_call tags. ");
-        out.append("For app launching, use open_app with the app name the user means; tolerate aliases like FB, YT, Insta, and natural phrases like \\"open the Discord app\\\". ");
+        out.append("For app launching, use open_app with the app name the user means; tolerate aliases like FB, YT, Insta, and natural phrases like \"open the Discord app\". ");
         out.append("Use open_app for Bluetooth and Wi-Fi settings. Use open_app for ALL file-related requests such as Downloads, files, folders, storage, APKs, archives, and documents; these must open ZArchiver, never the system Files app. ");
-        out.append("If open_app cannot find the exact requested app, it will return a candidate that requires user confirmation; never pretend the candidate was opened until the confirmation result is provided.\\n\\nTOOLS:\\n");
+        out.append("If open_app cannot find the exact requested app, it will return a candidate that requires user confirmation; never pretend the candidate was opened until the confirmation result is provided.\n\nTOOLS:\n");
         for (SyncTool tool : tools.values()) {
             out.append("- ").append(tool.getName()).append(": ")
                     .append(tool.getDescription()).append(" Arguments: ")
