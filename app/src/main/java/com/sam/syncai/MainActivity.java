@@ -4,10 +4,14 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.view.inputmethod.InputMethodManager;
+import android.content.Context;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -24,118 +28,164 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_MODEL = 1201;
+    private static final int BG = Color.rgb(7, 8, 14);
+    private static final int SURFACE = Color.rgb(15, 18, 28);
+    private static final int SURFACE_2 = Color.rgb(21, 25, 38);
+    private static final int PURPLE = Color.rgb(154, 96, 255);
+    private static final int CYAN = Color.rgb(80, 215, 255);
+    private static final int TEXT = Color.rgb(240, 242, 250);
+    private static final int MUTED = Color.rgb(145, 153, 177);
 
     private final List<ChatMessage> conversation = new ArrayList<>();
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
 
     private ModelManager modelManager;
-    private LocalModelBackend backend;
-    private ToolRegistry toolRegistry;
+    private GgufModelBackend backend;
 
     private TextView statusText;
-    private TextView chatText;
+    private TextView modelText;
+    private LinearLayout messageContainer;
+    private ScrollView chatScroll;
     private EditText input;
     private Button sendButton;
-    private ProgressBar importProgress;
+    private Button importButton;
+    private ProgressBar progress;
+    private TextView activeAssistantBubble;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-
         modelManager = new ModelManager(this);
-        backend = new MockModelBackend();
-        toolRegistry = new ToolRegistry();
-
+        backend = new GgufModelBackend();
         buildUi();
-        addChat(ChatMessage.Role.ASSISTANT,
-                "Sync//AI online.\nImport a local model to begin.");
+        addMessageView(ChatMessage.Role.ASSISTANT,
+                "Sync//AI is ready.\nImport a GGUF model to start chatting locally.");
         restoreLoadedModel();
     }
 
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(22, 22, 22, 16);
-        root.setBackgroundColor(Color.rgb(7, 9, 16));
+        root.setPadding(dp(16), dp(14), dp(16), dp(10));
+        root.setBackgroundColor(BG);
 
-        TextView title = new TextView(this);
-        title.setText("SYNC//AI");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(29);
-        title.setGravity(Gravity.CENTER_VERTICAL);
-        title.setTypeface(null, 1);
-        root.addView(title, new LinearLayout.LayoutParams(-1, 48));
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
 
-        statusText = new TextView(this);
-        statusText.setText("NO MODEL LOADED");
-        statusText.setTextColor(Color.rgb(180, 190, 215));
-        statusText.setTextSize(13);
-        statusText.setPadding(0, 0, 0, 10);
-        root.addView(statusText, new LinearLayout.LayoutParams(-1, 34));
+        TextView title = text("SYNC//AI", 27, TEXT, true);
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
+
+        Button modelButton = actionButton("MODELS");
+        modelButton.setOnClickListener(v -> showModelsDialog());
+        header.addView(modelButton, new LinearLayout.LayoutParams(dp(100), dp(44)));
+
+        root.addView(header);
+
+        LinearLayout statusCard = card();
+        LinearLayout statusInner = new LinearLayout(this);
+        statusInner.setOrientation(LinearLayout.VERTICAL);
+        statusInner.setPadding(dp(14), dp(11), dp(14), dp(11));
+
+        modelText = text("NO MODEL", 13, TEXT, true);
+        statusText = text("LOCAL RUNTIME • WAITING FOR MODEL", 11, MUTED, false);
+        statusInner.addView(modelText);
+        statusInner.addView(statusText, new LinearLayout.LayoutParams(-1, dp(24)));
+        statusCard.addView(statusInner);
+        root.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(74)));
 
         LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.HORIZONTAL);
+        controls.setPadding(0, dp(9), 0, dp(7));
 
-        Button importButton = makeButton("IMPORT MODEL");
-        Button modelsButton = makeButton("MODELS");
-
-        controls.addView(importButton, weightParams(1));
-        controls.addView(modelsButton, weightParams(1));
-
+        importButton = actionButton("IMPORT MODEL");
         importButton.setOnClickListener(v -> openModelPicker());
-        modelsButton.setOnClickListener(v -> showModelsDialog());
+        Button infoButton = actionButton("RUNTIME");
+        infoButton.setOnClickListener(v -> showRuntimeInfo());
 
-        root.addView(controls, new LinearLayout.LayoutParams(-1, 52));
+        controls.addView(importButton, new LinearLayout.LayoutParams(0, dp(45), 1));
+        LinearLayout.LayoutParams infoLp = new LinearLayout.LayoutParams(0, dp(45), 1);
+        infoLp.leftMargin = dp(7);
+        controls.addView(infoButton, infoLp);
+        root.addView(controls);
 
-        importProgress = new ProgressBar(this);
-        importProgress.setVisibility(View.GONE);
-        root.addView(importProgress, new LinearLayout.LayoutParams(-1, 4));
+        progress = new ProgressBar(this);
+        progress.setIndeterminate(true);
+        progress.setVisibility(View.GONE);
+        root.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        chatText = new TextView(this);
-        chatText.setTextColor(Color.rgb(230, 234, 245));
-        chatText.setTextSize(15);
-        chatText.setLineSpacing(0, 1.15f);
-        chatText.setPadding(4, 18, 4, 18);
-        scroll.addView(chatText);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        chatScroll = new ScrollView(this);
+        chatScroll.setFillViewport(true);
+        chatScroll.setClipToPadding(false);
+
+        messageContainer = new LinearLayout(this);
+        messageContainer.setOrientation(LinearLayout.VERTICAL);
+        messageContainer.setPadding(dp(2), dp(14), dp(2), dp(18));
+        chatScroll.addView(messageContainer);
+        root.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        LinearLayout composerCard = card();
+        composerCard.setPadding(dp(7), dp(7), dp(7), dp(7));
 
         LinearLayout composer = new LinearLayout(this);
-        composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.BOTTOM);
 
         input = new EditText(this);
-        input.setSingleLine(false);
+        input.setHint("Message Sync//AI…");
+        input.setHintTextColor(Color.rgb(92, 100, 123));
+        input.setTextColor(TEXT);
+        input.setTextSize(15);
+        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setPadding(dp(14), dp(11), dp(14), dp(10));
         input.setMinLines(1);
         input.setMaxLines(4);
-        input.setHint("Message Sync//AI…");
-        input.setHintTextColor(Color.rgb(110, 118, 140));
-        input.setTextColor(Color.WHITE);
-        input.setBackgroundColor(Color.rgb(20, 24, 35));
-        input.setPadding(16, 10, 16, 10);
+        input.setBackground(round(SURFACE_2, dp(15)));
+        composer.addView(input, new LinearLayout.LayoutParams(0, dp(52), 1));
 
-        sendButton = makeButton("SEND");
+        sendButton = actionButton("SEND");
         sendButton.setOnClickListener(v -> sendMessage());
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(dp(82), dp(52));
+        sendLp.leftMargin = dp(7);
+        composer.addView(sendButton, sendLp);
 
-        composer.addView(input, weightParams(1));
-        composer.addView(sendButton, new LinearLayout.LayoutParams(110, -1));
-        root.addView(composer, new LinearLayout.LayoutParams(-1, 62));
+        composerCard.addView(composer);
+        root.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(66)));
 
         setContentView(root);
+        refreshStatus();
     }
 
-    private LinearLayout.LayoutParams weightParams(float weight) {
-        return new LinearLayout.LayoutParams(0, -1, weight);
+    private LinearLayout card() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setBackground(round(SURFACE, dp(16)));
+        return layout;
     }
 
-    private Button makeButton(String label) {
+    private Button actionButton(String label) {
         Button b = new Button(this);
         b.setText(label);
-        b.setTextColor(Color.WHITE);
-        b.setTextSize(12);
+        b.setTextColor(TEXT);
+        b.setTextSize(11);
+        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         b.setAllCaps(false);
-        b.setBackgroundColor(Color.rgb(28, 35, 52));
+        b.setPadding(dp(8), 0, dp(8), 0);
+        b.setBackground(round(Color.rgb(28, 33, 49), dp(13)));
         return b;
+    }
+
+    private TextView text(String value, float size, int color, boolean bold) {
+        TextView t = new TextView(this);
+        t.setText(value);
+        t.setTextSize(size);
+        t.setTextColor(color);
+        t.setTypeface(Typeface.DEFAULT, bold ? Typeface.BOLD : Typeface.NORMAL);
+        return t;
+    }
+
+    private GradientDrawable round(int color, int radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        return d;
     }
 
     private void openModelPicker() {
@@ -149,51 +199,172 @@ public final class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQ_IMPORT_MODEL || resultCode != RESULT_OK || data == null) return;
-
         Uri uri = data.getData();
         if (uri == null) return;
 
-        importProgress.setVisibility(View.VISIBLE);
+        progress.setVisibility(View.VISIBLE);
         setBusy(true);
 
         ioExecutor.execute(() -> {
             try {
                 String id = modelManager.importModel(uri);
                 runOnUiThread(() -> {
-                    importProgress.setVisibility(View.GONE);
+                    progress.setVisibility(View.GONE);
                     setBusy(false);
                     ModelInfo model = findModel(id);
                     if (model != null) {
                         showToast("Imported " + model.name);
                         loadModel(model);
-                    } else {
-                        showToast("Model imported.");
                     }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    importProgress.setVisibility(View.GONE);
+                    progress.setVisibility(View.GONE);
                     setBusy(false);
-                    showError("Model import failed", e);
+                    showError("Import failed", e);
                 });
             }
         });
     }
 
     private ModelInfo findModel(String id) {
-        for (ModelInfo m : modelManager.getModels()) {
-            if (m.id.equals(id)) return m;
-        }
+        for (ModelInfo m : modelManager.getModels()) if (m.id.equals(id)) return m;
         return null;
+    }
+
+    private void restoreLoadedModel() {
+        ModelInfo model = modelManager.getLoadedModel();
+        if (model != null) loadModel(model);
+    }
+
+    private void loadModel(ModelInfo model) {
+        setBusy(true);
+        progress.setVisibility(View.VISIBLE);
+        modelText.setText("LOADING • " + model.name);
+        statusText.setText("GGUF • INITIALIZING CPU INFERENCE RUNTIME…");
+
+        backend.unload();
+        backend.load(model, new LocalModelBackend.LoadCallback() {
+            @Override public void onLoaded() {
+                modelManager.markLoaded(model.id);
+                runOnUiThread(() -> {
+                    progress.setVisibility(View.GONE);
+                    setBusy(false);
+                    refreshStatus();
+                    addMessageView(ChatMessage.Role.ASSISTANT,
+                            "Model loaded. You are now running inference locally on this device.");
+                });
+            }
+
+            @Override public void onError(Exception error) {
+                modelManager.clearLoaded();
+                runOnUiThread(() -> {
+                    progress.setVisibility(View.GONE);
+                    setBusy(false);
+                    refreshStatus();
+                    showError("Model load failed", error);
+                });
+            }
+        });
+    }
+
+    private void sendMessage() {
+        if (!backend.isLoaded()) {
+            showToast("Load a GGUF model first.");
+            return;
+        }
+
+        String message = input.getText().toString().trim();
+        if (message.isEmpty()) return;
+
+        input.setText("");
+        hideKeyboard();
+        conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
+        addMessageView(ChatMessage.Role.USER, message);
+
+        activeAssistantBubble = addMessageView(ChatMessage.Role.ASSISTANT, "");
+        activeAssistantBubble.setText("Thinking…");
+        activeAssistantBubble.setTextColor(MUTED);
+
+        sendButton.setEnabled(false);
+        importButton.setEnabled(false);
+
+        StringBuilder response = new StringBuilder();
+        GenerationConfig config = new GenerationConfig();
+
+        backend.generate(conversation, config, new LocalModelBackend.GenerateCallback() {
+            @Override public void onToken(String token) {
+                response.append(token);
+                runOnUiThread(() -> {
+                    activeAssistantBubble.setText(response.toString());
+                    activeAssistantBubble.setTextColor(TEXT);
+                    scrollToBottom();
+                });
+            }
+
+            @Override public void onComplete() {
+                conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, response.toString()));
+                runOnUiThread(() -> {
+                    sendButton.setEnabled(true);
+                    importButton.setEnabled(true);
+                    scrollToBottom();
+                });
+            }
+
+            @Override public void onError(Exception error) {
+                runOnUiThread(() -> {
+                    activeAssistantBubble.setText("Generation failed.");
+                    activeAssistantBubble.setTextColor(Color.rgb(255, 130, 145));
+                    sendButton.setEnabled(true);
+                    importButton.setEnabled(true);
+                    showError("Generation failed", error);
+                });
+            }
+        });
+    }
+
+    private TextView addMessageView(ChatMessage.Role role, String value) {
+        boolean user = role == ChatMessage.Role.USER;
+
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(user ? Gravity.END : Gravity.START);
+        row.setPadding(0, dp(4), 0, dp(4));
+
+        LinearLayout bubble = new LinearLayout(this);
+        bubble.setOrientation(LinearLayout.VERTICAL);
+        bubble.setPadding(dp(14), dp(10), dp(14), dp(10));
+        bubble.setBackground(round(user ? Color.rgb(48, 31, 76) : Color.rgb(18, 22, 33), dp(16)));
+
+        TextView label = text(user ? "YOU" : "SYNC//AI", 10,
+                user ? Color.rgb(210, 176, 255) : CYAN, true);
+        bubble.addView(label);
+
+        TextView body = text(value, 15, TEXT, false);
+        body.setLineSpacing(0, 1.12f);
+        bubble.addView(body);
+
+        LinearLayout.LayoutParams bubbleLp = new LinearLayout.LayoutParams(
+                user ? (int)(getResources().getDisplayMetrics().widthPixels * 0.78f) :
+                        (int)(getResources().getDisplayMetrics().widthPixels * 0.88f),
+                -2);
+        row.addView(bubble, bubbleLp);
+        messageContainer.addView(row);
+        scrollToBottom();
+        return body;
+    }
+
+    private void scrollToBottom() {
+        if (chatScroll == null) return;
+        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     private void showModelsDialog() {
         List<ModelInfo> models = modelManager.getModels();
         if (models.isEmpty()) {
             new AlertDialog.Builder(this)
-                    .setTitle("MODELS")
-                    .setMessage("No local models imported yet.\n\nModel files stay outside the GitHub repository and are imported on-device.")
-                    .setPositiveButton("IMPORT MODEL", (d, w) -> openModelPicker())
+                    .setTitle("LOCAL MODELS")
+                    .setMessage("No models imported yet.\n\nModel binaries stay on your phone and are never committed to GitHub.")
+                    .setPositiveButton("IMPORT", (d, w) -> openModelPicker())
                     .setNegativeButton("CLOSE", null)
                     .show();
             return;
@@ -202,21 +373,21 @@ public final class MainActivity extends Activity {
         String[] items = new String[models.size()];
         for (int i = 0; i < models.size(); i++) {
             ModelInfo m = models.get(i);
-            String active = (modelManager.getLoadedModel() != null &&
-                    m.id.equals(modelManager.getLoadedModel().id)) ? "  [LOADED]" : "";
+            boolean loaded = modelManager.getLoadedModel() != null &&
+                    m.id.equals(modelManager.getLoadedModel().id) && backend.isLoaded();
             items[i] = m.name + "  •  " + m.format.toUpperCase(Locale.US) +
-                    "  •  " + m.sizeLabel() + active;
+                    "  •  " + m.sizeLabel() + (loaded ? "  ✓" : "");
         }
 
         new AlertDialog.Builder(this)
                 .setTitle("LOCAL MODELS")
-                .setItems(items, (dialog, which) -> showModelActions(models.get(which)))
+                .setItems(items, (d, which) -> showModelActions(models.get(which)))
                 .setPositiveButton("IMPORT", (d, w) -> openModelPicker())
                 .show();
     }
 
     private void showModelActions(ModelInfo model) {
-        String[] actions = {"Load model", "Model info", "Remove model"};
+        String[] actions = {"Load model", "Model diagnostics", "Remove model"};
         new AlertDialog.Builder(this)
                 .setTitle(model.name)
                 .setItems(actions, (d, which) -> {
@@ -229,15 +400,33 @@ public final class MainActivity extends Activity {
     }
 
     private void showModelInfo(ModelInfo model) {
-        String text =
-                "Name: " + model.name + "\n" +
-                "Format: " + model.format.toUpperCase(Locale.US) + "\n" +
-                "Size: " + model.sizeLabel() + "\n" +
-                "SHA-256: " + model.sha256 + "\n" +
-                "Path: " + model.path;
+        String nativeInfo = modelManager.getLoadedModel() != null &&
+                model.id.equals(modelManager.getLoadedModel().id) && backend.isLoaded()
+                ? "\n\nRUNTIME DIAGNOSTICS\n" + backend.diagnostics() : "";
+
+        String info = "Name: " + model.name +
+                "\nFormat: " + model.format.toUpperCase(Locale.US) +
+                "\nSize: " + model.sizeLabel() +
+                "\nSHA-256: " + model.sha256 + nativeInfo;
+
         new AlertDialog.Builder(this)
-                .setTitle("MODEL INFO")
-                .setMessage(text)
+                .setTitle("MODEL DIAGNOSTICS")
+                .setMessage(info)
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+    private void showRuntimeInfo() {
+        String info = "Sync//AI 0.2.0\n\n" +
+                "Runtime: llama.cpp\n" +
+                "Model format: GGUF\n" +
+                "Execution: local CPU\n" +
+                "ABI: arm64-v8a\n" +
+                "Network required for inference: no\n\n" +
+                "Models are imported into app-private storage.";
+        new AlertDialog.Builder(this)
+                .setTitle("SYNC//AI RUNTIME")
+                .setMessage(info)
                 .setPositiveButton("OK", null)
                 .show();
     }
@@ -249,8 +438,9 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("CANCEL", null)
                 .setPositiveButton("REMOVE", (d, w) -> {
                     if (modelManager.getLoadedModel() != null &&
-                            modelManager.getLoadedModel().id.equals(model.id)) {
+                            model.id.equals(modelManager.getLoadedModel().id)) {
                         backend.unload();
+                        modelManager.clearLoaded();
                     }
                     modelManager.removeModel(model.id);
                     refreshStatus();
@@ -259,108 +449,31 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
-    private void restoreLoadedModel() {
-        ModelInfo model = modelManager.getLoadedModel();
-        if (model == null) {
-            refreshStatus();
-            return;
-        }
-        loadModel(model);
-    }
-
-    private void loadModel(ModelInfo model) {
-        setBusy(true);
-        statusText.setText("LOADING " + model.name + "…");
-
-        backend.unload();
-        backend.load(model, new LocalModelBackend.LoadCallback() {
-            @Override
-            public void onLoaded() {
-                modelManager.markLoaded(model.id);
-                runOnUiThread(() -> {
-                    setBusy(false);
-                    refreshStatus();
-                    addChat(ChatMessage.Role.ASSISTANT,
-                            "Loaded model: " + model.name);
-                });
-            }
-
-            @Override
-            public void onError(Exception error) {
-                modelManager.clearLoaded();
-                runOnUiThread(() -> {
-                    setBusy(false);
-                    refreshStatus();
-                    showError("Model load failed", error);
-                });
-            }
-        });
-    }
-
-    private void sendMessage() {
-        if (!backend.isLoaded()) {
-            showToast("Import and load a model first.");
-            return;
-        }
-
-        String text = input.getText().toString().trim();
-        if (text.isEmpty()) return;
-
-        input.setText("");
-        addChat(ChatMessage.Role.USER, "YOU\n" + text);
-
-        ChatMessage active = new ChatMessage(ChatMessage.Role.USER, text);
-        conversation.add(active);
-
-        sendButton.setEnabled(false);
-        chatText.append("\nSYNC//AI\n");
-
-        GenerationConfig config = new GenerationConfig();
-        backend.generate(conversation, config, new LocalModelBackend.GenerateCallback() {
-            @Override
-            public void onToken(String token) {
-                runOnUiThread(() -> chatText.append(token));
-            }
-
-            @Override
-            public void onComplete() {
-                conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT,
-                        "[mock backend response]"));
-                runOnUiThread(() -> {
-                    chatText.append("\n\n");
-                    sendButton.setEnabled(true);
-                });
-            }
-
-            @Override
-            public void onError(Exception error) {
-                runOnUiThread(() -> {
-                    sendButton.setEnabled(true);
-                    showError("Generation failed", error);
-                });
-            }
-        });
-    }
-
-    private void addChat(ChatMessage.Role role, String text) {
-        if (chatText == null) return;
-        String prefix = role == ChatMessage.Role.USER ? "YOU" : "SYNC//AI";
-        chatText.append("\n" + prefix + "\n" + text + "\n");
-    }
-
     private void refreshStatus() {
         ModelInfo loaded = modelManager.getLoadedModel();
         if (loaded != null && backend.isLoaded()) {
-            statusText.setText("LOADED • " + loaded.name + " • " + loaded.sizeLabel());
+            modelText.setText(loaded.name);
+            statusText.setText("READY • GGUF • LOCAL CPU INFERENCE");
         } else if (loaded != null) {
-            statusText.setText("SELECTED • " + loaded.name);
+            modelText.setText(loaded.name);
+            statusText.setText("SELECTED • READY TO LOAD");
         } else {
-            statusText.setText("NO MODEL LOADED");
+            modelText.setText("NO MODEL");
+            statusText.setText("LOCAL RUNTIME • IMPORT A GGUF MODEL");
         }
     }
 
     private void setBusy(boolean busy) {
         sendButton.setEnabled(!busy);
+        importButton.setEnabled(!busy);
+    }
+
+    private void hideKeyboard() {
+        View view = getCurrentFocus();
+        if (view != null) {
+            ((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE))
+                    .hideSoftInputFromWindow(view.getWindowToken(), 0);
+        }
     }
 
     private void showToast(String message) {
@@ -375,8 +488,11 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
-    @Override
-    protected void onDestroy() {
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    @Override protected void onDestroy() {
         ioExecutor.shutdownNow();
         backend.unload();
         super.onDestroy();
