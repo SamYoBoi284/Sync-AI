@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <vector>\n#include <unistd.h>\n#include <cstdio>
+#include <thread>
 
 #include "llama.h"
 
@@ -148,7 +149,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     ctxParams.n_ctx = contextSize;
     ctxParams.n_batch = 512;
     ctxParams.n_ubatch = 512;
-    const int cpuCount = std::max(1, static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN)));
+    const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     const int threads = std::max(2, std::min(6, cpuCount - 1));
     ctxParams.n_threads = threads;
     ctxParams.n_threads_batch = threads;
