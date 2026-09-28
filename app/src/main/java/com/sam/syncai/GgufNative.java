@@ -16,6 +16,7 @@ public final class GgufNative {
     }
 
     public static native int nativeLoad(String path);
+    public static native String nativeLastError();
     public static native void nativeUnload();
     public static native String nativeInfo();
 
