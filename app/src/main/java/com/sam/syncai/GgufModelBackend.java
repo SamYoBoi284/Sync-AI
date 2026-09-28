@@ -29,7 +29,8 @@ public final class GgufModelBackend implements LocalModelBackend {
                 }
 
                 String memoryWarning = memoryWarning(model.sizeBytes);
-                int result = GgufNative.nativeLoad(model.path);
+                String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
+                int result = GgufNative.nativeLoad(model.path, nativeLibDir);
                 if (result != 0) {
                     String nativeError = GgufNative.nativeLastError();
                     StringBuilder message = new StringBuilder();
