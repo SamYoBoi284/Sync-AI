@@ -14,6 +14,7 @@
 
 static std::mutex g_mutex;
 static llama_model * g_model = nullptr;
+static std::string g_last_error;
 
 static std::string jstring_to_string(JNIEnv * env, jstring value) {
     if (!value) return {};
@@ -36,7 +37,11 @@ JNIEXPORT jint JNICALL
 Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    if (!path) return 2;
+    if (!path) {
+        g_last_error = "No model path was provided.";
+        return 2;
+    }
+    g_last_error.clear();
     llama_backend_init();
 
     if (g_model) {
@@ -50,11 +55,19 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
     if (!g_model) {
+        g_last_error = "llama.cpp could not load the GGUF file. Check the model format, file integrity, available RAM, and whether this llama.cpp build supports the model architecture.";
         LOGE("Failed to load GGUF model: %s", modelPath.c_str());
         return 1;
     }
 
     return 0;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_sam_syncai_GgufNative_nativeLastError(JNIEnv * env, jclass) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return env->NewStringUTF(g_last_error.c_str());
 }
 
 extern "C"
