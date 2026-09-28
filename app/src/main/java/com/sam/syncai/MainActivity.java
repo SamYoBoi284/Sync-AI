@@ -768,6 +768,10 @@ public final class MainActivity extends Activity {
 
     private void showRuntimeInfo() {
         String info = "Sync//AI 0.2.0\n\n" +
+                "Assistant role: " + assistantRoleStatus() + "\n" +
+                "Memory: " + (memoryManager.exists() ? "imported" : "none") + "\n" +
+                "Pending files: " + pendingAttachments.size() + "\n" +
+                "Workspace: app-private\n\n" +
                 "Runtime: llama.cpp\n" +
                 "Model format: GGUF\n" +
                 "Execution: local CPU\n" +
