@@ -5,7 +5,9 @@
 #include <cstring>
 #include <mutex>
 #include <string>
-#include <vector>\n#include <unistd.h>\n#include <cstdio>
+#include <vector>
+#include <unistd.h>
+#include <cstdio>
 #include <thread>
 
 #include "llama.h"
@@ -117,7 +119,11 @@ Java_com_sam_syncai_GgufNative_nativeInfo(JNIEnv * env, jclass) {
 
     char info[768];
     snprintf(info, sizeof(info),
-             "Architecture: %s\nParameters: %.2fB\nTensor size: %.2f GiB\nTraining context: %d\nBackend: CPU",
+             "Architecture: %s
+Parameters: %.2fB
+Tensor size: %.2f GiB
+Training context: %d
+Backend: CPU",
              desc, paramsB, sizeGiB, trainCtx);
     return env->NewStringUTF(info);
 }
