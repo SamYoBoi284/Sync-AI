@@ -9,12 +9,22 @@
 #include <thread>
 
 #include "llama.h"
+#include "ggml-backend.h"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SyncAI", __VA_ARGS__)
 
 static std::mutex g_mutex;
 static llama_model * g_model = nullptr;
 static std::string g_last_error;
+
+static void syncai_llama_log(ggml_log_level level, const char * text, void *) {
+    if (!text) return;
+    __android_log_print(level >= GGML_LOG_LEVEL_ERROR ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
+                        "SyncAI/llama.cpp", "%s", text);
+    if (level >= GGML_LOG_LEVEL_ERROR) {
+        g_last_error.append(text);
+    }
+}
 
 static std::string jstring_to_string(JNIEnv * env, jstring value) {
     if (!value) return {};
@@ -34,7 +44,7 @@ static void emit(JNIEnv * env, jobject callback, jmethodID tokenMethod, const st
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
+Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path, jstring nativeLibDir) {
     std::lock_guard<std::mutex> lock(g_mutex);
 
     if (!path) {
@@ -42,6 +52,14 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
         return 2;
     }
     g_last_error.clear();
+    llama_log_set(syncai_llama_log, nullptr);
+
+    const std::string backendPath = jstring_to_string(env, nativeLibDir);
+    if (!backendPath.empty()) {
+        ggml_backend_load_all_from_path(backendPath.c_str());
+    } else {
+        ggml_backend_load_all();
+    }
     llama_backend_init();
 
     if (g_model) {
@@ -55,7 +73,9 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
     if (!g_model) {
-        g_last_error = "llama.cpp could not load the GGUF file. Check the model format, file integrity, available RAM, and whether this llama.cpp build supports the model architecture.";
+        if (g_last_error.empty()) {
+            g_last_error = "llama.cpp returned a model-load failure without an error log. Check the model format, file integrity, available RAM, and backend initialization.";
+        }
         LOGE("Failed to load GGUF model: %s", modelPath.c_str());
         return 1;
     }
