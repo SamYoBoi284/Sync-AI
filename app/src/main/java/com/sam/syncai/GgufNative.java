@@ -15,7 +15,7 @@ public final class GgufNative {
         void onError(String message);
     }
 
-    public static native int nativeLoad(String path);
+    public static native int nativeLoad(String path, String nativeLibDir);
     public static native String nativeLastError();
     public static native void nativeUnload();
     public static native String nativeInfo();
