@@ -56,7 +56,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         modelManager = new ModelManager(this);
-        backend = new GgufModelBackend();
+        backend = new GgufModelBackend(this);
         buildUi();
         addMessageView(ChatMessage.Role.ASSISTANT,
                 "Sync//AI is ready.\nImport a GGUF model to start chatting locally.");
