@@ -21,6 +21,7 @@ public final class ModelManager {
     private final Context context;
     private final File modelsDir;
     private final File registryFile;
+    private final File settingsFile;
     private final List<ModelInfo> models = new ArrayList<>();
     private String loadedModelId;
 
@@ -28,8 +29,10 @@ public final class ModelManager {
         this.context = context.getApplicationContext();
         this.modelsDir = new File(this.context.getFilesDir(), "models");
         this.registryFile = new File(this.context.getFilesDir(), "models.json");
+        this.settingsFile = new File(this.context.getFilesDir(), "model-settings.json");
         if (!modelsDir.exists()) modelsDir.mkdirs();
         loadRegistry();
+        loadSelectedModel();
     }
 
     public synchronized List<ModelInfo> getModels() {
@@ -42,15 +45,18 @@ public final class ModelManager {
             if (m.id.equals(loadedModelId)) return m;
         }
         loadedModelId = null;
+        saveSelectedModel();
         return null;
     }
 
     public synchronized void markLoaded(String id) {
         loadedModelId = id;
+        saveSelectedModel();
     }
 
     public synchronized void clearLoaded() {
         loadedModelId = null;
+        saveSelectedModel();
     }
 
     public String importModel(Uri uri) throws Exception {
@@ -77,7 +83,6 @@ public final class ModelManager {
                 size += read;
             }
         } catch (Exception e) {
-            // Never leave a partial model behind.
             //noinspection ResultOfMethodCallIgnored
             destination.delete();
             throw e;
@@ -116,7 +121,10 @@ public final class ModelManager {
             //noinspection ResultOfMethodCallIgnored
             m.file().delete();
             models.remove(i);
-            if (id.equals(loadedModelId)) loadedModelId = null;
+            if (id.equals(loadedModelId)) {
+                loadedModelId = null;
+                saveSelectedModel();
+            }
             saveRegistry();
             return;
         }
@@ -169,6 +177,30 @@ public final class ModelManager {
         }
     }
 
+    private void loadSelectedModel() {
+        try {
+            if (!settingsFile.exists()) return;
+            try (FileInputStream in = new FileInputStream(settingsFile)) {
+                byte[] data = new byte[(int) settingsFile.length()];
+                int read = in.read(data);
+                if (read <= 0) return;
+                JSONObject o = new JSONObject(new String(data, "UTF-8"));
+                loadedModelId = o.optString("loadedModelId", null);
+            }
+        } catch (Exception ignored) {
+            loadedModelId = null;
+        }
+    }
+
+    private void saveSelectedModel() {
+        try (FileOutputStream out = new FileOutputStream(settingsFile)) {
+            JSONObject o = new JSONObject();
+            o.put("loadedModelId", loadedModelId == null ? JSONObject.NULL : loadedModelId);
+            out.write(o.toString().getBytes("UTF-8"));
+        } catch (Exception ignored) {
+        }
+    }
+
     private void saveRegistry() {
         try {
             JSONArray array = new JSONArray();
@@ -209,7 +241,9 @@ public final class ModelManager {
 
     private static String hex(byte[] bytes) {
         StringBuilder b = new StringBuilder(bytes.length * 2);
-        for (byte value : bytes) b.append(String.format("%02x", value));
+        for (byte value : bytes) {
+            b.append(String.format("%02x", value & 0xff));
+        }
         return b.toString();
     }
 }
