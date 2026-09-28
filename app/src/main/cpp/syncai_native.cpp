@@ -119,11 +119,11 @@ Java_com_sam_syncai_GgufNative_nativeInfo(JNIEnv * env, jclass) {
 
     char info[768];
     snprintf(info, sizeof(info),
-             "Architecture: %s
-Parameters: %.2fB
-Tensor size: %.2f GiB
-Training context: %d
-Backend: CPU",
+             "Architecture: %s\n"
+             "Parameters: %.2fB\n"
+             "Tensor size: %.2f GiB\n"
+             "Training context: %d\n"
+             "Backend: CPU",
              desc, paramsB, sizeGiB, trainCtx);
     return env->NewStringUTF(info);
 }
