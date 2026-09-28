@@ -452,7 +452,7 @@ public final class MainActivity extends Activity {
         activeAssistantBubble.setTextColor(MUTED);
 
         sendButton.setEnabled(false);
-        importButton.setEnabled(false);
+        // Model import remains available from the side dashboard while chatting.
 
         List<ChatMessage> working = new ArrayList<>();
         working.add(new ChatMessage(ChatMessage.Role.SYSTEM, toolRegistry.systemPrompt()));
@@ -536,7 +536,7 @@ public final class MainActivity extends Activity {
                 if (voiceController != null) voiceController.speak(text);
                 runOnUiThread(() -> {
                     sendButton.setEnabled(true);
-                    importButton.setEnabled(true);
+                    // Model import remains available from the side dashboard.
                     scrollToBottom();
                 });
             }
@@ -666,7 +666,7 @@ public final class MainActivity extends Activity {
             bubble.setText(message);
             bubble.setTextColor(Color.rgb(255, 130, 145));
             sendButton.setEnabled(true);
-            importButton.setEnabled(true);
+            // Model import remains available from the side dashboard.
             if (error != null) showError("Generation failed", error);
             scrollToBottom();
         });
@@ -870,7 +870,7 @@ public final class MainActivity extends Activity {
 
     private void setBusy(boolean busy) {
         sendButton.setEnabled(!busy);
-        importButton.setEnabled(!busy);
+        // Model import remains available from the side dashboard.
     }
 
     private void hideKeyboard() {
