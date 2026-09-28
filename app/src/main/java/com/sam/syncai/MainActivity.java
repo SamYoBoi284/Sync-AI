@@ -10,11 +10,13 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.WindowInsets;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.content.Context;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -35,6 +37,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_ATTACH_FILES = 1202;
     private static final int REQ_IMPORT_MEMORY = 1203;
     private static final int REQ_ASSISTANT_ROLE = 1204;
+    private static final int REQ_RECORD_AUDIO = 1302;
     private static final int MAX_TOOL_CALLS = 4;
     private static final int BG = Color.rgb(7, 8, 14);
     private static final int SURFACE = Color.rgb(15, 18, 28);
@@ -70,7 +73,10 @@ public final class MainActivity extends Activity {
     private EditText input;
     private Button sendButton;
     private Button attachButton;
+    private Button voiceButton;
     private Button importButton;
+    private VoiceController voiceController;
+    private SideDashboard sideDashboard;
     private ProgressBar progress;
     private TextView activeAssistantBubble;
 
@@ -81,6 +87,12 @@ public final class MainActivity extends Activity {
         backend = new GgufModelBackend(this);
         toolRegistry = new ToolRegistry(this);
         memoryManager = new MemoryManager(this);
+        voiceController = new VoiceController(this, new VoiceController.Listener() {
+            @Override public void onListeningChanged(boolean listening) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText(listening ? "STOP" : "MIC"); }); }
+            @Override public void onPartialText(String text) { runOnUiThread(() -> { if (input != null) input.setText(text); }); }
+            @Override public void onFinalText(String text) { runOnUiThread(() -> { if (input != null) { input.setText(text); input.setSelection(input.length()); } }); }
+            @Override public void onError(String message) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText("MIC"); showToast(message); }); }
+        });
         buildUi();
         addMessageView(ChatMessage.Role.ASSISTANT,
                 "Sync//AI is ready.\nImport a GGUF model to start chatting locally.");
@@ -88,78 +100,56 @@ public final class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(14), dp(16), dp(10));
-        root.setBackgroundColor(BG);
+        LinearLayout contentRoot = new LinearLayout(this);
+        contentRoot.setOrientation(LinearLayout.VERTICAL);
+        contentRoot.setPadding(dp(16), dp(14), dp(16), dp(10));
+        contentRoot.setBackgroundColor(BG);
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView title = text("SYNC//AI", 27, TEXT, true);
+        Button menuButton = actionButton("☰");
+        menuButton.setTextSize(20);
+        menuButton.setOnClickListener(v -> { if (sideDashboard != null) sideDashboard.open(); });
+        header.addView(menuButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        TextView title = text("SYNC//AI", 25, TEXT, true);
+        title.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-        Button modelButton = actionButton("MODELS");
-        modelButton.setOnClickListener(v -> showModelsDialog());
-        header.addView(modelButton, new LinearLayout.LayoutParams(dp(88), dp(44)));
-
-        Button assistantButton = actionButton("ASSISTANT");
-        assistantButton.setOnClickListener(v -> requestAssistantRole());
-        LinearLayout.LayoutParams assistantLp = new LinearLayout.LayoutParams(dp(108), dp(44));
-        assistantLp.leftMargin = dp(7);
-        header.addView(assistantButton, assistantLp);
-
-        root.addView(header);
+        Button settingsButton = actionButton("⚙");
+        settingsButton.setTextSize(20);
+        settingsButton.setOnClickListener(v -> { if (sideDashboard != null) sideDashboard.open(); });
+        header.addView(settingsButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        contentRoot.addView(header);
 
         LinearLayout statusCard = card();
         LinearLayout statusInner = new LinearLayout(this);
         statusInner.setOrientation(LinearLayout.VERTICAL);
         statusInner.setPadding(dp(14), dp(11), dp(14), dp(11));
-
         modelText = text("NO MODEL", 13, TEXT, true);
         statusText = text("LOCAL RUNTIME • WAITING FOR MODEL", 11, MUTED, false);
         statusInner.addView(modelText);
         statusInner.addView(statusText, new LinearLayout.LayoutParams(-1, dp(24)));
         statusCard.addView(statusInner);
-        root.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(74)));
-
-        LinearLayout controls = new LinearLayout(this);
-        controls.setPadding(0, dp(9), 0, dp(7));
-
-        importButton = actionButton("IMPORT MODEL");
-        importButton.setOnClickListener(v -> openModelPicker());
-        Button memoryButton = actionButton("MEMORY");
-        memoryButton.setOnClickListener(v -> openMemoryPicker());
-        Button canvasButton = actionButton("CANVAS");
-        canvasButton.setOnClickListener(v -> openCanvas());
-
-        controls.addView(importButton, new LinearLayout.LayoutParams(0, dp(45), 1));
-        LinearLayout.LayoutParams memoryLp = new LinearLayout.LayoutParams(0, dp(45), 1);
-        memoryLp.leftMargin = dp(6);
-        controls.addView(memoryButton, memoryLp);
-        LinearLayout.LayoutParams canvasLp = new LinearLayout.LayoutParams(0, dp(45), 1);
-        canvasLp.leftMargin = dp(6);
-        controls.addView(canvasButton, canvasLp);
-        root.addView(controls);
+        contentRoot.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(74)));
 
         progress = new ProgressBar(this);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
-        root.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
+        contentRoot.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
         chatScroll = new ScrollView(this);
         chatScroll.setFillViewport(true);
         chatScroll.setClipToPadding(false);
-
         messageContainer = new LinearLayout(this);
         messageContainer.setOrientation(LinearLayout.VERTICAL);
         messageContainer.setPadding(dp(2), dp(14), dp(2), dp(18));
         chatScroll.addView(messageContainer);
-        root.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        contentRoot.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout composerCard = card();
         composerCard.setPadding(dp(7), dp(7), dp(7), dp(7));
-
         LinearLayout composer = new LinearLayout(this);
         composer.setGravity(Gravity.BOTTOM);
 
@@ -173,24 +163,60 @@ public final class MainActivity extends Activity {
         input.setMinLines(1);
         input.setMaxLines(4);
         input.setBackground(round(SURFACE_2, dp(15)));
-        composer.addView(input, new LinearLayout.LayoutParams(0, dp(52), 1));
+        composer.addView(input, new LinearLayout.LayoutParams(0, dp(56), 1));
 
         attachButton = actionButton("FILE");
         attachButton.setOnClickListener(v -> openAttachmentPicker());
-        LinearLayout.LayoutParams attachLp = new LinearLayout.LayoutParams(dp(58), dp(52));
+        LinearLayout.LayoutParams attachLp = new LinearLayout.LayoutParams(dp(54), dp(56));
         attachLp.leftMargin = dp(5);
         composer.addView(attachButton, attachLp);
 
+        voiceButton = actionButton("MIC");
+        voiceButton.setOnClickListener(v -> toggleVoiceInput());
+        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(dp(54), dp(56));
+        voiceLp.leftMargin = dp(5);
+        composer.addView(voiceButton, voiceLp);
+
         sendButton = actionButton("SEND");
         sendButton.setOnClickListener(v -> sendMessage());
-        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(dp(72), dp(52));
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(dp(68), dp(56));
         sendLp.leftMargin = dp(5);
         composer.addView(sendButton, sendLp);
 
         composerCard.addView(composer);
-        root.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(66)));
+        contentRoot.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(70)));
 
-        setContentView(root);
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(BG);
+        frame.addView(contentRoot, new FrameLayout.LayoutParams(-1, -1));
+
+        sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
+            @Override public void newChat() { conversation.clear(); messageContainer.removeAllViews(); addMessageView(ChatMessage.Role.ASSISTANT, "New chat started. What are we building?"); }
+            @Override public void models() { showModelsDialog(); }
+            @Override public void importModel() { openModelPicker(); }
+            @Override public void runtime() { showRuntimeInfo(); }
+            @Override public void memory() { openMemoryPicker(); }
+            @Override public void assistant() { requestAssistantRole(); }
+            @Override public void files() { openAttachmentPicker(); }
+            @Override public void canvas() { openCanvas(); }
+            @Override public void toggleVoiceOutput() {
+                if (voiceController == null) return;
+                voiceController.setSpeakingEnabled(!voiceController.isSpeakingEnabled());
+                showToast(voiceController.isSpeakingEnabled() ? "Voice output enabled." : "Voice output disabled.");
+            }
+        });
+
+        contentRoot.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                int ime = insets.getInsets(WindowInsets.Type.ime()).bottom;
+                int bars = insets.getInsets(WindowInsets.Type.systemBars()).bottom;
+                v.setPadding(dp(16), dp(14), dp(16), Math.max(ime, bars) + dp(10));
+            }
+            return insets;
+        });
+        contentRoot.requestApplyInsets();
+
+        setContentView(frame);
         refreshStatus();
     }
 
@@ -227,6 +253,13 @@ public final class MainActivity extends Activity {
         d.setColor(color);
         d.setCornerRadius(radius);
         return d;
+    }
+
+    private void toggleVoiceInput() {
+        if (voiceController == null || !voiceController.isAvailable()) { showToast("Speech recognition is not available on this device."); return; }
+        if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) { voiceController.stopListening(); return; }
+        if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO); return; }
+        voiceController.startListening();
     }
 
     private void openModelPicker() {
@@ -500,6 +533,7 @@ public final class MainActivity extends Activity {
                 }
 
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
+                if (voiceController != null) voiceController.speak(text);
                 runOnUiThread(() -> {
                     sendButton.setEnabled(true);
                     importButton.setEnabled(true);
@@ -641,6 +675,11 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_RECORD_AUDIO) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (granted) voiceController.startListening(); else showToast("Microphone permission was denied.");
+            return;
+        }
         if (requestCode != REQ_CAMERA_PERMISSION) return;
 
         ToolCall toolCall = pendingPermissionToolCall;
@@ -860,6 +899,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         ioExecutor.shutdownNow();
+        if (voiceController != null) voiceController.shutdown();
         backend.unload();
         super.onDestroy();
     }
