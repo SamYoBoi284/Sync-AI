@@ -11,7 +11,6 @@
 #include <thread>
 
 #include "llama.h"
-#include "ggml-backend.h"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SyncAI", __VA_ARGS__)
 
@@ -47,21 +46,16 @@ static void emit(JNIEnv * env, jobject callback, jmethodID tokenMethod, const st
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path, jstring nativeLibDir) {
+    (void) nativeLibDir;
     std::lock_guard<std::mutex> lock(g_mutex);
 
     if (!path) {
         g_last_error = "No model path was provided.";
         return 2;
     }
+
     g_last_error.clear();
     llama_log_set(syncai_llama_log, nullptr);
-
-    const std::string backendPath = jstring_to_string(env, nativeLibDir);
-    if (!backendPath.empty()) {
-        ggml_backend_load_all_from_path(backendPath.c_str());
-    } else {
-        ggml_backend_load_all();
-    }
     llama_backend_init();
 
     if (g_model) {
@@ -183,11 +177,16 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
     const uint32_t contextSize = static_cast<uint32_t>(
-        std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx))
+        std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx))
     );
+
+    // The prompt is submitted as one batch. Keep n_batch large enough for
+    // the complete prompt so llama_decode never receives more tokens than
+    // the context's configured batch capacity.
     ctxParams.n_ctx = contextSize;
-    ctxParams.n_batch = 512;
-    ctxParams.n_ubatch = 512;
+    ctxParams.n_batch = contextSize;
+    ctxParams.n_ubatch = contextSize;
+
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     const int threads = std::max(2, std::min(6, cpuCount - 1));
     ctxParams.n_threads = threads;
@@ -233,9 +232,14 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const int promptCount = -llama_tokenize(
         vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
         nullptr, 0, true, true);
-    if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize)) {
+
+    const int generationLimit = std::max(1, std::min(256, static_cast<int>(maxTokens)));
+    if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize) ||
+        promptCount + generationLimit >= static_cast<int>(contextSize)) {
         llama_free(ctx);
-        jstring message = env->NewStringUTF("Prompt is too large for the selected context window.");
+        jstring message = env->NewStringUTF(
+                "The prompt is too large for the selected context window. "
+                "Try removing large memory/file attachments or starting a new chat.");
         env->CallVoidMethod(callback, errorMethod, message);
         env->DeleteLocalRef(message);
         return;
@@ -271,8 +275,6 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     }
 
     std::string pendingUtf8;
-    const int generationLimit = std::max(1, std::min(1024, static_cast<int>(maxTokens)));
-
     for (int generated = 0; generated < generationLimit; ++generated) {
         llama_token token = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, token)) break;
@@ -288,8 +290,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         }
 
         if (!pendingUtf8.empty()) {
-            const size_t maxSafe = pendingUtf8.size();
-            size_t emitLen = maxSafe;
+            size_t emitLen = pendingUtf8.size();
             while (emitLen > 0) {
                 const unsigned char c = static_cast<unsigned char>(pendingUtf8[emitLen - 1]);
                 if ((c & 0xC0) != 0x80) break;
