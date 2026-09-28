@@ -17,6 +17,7 @@ public final class ToolRegistry {
         register(new AlarmTool(context));
         register(new TimerTool(context));
         register(new OpenSettingsTool(context));
+        register(new OpenAppTool(context));
     }
 
     public void register(SyncTool tool) {
