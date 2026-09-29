@@ -3,18 +3,21 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "llama.h"
+#include "ggml-backend.h"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SyncAI", __VA_ARGS__)
 
 static std::mutex g_mutex;
 static llama_model *g_model = nullptr;
 static std::string g_last_diagnostics = "No inference request recorded yet.";
+static std::string g_last_load_error = "";
 
 static std::string jstring_to_string(JNIEnv *env, jstring value) {
     if (!value) return {};
@@ -68,6 +71,18 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path) {
     std::lock_guard<std::mutex> lock(g_mutex);
 
     if (!path) return 2;
+
+    g_last_load_error.clear();
+    llama_log_set([](enum ggml_log_level level, const char * text, void *) {
+        if (level >= GGML_LOG_LEVEL_ERROR && text) {
+            g_last_load_error += text;
+            LOGE("%s", text);
+        }
+    }, nullptr);
+
+    // Current llama.cpp can load CPU backends dynamically; explicitly load them
+    // before model initialization so Android builds do not end up with zero backends.
+    ggml_backend_load_all();
     llama_backend_init();
 
     if (g_model) {
@@ -76,15 +91,35 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path) {
     }
 
     std::string modelPath = jstring_to_string(env, path);
+
+    std::ifstream probe(modelPath, std::ios::binary);
+    if (!probe) {
+        g_last_load_error = "Could not open the imported model file.";
+        return 3;
+    }
+    char magic[4] = {};
+    probe.read(magic, sizeof(magic));
+    if (!probe || std::string(magic, 4) != "GGUF") {
+        g_last_load_error = "The selected file does not have a valid GGUF header.";
+        return 4;
+    }
+
     llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = 0;
+    params.use_mmap = true;
+    params.use_mlock = false;
+    params.check_tensors = true;
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
     if (!g_model) {
-        LOGE("Failed to load GGUF model: %s", modelPath.c_str());
+        if (g_last_load_error.empty()) {
+            g_last_load_error = "llama.cpp rejected the GGUF model without reporting a detailed error.";
+        }
+        LOGE("Failed to load GGUF model: %s -- %s", modelPath.c_str(), g_last_load_error.c_str());
         return 1;
     }
 
+    g_last_load_error.clear();
     g_last_diagnostics = "Model loaded. No inference request recorded yet.";
     return 0;
 }
