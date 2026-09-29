@@ -115,7 +115,7 @@ public final class ToolEngine {
 
     private Result withDuration(Result result, long started) {
         return new Result(result.handled, result.success, result.response, result.toolName,
-                Math.max(result.durationMs, System.currentTimeMillis() - started));
+                Math.max(result.durationMs, System.currentTimeMillis() - started), result.permission);
     }
 
     private Result handleCompound(String command) {
@@ -379,7 +379,7 @@ public final class ToolEngine {
         }
         if (packageName == null) {
             return new Result(true, false,
-                    "I couldn't find an app matching "" + query + "".",
+                    "I couldn't find an app matching \"" + query + "\".",
                     "app_launch", 0);
         }
 
@@ -409,7 +409,7 @@ public final class ToolEngine {
             );
             if (cursor == null || !cursor.moveToFirst()) {
                 return new Result(true, false,
-                        "I couldn't find a contact named "" + wanted + "".",
+                        "I couldn't find a contact named \"" + wanted + "\".",
                         "contact_call", 0);
             }
             String number = cursor.getString(0);
