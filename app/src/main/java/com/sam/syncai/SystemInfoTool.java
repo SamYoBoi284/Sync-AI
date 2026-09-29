@@ -11,7 +11,11 @@ import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.app.ActivityManager;
+import android.app.AppOpsManager;
+import android.os.Process;
 import android.os.StatFs;
+import android.app.usage.UsageEvents;
+import android.app.usage.UsageStatsManager;
 import android.media.AudioManager;
 import android.provider.Settings;
 import android.hardware.camera2.CameraCharacteristics;
@@ -70,6 +74,12 @@ public final class SystemInfoTool implements SyncTool {
                 return network();
             case "flashlight":
                 return flashlight();
+            case "current_app":
+                return currentApp();
+            case "alarms":
+                return scheduled("alarm");
+            case "timers":
+                return scheduled("timer");
             default:
                 return "Unknown system-info query: " + query;
         }
@@ -175,6 +185,52 @@ public final class SystemInfoTool implements SyncTool {
         return "Network: connected via " + type +
                 (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                         ? " (validated)." : ".");
+    }
+
+    private String scheduled(String type) {
+        return new ScheduledActionStore(context).describe(type);
+    }
+
+    private String currentApp() {
+        try {
+            AppOpsManager ops = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
+            if (ops == null) return "Current app: unavailable.";
+
+            int mode = ops.checkOpNoThrow(
+                    AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    Process.myUid(),
+                    context.getPackageName());
+            if (mode != AppOpsManager.MODE_ALLOWED) {
+                return "Current app: unavailable. Android Usage Access permission is not enabled.";
+            }
+
+            UsageStatsManager usage = (UsageStatsManager)
+                    context.getSystemService(Context.USAGE_STATS_SERVICE);
+            if (usage == null) return "Current app: unavailable.";
+
+            long now = System.currentTimeMillis();
+            UsageEvents events = usage.queryEvents(now - 120_000L, now);
+            UsageEvents.Event event = new UsageEvents.Event();
+            String latestPackage = null;
+            long latestTime = 0L;
+
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event);
+                if (event.getEventType() == UsageEvents.Event.MOVE_TO_FOREGROUND &&
+                        event.getTimeStamp() > latestTime) {
+                    latestTime = event.getTimeStamp();
+                    latestPackage = event.getPackageName();
+                }
+            }
+
+            if (latestPackage == null) return "Current app: unavailable.";
+            android.content.pm.ApplicationInfo app =
+                    context.getPackageManager().getApplicationInfo(latestPackage, 0);
+            String label = String.valueOf(app.loadLabel(context.getPackageManager()));
+            return "Current app: " + label + " (" + latestPackage + ").";
+        } catch (Throwable e) {
+            return "Current app: unavailable on this Android build.";
+        }
     }
 
     private String flashlight() {
