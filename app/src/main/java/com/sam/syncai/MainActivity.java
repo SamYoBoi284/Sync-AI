@@ -854,15 +854,25 @@ public final class MainActivity extends Activity {
         String normalizedMessage = message.toLowerCase(Locale.US).replaceAll("[^a-z0-9 ]", "").trim();
         if (normalizedMessage.equals("hi") || normalizedMessage.equals("hello") ||
                 normalizedMessage.equals("hey") || normalizedMessage.equals("yo") ||
-                normalizedMessage.equals("sup") || normalizedMessage.equals("hey bro")) {
+                normalizedMessage.equals("sup") || normalizedMessage.equals("hey bro") ||
+                normalizedMessage.matches("how (are|r) you( doing)?( today)?") ||
+                normalizedMessage.matches("how (are|r) ya( doing)?( today)?") ||
+                normalizedMessage.matches("how you doing( today)?") ||
+                normalizedMessage.matches("hows it going( today)?") ||
+                normalizedMessage.equals("how is it going")) {
             input.setText("");
             hideKeyboard();
             conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
             addMessageView(ChatMessage.Role.USER, message);
-            TextView greetingBubble = addMessageView(ChatMessage.Role.ASSISTANT, "Hey bro 👋");
-            conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, "Hey bro 👋"));
+            String reply = normalizedMessage.equals("hi") || normalizedMessage.equals("hello") ||
+                    normalizedMessage.equals("hey") || normalizedMessage.equals("yo") ||
+                    normalizedMessage.equals("sup") || normalizedMessage.equals("hey bro")
+                    ? "Hey bro 👋"
+                    : "I’m good bro 😎 just here and ready. What we building?";
+            addMessageView(ChatMessage.Role.ASSISTANT, reply);
+            conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, reply));
             if (voiceModeActive) {
-                finishVoiceResponse("Hey bro.");
+                finishVoiceResponse(reply);
             }
             return;
         }
