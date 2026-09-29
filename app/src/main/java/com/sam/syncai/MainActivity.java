@@ -34,7 +34,6 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_MODEL = 1201;
-    private static final int REQ_CAMERA_PERMISSION = 1301;
     private static final int REQ_TOOL_PERMISSIONS = 1303;
     private static final int REQ_ATTACH_FILES = 1202;
     private static final int REQ_IMPORT_MEMORY = 1203;
@@ -83,7 +82,6 @@ public final class MainActivity extends Activity {
     private ProgressBar progress;
     private TextView activeAssistantBubble;
     private boolean voiceModeActive;
-    private ToolCall pendingFastToolCall;
     private List<ToolCall> pendingFastToolCalls;
     private FrameLayout rootFrame;
     private FrameLayout voiceModeOverlay;
@@ -1086,7 +1084,7 @@ public final class MainActivity extends Activity {
             }
             return;
         }
-        if (requestCode != REQ_TOOL_PERMISSIONS && requestCode != REQ_CAMERA_PERMISSION) return;
+        if (requestCode != REQ_TOOL_PERMISSIONS) return;
 
         if (pendingFastToolCalls != null) {
             java.util.List<ToolCall> fastTools = pendingFastToolCalls;
