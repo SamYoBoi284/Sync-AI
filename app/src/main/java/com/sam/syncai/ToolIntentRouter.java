@@ -23,6 +23,8 @@ public final class ToolIntentRouter {
             "^[0-9.\\s()+*/%^-]+$");
     private static final Pattern CREATE_FILE = Pattern.compile(
             "(?is)\\b(?:create|make|write)\\s+(?:a\\s+)?(?:text\\s+)?file\\s+(?:named|called)\\s+([^:,.!?]+?)\\s*:\\s*(.*)$");
+    private static final Pattern TIME_QUERY = Pattern.compile(
+            "(?i)\\b(?:what\\s+time\\s+is\\s+it|what(?:'s|\\s+is)\\s+(?:the\\s+)?(?:time|date|day)(?:\\s+is\\s+it)?|current\\s+(?:time|date)|today(?:'s)?\\s+date|what\\s+day\\s+is\\s+it)\\b");
 
     private static final Pattern CONTEXT_FLASHLIGHT = Pattern.compile(
             "(?i)^(?:turn|switch|shut)\\s+(?:(?:it|that|this)\\s+)?(?:back\\s+)?(on|off)\\b");
@@ -85,6 +87,22 @@ public final class ToolIntentRouter {
             calls.add(contextual);
             return calls;
         }
+
+        Matcher timeMatcher = TIME_QUERY.matcher(text);
+        while (timeMatcher.find()) {
+            if (isCommandContext(text, timeMatcher.start())) {
+                Map<String, String> args = new LinkedHashMap<>();
+                String lower = text.toLowerCase(Locale.US);
+                if (lower.contains("date")) args.put("query", "date");
+                else if (lower.contains("day")) args.put("query", "day");
+                else args.put("query", "time");
+                calls.add(new ToolCall("time", args));
+                break;
+            }
+        }
+
+        ToolCall systemInfo = parseSystemInfo(text);
+        if (systemInfo != null) calls.add(systemInfo);
 
         Matcher m = FLASHLIGHT.matcher(text);
         while (m.find()) {
@@ -171,6 +189,41 @@ public final class ToolIntentRouter {
         }
 
         return calls;
+    }
+
+    private static ToolCall parseSystemInfo(String text) {
+        String lower = text.toLowerCase(Locale.US)
+                .replaceAll("[^a-z0-9%+.-]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        String query = null;
+        if (lower.matches(".*\\b(?:battery|battery level|how much battery|am i charging|is it charging|charging status)\\b.*")) {
+            query = "battery";
+        } else if (lower.matches(".*\\b(?:wifi|wi fi|wireless|is wifi on)\\b.*")) {
+            query = "wifi";
+        } else if (lower.matches(".*\\b(?:bluetooth|bt|is bluetooth on)\\b.*")) {
+            query = "bluetooth";
+        } else if (lower.matches(".*\\b(?:volume|media volume|sound level)\\b.*")) {
+            query = "volume";
+        } else if (lower.matches(".*\\b(?:brightness|screen brightness)\\b.*")) {
+            query = "brightness";
+        } else if (lower.matches(".*\\b(?:ram|memory usage|available memory)\\b.*")) {
+            query = "ram";
+        } else if (lower.matches(".*\\b(?:storage|free space|disk space)\\b.*")) {
+            query = "storage";
+        } else if (lower.matches(".*\\b(?:device info|phone info|phone specs|device specs|android version)\\b.*")) {
+            query = "device";
+        } else if (lower.matches(".*\\b(?:network status|network connection|internet connection|am i online)\\b.*")) {
+            query = "network";
+        } else if (lower.matches(".*\\b(?:flashlight state|is the flashlight on|is my flashlight on|torch state)\\b.*")) {
+            query = "flashlight";
+        }
+
+        if (query == null) return null;
+        Map<String, String> args = new LinkedHashMap<>();
+        args.put("query", query);
+        return new ToolCall("system_info", args);
     }
 
     private static java.util.List<ToolCall> parseAlarms(String text) {
