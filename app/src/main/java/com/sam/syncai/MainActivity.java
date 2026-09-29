@@ -1271,11 +1271,16 @@ cancelVoiceTimers();
             TextView bubble) {
         SyncTool tool = toolRegistry.get(toolCall.name);
         String result;
+        final long toolStart = System.nanoTime();
         try {
             result = tool.execute(toolCall.arguments);
         } catch (Throwable t) {
             String message = t.getMessage();
             result = "ERROR: " + (message == null ? t.toString() : message);
+        }
+
+        if (activeDiagnostics != null) {
+            activeDiagnostics.addTool(System.nanoTime() - toolStart);
         }
 
         if (result.startsWith("OPEN_APP_CONFIRM|")) {
