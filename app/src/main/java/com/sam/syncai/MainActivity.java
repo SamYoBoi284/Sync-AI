@@ -632,9 +632,7 @@ public final class MainActivity extends Activity {
 
     private void enterVoiceModePage(boolean autoListen) {
         if (voiceModeOverlay == null) return;
-        stopForegroundWakeWord();
-        SyncVoiceInteractionService.stopWakeWord();
-        cancelVoiceTimers();
+cancelVoiceTimers();
         voiceModeActive = true;
         voiceModeOverlay.setVisibility(View.VISIBLE);
         voiceModeTranscript.setText("Tap the orb and speak.");
@@ -662,8 +660,7 @@ public final class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
-        startWakeWordIfAvailable();
-    }
+}
 
     private void updateVoiceTranscript(String text) {
         if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE &&
@@ -744,61 +741,6 @@ public final class MainActivity extends Activity {
                 normalized.equals("were done") ||
                 normalized.equals("stop listening") ||
                 normalized.equals("exit voice mode");
-    }
-
-    private void ensureWakeWordPermissionAndStart() {
-        if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            voicePermissionRequestedForVoiceMode = false;
-            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
-        } else {
-            startWakeWordIfAvailable();
-        }
-    }
-
-    private void startWakeWordIfAvailable() {
-        if (voiceModeActive) return;
-
-        boolean systemAssistant =
-                SyncVoiceInteractionService.hasLiveInstance() ||
-                SyncVoiceInteractionService.isActiveVoiceInteractionService(this);
-
-        if (systemAssistant) {
-            stopForegroundWakeWord();
-            SyncVoiceInteractionService.startWakeWord();
-            return;
-        }
-
-        if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
-                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-
-        if (foregroundWakeWordController == null) {
-            foregroundWakeWordController = new WakeWordController(this, new WakeWordController.Listener() {
-                @Override public void onWakeWordDetected(float score) {
-                    stopForegroundWakeWord();
-                    Log.d("SyncAI", "Foreground wake word detected. score=" + score);
-                    runOnUiThread(() -> enterVoiceModePage(true));
-                }
-
-                @Override public void onWakeWordError(String message) {
-                    Log.e("SyncAI", "Foreground wake word error: " + message);
-                }
-            });
-        }
-
-        if (!foregroundWakeWordController.isRunning() &&
-                !foregroundWakeWordController.isStopping()) {
-            foregroundWakeWordController.start();
-        }
-    }
-
-    private void stopForegroundWakeWord() {
-        if (foregroundWakeWordController != null) {
-            foregroundWakeWordController.stop();
-        }
     }
 
     private void updateVoiceResponse(String text) {
@@ -1475,8 +1417,7 @@ public final class MainActivity extends Activity {
                     voicePermissionRequestedForVoiceMode = false;
                     startVoiceListening();
                 } else {
-                    startWakeWordIfAvailable();
-                }
+}
             } else {
                 voicePermissionRequestedForVoiceMode = false;
                 if (voiceModeActive) {
@@ -1747,23 +1688,16 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (!voiceModeActive) {
-            startWakeWordIfAvailable();
-        }
+}
     }
 
     @Override
     protected void onPause() {
-        stopForegroundWakeWord();
-        super.onPause();
+super.onPause();
     }
 
     @Override protected void onDestroy() {
-        stopForegroundWakeWord();
-        if (foregroundWakeWordController != null) {
-            foregroundWakeWordController.release();
-            foregroundWakeWordController = null;
-        }
-        cancelVoiceTimers();
+cancelVoiceTimers();
         ioExecutor.shutdownNow();
         if (voiceController != null) voiceController.shutdown();
         backend.unload();
