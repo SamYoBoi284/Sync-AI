@@ -20,7 +20,7 @@ android {
             cmake {
                 arguments '-DCMAKE_BUILD_TYPE=Release',
                         '-DGGML_NATIVE=OFF',
-                        '-DGGML_CPU_ALL_VARIANTS=ON',
+                        '-DGGML_CPU_ALL_VARIANTS=OFF',
                         '-DGGML_OPENMP=OFF',
                         '-DGGML_LLAMAFILE=OFF'
             }
@@ -46,16 +46,3 @@ android {
 }
 
 
-def syncAiIconDir = file("$buildDir/generated/res/syncAiIcon")
-def decodeSyncAiIcon = tasks.register("decodeSyncAiIcon") {
-    outputs.file(new File(syncAiIconDir, "drawable/sync_ai_icon.png"))
-    doLast {
-        def out = new File(syncAiIconDir, "drawable")
-        out.mkdirs()
-        def encoded = file("src/main/assets/sync_ai_icon.png.b64").getText("UTF-8").trim()
-        def bytes = java.util.Base64.decoder.decode(encoded)
-        new File(out, "sync_ai_icon.png").bytes = bytes
-    }
-}
-android.sourceSets.main.res.srcDir(syncAiIconDir)
-tasks.named("preBuild").configure { dependsOn(decodeSyncAiIcon) }
