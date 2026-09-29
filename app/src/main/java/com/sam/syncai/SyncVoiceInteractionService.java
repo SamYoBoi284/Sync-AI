@@ -1,11 +1,11 @@
 package com.sam.syncai;
 
 import android.Manifest;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.service.voice.VoiceInteractionService;
-import android.service.voice.VoiceInteractionSession;
 import android.util.Log;
 
 public final class SyncVoiceInteractionService extends VoiceInteractionService {
@@ -27,6 +27,7 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
                     showSession(new Bundle(), 0);
                 } catch (Throwable error) {
                     Log.e(TAG, "Failed to show voice session after wake word", error);
+                    startWakeWordIfAllowed();
                 }
             }
 
@@ -46,8 +47,6 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
     @Override
     public void onPrepareToShowSession(Bundle args, int flags) {
         super.onPrepareToShowSession(args, flags);
-        // The system is about to bind/show our session. Release the wake-word
-        // mic immediately so the voice session/STT can own the microphone.
         stopWakeWord();
         Log.i(TAG, "Preparing voice session. flags=" + flags);
     }
@@ -61,9 +60,6 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
 
     @Override
     public void onLaunchVoiceAssistFromKeyguard() {
-        // Keyguard invocation must start an activity that can appear over the
-        // lock screen. MainActivity applies the corresponding window flags
-        // when it enters Voice Mode.
         stopWakeWord();
         Intent intent = new Intent(this, MainActivity.class);
         intent.setAction(Intent.ACTION_ASSIST);
@@ -73,6 +69,15 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
                 Intent.FLAG_ACTIVITY_SINGLE_TOP |
                 Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
         startActivity(intent);
+    }
+
+    static boolean hasLiveInstance() {
+        return instance != null;
+    }
+
+    static boolean isActiveVoiceInteractionService(android.content.Context context) {
+        ComponentName component = new ComponentName(context, SyncVoiceInteractionService.class);
+        return VoiceInteractionService.isActiveService(context, component);
     }
 
     static void startWakeWord() {
@@ -101,6 +106,7 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
         }
         try {
             wakeWordController.start();
+            Log.i(TAG, "Wake-word start requested. running=" + wakeWordController.isRunning());
         } catch (Throwable error) {
             Log.e(TAG, "Unable to start wake-word detector", error);
         }
