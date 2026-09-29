@@ -97,7 +97,7 @@ public final class MainActivity extends Activity {
         });
         buildUi();
         addMessageView(ChatMessage.Role.ASSISTANT,
-                "Sync//AI is ready.\nImport a GGUF model to start chatting locally.");
+                "Sync AI is ready.\nImport a GGUF model to start chatting locally.");
         restoreLoadedModel();
     }
 
@@ -156,7 +156,7 @@ public final class MainActivity extends Activity {
         composer.setGravity(Gravity.BOTTOM);
 
         input = new EditText(this);
-        input.setHint("Message Sync//AI…");
+        input.setHint("Message Sync AI…");
         input.setHintTextColor(Color.rgb(92, 100, 123));
         input.setTextColor(TEXT);
         input.setTextSize(15);
@@ -305,7 +305,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if (roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-            showToast("Sync//AI is already the default assistant.");
+            showToast("Sync AI is already the default assistant.");
             return;
         }
         startActivityForResult(
@@ -317,7 +317,7 @@ public final class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQ_ASSISTANT_ROLE) {
-            if (resultCode == RESULT_OK) showToast("Sync//AI is now the default assistant.");
+            if (resultCode == RESULT_OK) showToast("Sync AI is now the default assistant.");
             return;
         }
 
@@ -889,7 +889,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showRuntimeInfo() {
-        String info = "Sync//AI 0.2.0\n\n" +
+        String info = "Sync AI 0.2.0\n\n" +
                 "Assistant role: " + assistantRoleStatus() + "\n" +
                 "Memory: " + (memoryManager.exists() ? "imported" : "none") + "\n" +
                 "Pending files: " + pendingAttachments.size() + "\n" +
