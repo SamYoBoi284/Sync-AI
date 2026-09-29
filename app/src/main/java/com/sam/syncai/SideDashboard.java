@@ -14,10 +14,13 @@ import android.widget.TextView;
 public final class SideDashboard extends FrameLayout {
     public interface Actions {
         void newChat();
+        void chats();
         void models();
         void importModel();
         void runtime();
         void memory();
+        void personalization();
+        void about();
         void assistant();
         void files();
         void canvas();
@@ -80,7 +83,7 @@ public final class SideDashboard extends FrameLayout {
 
         section(mainContent, "CHATS");
         item(mainContent, "＋  New chat", v -> actions.newChat(), true);
-        item(mainContent, "◉  Current chat", null, true);
+        item(mainContent, "☷  Chat history", v -> actions.chats(), true);
 
         section(mainContent, "WORKSPACE");
         item(mainContent, "◎  Default assistant", v -> actions.assistant(), true);
@@ -122,12 +125,18 @@ public final class SideDashboard extends FrameLayout {
 
         section(settingsContent, "WORKSPACE");
         item(settingsContent, "📎  Files", v -> actions.files(), true);
-        item(settingsContent, "🧠  Import memory", v -> actions.memory(), true);
         item(settingsContent, "▣  Models", v -> actions.models(), true);
         item(settingsContent, "↓  Import model", v -> actions.importModel(), true);
         item(settingsContent, "▤  Runtime", v -> actions.runtime(), true);
 
-        TextView hint = label("Local models, memory and workspace files are kept on this phone.", 11,
+        section(settingsContent, "PERSONALIZATION");
+        item(settingsContent, "🎨  Appearance & colors", v -> actions.personalization(), true);
+        item(settingsContent, "🧠  Memory", v -> actions.memory(), true);
+
+        section(settingsContent, "ABOUT");
+        item(settingsContent, "ⓘ  About & diagnostics", v -> actions.about(), true);
+
+        TextView hint = label("Local models, memory, workspace files, and preferences are kept on this phone.", 11,
                 Color.rgb(145,153,177), false);
         hint.setPadding(0, dp(16), dp(8), 0);
         settingsContent.addView(hint, new LinearLayout.LayoutParams(-1, 0, 1));
