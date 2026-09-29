@@ -10,9 +10,9 @@ public final class ToolIntentRouter {
     private static final Pattern FLASHLIGHT = Pattern.compile(
             "(?i)\\b(?:(?:turn|switch|toggle)\\s+)?(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\b|\\b(?:turn|switch|toggle)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\s+(on|off)\\b|\\b(?:flashlight|torch)\\s+(on|off)\\b");
     private static final Pattern CALL_CONTACT = Pattern.compile(
-            "(?i)\\b(?:call|phone|ring|dial)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|[.!?,;]|$)");
+            "(?i)\\b(?:call|phone|ring|dial)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|\\s+and\\s+(?=(?:set|start|create|make|open|launch|call|phone|ring|dial|calculate|compute|what|what's|whats|how much|how many)\\b)|[.!?,;]|$)");
     private static final Pattern OPEN_APP = Pattern.compile(
-            "(?i)\\b(?:open|launch|start|run)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|[.!?,;]|$)");
+            "(?i)\\b(?:open|launch|start|run)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|\\s+and\\s+(?=(?:set|start|create|make|open|launch|call|phone|ring|dial|calculate|compute|what|what's|whats|how much|how many)\\b)|[.!?,;]|$)");
     private static final Pattern CALCULATE = Pattern.compile(
             "(?i)\\b(?:calculate|compute|work\\s+out|solve|what\\s+is|what's|whats|how\\s+much\\s+is|how\\s+many)\\s+(.+?)(?=\\s+(?:please|now|for me)\\b|[?!;]|$)");
     private static final Pattern ALARM_TIME = Pattern.compile(
@@ -204,7 +204,7 @@ public final class ToolIntentRouter {
 
     private static String extractLabel(String text, String fallback) {
         Matcher m = Pattern.compile(
-                "(?is)\\b(?:titled|called|named|label(?:ed)?(?:\\s+as)?)\\s+(.+?)(?=\\s+(?:and|then)\\s+(?:another|one\\s+more|set|create|schedule)|[.!?;]|$)")
+                "(?is)\\b(?:titled|called|named|label(?:ed)?(?:\\s+as)?)\\s+(.+?)(?=\\s+(?:and|then)\\s+(?:another|one\\s+more|set|create|schedule|start|make|open|launch|call|phone|ring|dial|calculate|compute)|\\s+and\\s+(?=(?:set|start|create|make|open|launch|call|phone|ring|dial|calculate|compute)\\b)|[.!?;]|$)")
                 .matcher(text == null ? "" : text);
         if (!m.find()) return fallback;
         String label = m.group(1).trim();
