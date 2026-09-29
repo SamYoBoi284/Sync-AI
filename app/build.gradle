@@ -1,5 +1,9 @@
 plugins { id 'com.android.application' }
 
+dependencies {
+    implementation 'com.github.msnilsen:openwakeword-android:0.1.0'
+}
+
 android {
     namespace 'com.sam.syncai'
     compileSdk 35
