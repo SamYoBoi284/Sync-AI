@@ -274,6 +274,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     }
 
     g_last_prompt_tokens = promptCount;
+    g_last_tokens_per_second = 0.0;
     std::vector<llama_token> tokens(promptCount);
     if (llama_tokenize(
             vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
