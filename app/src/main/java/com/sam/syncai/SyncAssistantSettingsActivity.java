@@ -37,7 +37,7 @@ public final class SyncAssistantSettingsActivity extends Activity {
         root.addView(subtitle);
 
         TextView body = new TextView(this);
-        body.setText("\nSync AI uses Android's VoiceInteractionService for system assistant invocation and on-device wake-word detection.\n\nSelect Sync AI as the default digital assistant to use the Side button / system assistant gesture.");
+        body.setText("\nSync AI uses Android's VoiceInteractionService for system assistant invocation. Microphone access is requested only when Voice Mode is active.\n\nSelect Sync AI as the default digital assistant to use the Side button / system assistant gesture.");
         body.setTextColor(MUTED);
         body.setTextSize(15);
         body.setLineSpacing(0, 1.2f);
