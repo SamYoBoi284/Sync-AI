@@ -439,6 +439,23 @@ public final class MainActivity extends Activity {
         if (message.isEmpty()) return;
 
         // Deterministic common actions do not require a loaded model.
+        String normalizedMessage = message.toLowerCase(Locale.US).replaceAll("[^a-z0-9 ]", "").trim();
+        if (normalizedMessage.equals("hi") || normalizedMessage.equals("hello") ||
+                normalizedMessage.equals("hey") || normalizedMessage.equals("yo") ||
+                normalizedMessage.equals("sup") || normalizedMessage.equals("hey bro")) {
+            input.setText("");
+            hideKeyboard();
+            conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
+            addMessageView(ChatMessage.Role.USER, message);
+            TextView greetingBubble = addMessageView(ChatMessage.Role.ASSISTANT, "Hey bro 👋");
+            conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, "Hey bro 👋"));
+            if (voiceModeActive && voiceController != null) {
+                voiceController.speak("Hey bro.");
+                voiceModeActive = false;
+            }
+            return;
+        }
+
         ToolCall fastTool = ToolIntentRouter.parse(message);
         if (fastTool != null) {
             input.setText("");
@@ -490,7 +507,15 @@ public final class MainActivity extends Activity {
             working.add(new ChatMessage(ChatMessage.Role.SYSTEM, attachmentContext.toString()));
         }
 
-        working.addAll(conversation);
+        // Keep the native prompt small on a 4 GB phone. The latest turns carry
+        // the useful conversational state; older turns can remain in the UI.
+        int historyStart = Math.max(0, conversation.size() - 8);
+        for (int i = historyStart; i < conversation.size(); i++) {
+            ChatMessage msg = conversation.get(i);
+            String text = msg.text == null ? "" : msg.text;
+            if (text.length() > 2000) text = text.substring(text.length() - 2000);
+            working.add(new ChatMessage(msg.role, text));
+        }
         runGeneration(working, 0, activeAssistantBubble);
     }
 
