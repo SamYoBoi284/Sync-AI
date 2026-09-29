@@ -40,12 +40,13 @@ public final class WakeWordController {
             if (detector == null) {
                 detector = new OpenWakeWord.Builder(context)
                         .setModel(OpenWakeWord.BuiltInModel.HEY_JARVIS)
-                        .setThreshold(0.5f)
-                        .setDebounceMs(2500L)
+                        .setThreshold(0.35f)
+                        .setDebounceMs(1800L)
                         .build();
             }
 
             running = true;
+            Log.i(TAG, "Starting HEY_JARVIS detector.");
             detector.start(score -> {
                 if (!running) return;
                 Log.d(TAG, "HEY_JARVIS detected, score=" + score);
