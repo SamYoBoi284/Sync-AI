@@ -77,6 +77,8 @@ public final class MainActivity extends Activity {
     private Button voiceButton;
     private Button importButton;
     private VoiceController voiceController;
+    private WakeWordController wakeWordController;
+    private boolean voicePermissionRequestedForVoiceMode;
     private SideDashboard sideDashboard;
     private ProgressBar progress;
     private TextView activeAssistantBubble;
@@ -123,7 +125,29 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+        wakeWordController = new WakeWordController(this, new WakeWordController.Listener() {
+            @Override public void onWakeWordDetected(float score) {
+                runOnUiThread(() -> {
+                    if (voiceModeActive) return;
+                    wakeWordController.stop();
+                    enterVoiceModePage(true);
+                });
+            }
+
+            @Override public void onWakeWordError(String message) {
+                runOnUiThread(() -> showToast("Wake word unavailable: " + message));
+            }
+        });
+
         buildUi();
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            voicePermissionRequestedForVoiceMode = false;
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
+        } else {
+            startWakeWordDetection();
+        }
+
         addMessageView(ChatMessage.Role.ASSISTANT,
                 "Sync AI is ready.\nImport a GGUF model to start chatting locally.");
         restoreLoadedModel();
@@ -347,10 +371,12 @@ public final class MainActivity extends Activity {
     private void startVoiceListening() {
         if (android.os.Build.VERSION.SDK_INT >= 23 &&
                 checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            voicePermissionRequestedForVoiceMode = true;
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
             return;
         }
         voiceModeActive = true;
+        if (wakeWordController != null) wakeWordController.stop();
         voiceController.setSpeakingEnabled(true);
         if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
         if (voiceButton != null) voiceButton.setText("STOP");
@@ -420,6 +446,7 @@ public final class MainActivity extends Activity {
 
     private void enterVoiceModePage(boolean autoListen) {
         if (voiceModeOverlay == null) return;
+        if (wakeWordController != null) wakeWordController.stop();
         voiceModeActive = true;
         voiceModeOverlay.setVisibility(View.VISIBLE);
         voiceModeTranscript.setText("Tap the orb and speak.");
@@ -445,6 +472,16 @@ public final class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
+        startWakeWordDetection();
+    }
+
+    private void startWakeWordDetection() {
+        if (wakeWordController == null || voiceModeActive) return;
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        wakeWordController.start();
     }
 
     private void updateVoiceTranscript(String text) {
@@ -993,8 +1030,19 @@ public final class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_RECORD_AUDIO) {
-            boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            if (granted) { voiceModeActive = true; voiceController.setSpeakingEnabled(true); voiceController.startListening(); } else { voiceModeActive = false; showToast("Microphone permission was denied."); }
+            boolean granted = grantResults.length > 0 &&
+                    grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                if (voicePermissionRequestedForVoiceMode) {
+                    voicePermissionRequestedForVoiceMode = false;
+                    startVoiceListening();
+                } else {
+                    startWakeWordDetection();
+                }
+            } else {
+                voicePermissionRequestedForVoiceMode = false;
+                showToast("Microphone permission was denied. Wake word and voice mode need microphone access.");
+            }
             return;
         }
         if (requestCode != REQ_CAMERA_PERMISSION) return;
@@ -1240,8 +1288,19 @@ public final class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        if (!voiceModeActive) startWakeWordDetection();
+    }
+
+    @Override protected void onPause() {
+        if (wakeWordController != null) wakeWordController.stop();
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
         ioExecutor.shutdownNow();
+        if (wakeWordController != null) wakeWordController.release();
         if (voiceController != null) voiceController.shutdown();
         backend.unload();
         super.onDestroy();
