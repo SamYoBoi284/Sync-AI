@@ -137,5 +137,7 @@ About identifies:
 16. Personalization → all 8 accent colors + tone changes persist across app restarts.
 
 ## Baseline / verification
-Previous known-good CI state: Actions build #199.
-The current pass contains additional routing, diagnostics, voice lifecycle, settings, persistence, and recognition-service changes. CI and device testing are still the final verification gate.
+- Current branch head: `65333bce7acc90428a3162c98072dbf73a955866` (`Run deterministic routing tests in CI`).
+- GitHub Actions **Build Sync//AI APK #393** completed successfully for the current branch head.
+- The current branch contains the requested wake-word removal, voice-only microphone lifecycle, persistent chats, diagnostics, Personalization, About, 8-color accent selection, and deterministic routing regression tests.
+- Remaining verification is primarily real-device behavior: microphone permission/session lifecycle, translucent assistant overlay/lock-screen path, persistent-chat migration on an installed build, and measured llama.cpp latency on the A16.
