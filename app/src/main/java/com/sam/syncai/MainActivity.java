@@ -290,15 +290,15 @@ public final class MainActivity extends Activity {
 
         sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
             @Override public void newChat() {
-                conversation.clear();
-                ToolIntentRouter.clearContext();
-                messageContainer.removeAllViews();
-                addMessageView(ChatMessage.Role.ASSISTANT, "New chat started. What are we building?");
+                startNewChat();
             }
+            @Override public void chats() { showChatHistoryDialog(); }
             @Override public void models() { showModelsDialog(); }
             @Override public void importModel() { openModelPicker(); }
             @Override public void runtime() { showRuntimeInfo(); }
             @Override public void memory() { openMemoryPicker(); }
+            @Override public void personalization() { showPersonalizationDialog(); }
+            @Override public void about() { showAboutDialog(); }
             @Override public void assistant() { requestAssistantRole(); }
             @Override public void files() { openAttachmentPicker(); }
             @Override public void canvas() { openCanvas(); }
