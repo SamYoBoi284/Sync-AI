@@ -225,6 +225,7 @@ public final class MainActivity extends Activity {
         b.setMinHeight(dp(44));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(44));
         lp.topMargin = dp(5);
+        b.setLayoutParams(lp);
         return b;
     }
 
@@ -663,10 +664,6 @@ public final class MainActivity extends Activity {
         Button about = sectionButton("ABOUT & DIAGNOSTICS", "Version, creators, runtime evidence");
         about.setOnClickListener(v -> showAbout());
         content.addView(about);
-
-        Button voice = sectionButton("VOICE MODE", "Side-button assistant + voice output");
-        voice.setOnClickListener(v -> showVoiceSettings());
-        content.addView(voice);
 
         Button models = sectionButton("LOCAL MODELS", "Import, load, inspect, remove");
         models.setOnClickListener(v -> showModelsDialog());
