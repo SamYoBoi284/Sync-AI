@@ -22,6 +22,10 @@ static std::string g_last_error;
 static double g_last_prompt_ms = 0.0;
 static double g_last_generation_ms = 0.0;
 static int g_last_generated_tokens = 0;
+static int g_last_prompt_tokens = 0;
+static int g_last_context_size = 0;
+static int g_last_threads = 0;
+static double g_last_tokens_per_second = 0.0;
 
 static void syncai_llama_log(ggml_log_level level, const char * text, void *) {
     if (!text) return;
@@ -122,18 +126,24 @@ Java_com_sam_syncai_GgufNative_nativeInfo(JNIEnv * env, jclass) {
     const double paramsB = static_cast<double>(llama_model_n_params(g_model)) / 1e9;
     const int32_t trainCtx = llama_model_n_ctx_train(g_model);
 
-    char info[768];
+    char info[1024];
     snprintf(info, sizeof(info),
              "Architecture: %s\n"
              "Parameters: %.2fB\n"
              "Tensor size: %.2f GiB\n"
              "Training context: %d\n"
              "Backend: CPU\n"
+             "Last context size: %d\n"
+             "Last prompt tokens: %d\n"
+             "Last CPU threads: %d\n"
              "Last prompt eval: %.1f ms\n"
              "Last generation: %.1f ms\n"
-             "Last generated tokens: %d",
+             "Last generated tokens: %d\n"
+             "Last generation speed: %.2f tok/s",
              desc, paramsB, sizeGiB, trainCtx,
-             g_last_prompt_ms, g_last_generation_ms, g_last_generated_tokens);
+             g_last_context_size, g_last_prompt_tokens, g_last_threads,
+             g_last_prompt_ms, g_last_generation_ms, g_last_generated_tokens,
+             g_last_tokens_per_second);
     return env->NewStringUTF(info);
 }
 
@@ -248,6 +258,9 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
         nullptr, 0, true, true);
 
+    g_last_context_size = static_cast<int>(contextSize);
+    g_last_threads = threads;
+
     const int generationLimit = std::max(1, std::min(64, static_cast<int>(maxTokens)));
     if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize) ||
         promptCount + generationLimit >= static_cast<int>(contextSize)) {
@@ -260,6 +273,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         return;
     }
 
+    g_last_prompt_tokens = promptCount;
     std::vector<llama_token> tokens(promptCount);
     if (llama_tokenize(
             vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
@@ -341,6 +355,9 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const auto generationEnd = std::chrono::steady_clock::now();
     g_last_generation_ms =
             std::chrono::duration<double, std::milli>(generationEnd - generationStart).count();
+    g_last_tokens_per_second = g_last_generation_ms > 0.0
+            ? (static_cast<double>(g_last_generated_tokens) / (g_last_generation_ms / 1000.0))
+            : 0.0;
     llama_sampler_free(sampler);
     llama_free(ctx);
     env->CallVoidMethod(callback, completeMethod);
