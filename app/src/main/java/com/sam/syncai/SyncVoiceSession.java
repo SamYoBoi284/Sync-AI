@@ -325,15 +325,15 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
                         currentModelName(), runtime.backend().diagnostics(), "", "");
-                String text = response.toString().trim();
-                if (text.isEmpty()) text = "I got nothing back from the local model.";
-                appendVoiceChat(clean, text, diag.format());
+                String finalText = response.toString().trim();
+                if (finalText.isEmpty()) finalText = "I got nothing back from the local model.";
+                appendVoiceChat(clean, finalText, diag.format());
                 main.post(() -> {
                     processing.set(false);
                     updateState("RESPONDING");
-                    responseView.setText(text);
+                    responseView.setText(finalText);
                 });
-                speakAndMaybeListen(text, false);
+                speakAndMaybeListen(finalText, false);
             }
             @Override public void onError(Exception error) {
                 long total = System.currentTimeMillis() - started;
