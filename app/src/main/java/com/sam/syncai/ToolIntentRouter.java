@@ -28,6 +28,12 @@ public final class ToolIntentRouter {
             "(?i)^(?:turn|switch|shut)\\s+(?:(?:it|that|this)\\s+)?(?:back\\s+)?(on|off)\\b");
     private static final Pattern CONTEXT_OPEN_APP = Pattern.compile(
             "(?i)^(?:open|launch|start|run)\\s+(?:it|that|this)(?:\\s+again)?\\b");
+    private static final Pattern CONTEXT_CALL = Pattern.compile(
+            "(?i)^(?:call|phone|ring|dial)\\s+(?:again|them|that\\s+contact|that\\s+person)\\b");
+    private static final Pattern CONTEXT_TIMER = Pattern.compile(
+            "(?i)^(?:start|restart|run)\\s+(?:it|that|the\\s+timer)(?:\\s+again)?\\b");
+    private static final Pattern CONTEXT_CALCULATOR = Pattern.compile(
+            "(?i)^(?:again|repeat|do\\s+that\\s+again|calculate\\s+that\\s+again|run\\s+that\\s+again)\\b");
 
     private static final Pattern NEGATION = Pattern.compile(
             "(?i)\\b(?:don't|do not|didn't|did not|cannot|can't|won't|will not|wouldn't|shouldn't|should not|never|why)\\b");
@@ -267,6 +273,34 @@ public final class ToolIntentRouter {
                 Map<String, String> args = new LinkedHashMap<>();
                 args.put("app", lastToolArguments.get("app"));
                 return new ToolCall("open_app", args);
+            }
+        }
+
+        if ("call_contact".equals(lastToolName) && lastToolArguments.containsKey("contact")) {
+            Matcher repeatCall = CONTEXT_CALL.matcher(candidate);
+            if (repeatCall.find()) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("contact", lastToolArguments.get("contact"));
+                return new ToolCall("call_contact", args);
+            }
+        }
+
+        if ("set_timer".equals(lastToolName) && lastToolArguments.containsKey("seconds")) {
+            Matcher repeatTimer = CONTEXT_TIMER.matcher(candidate);
+            if (repeatTimer.find()) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("seconds", lastToolArguments.get("seconds"));
+                args.put("message", lastToolArguments.getOrDefault("message", "Timer"));
+                return new ToolCall("set_timer", args);
+            }
+        }
+
+        if ("calculator".equals(lastToolName) && lastToolArguments.containsKey("expression")) {
+            Matcher repeatCalculation = CONTEXT_CALCULATOR.matcher(candidate);
+            if (repeatCalculation.find()) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("expression", lastToolArguments.get("expression"));
+                return new ToolCall("calculator", args);
             }
         }
 
