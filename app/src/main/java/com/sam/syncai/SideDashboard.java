@@ -20,6 +20,7 @@ public final class SideDashboard extends FrameLayout {
         void runtime();
         void memory();
         void personalization();
+        void tone();
         void about();
         void assistant();
         void files();
@@ -130,7 +131,8 @@ public final class SideDashboard extends FrameLayout {
         item(settingsContent, "▤  Runtime", v -> actions.runtime(), true);
 
         section(settingsContent, "PERSONALIZATION");
-        item(settingsContent, "🎨  Appearance & colors", v -> actions.personalization(), true);
+        item(settingsContent, "🎨  Accent colors", v -> actions.personalization(), true);
+        item(settingsContent, "◍  Assistant tone", v -> actions.tone(), true);
         item(settingsContent, "🧠  Memory", v -> actions.memory(), true);
 
         section(settingsContent, "ABOUT");
