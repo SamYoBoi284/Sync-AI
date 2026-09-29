@@ -24,7 +24,7 @@ public final class VoiceController {
     private SpeechRecognizer recognizer;
     private TextToSpeech tts;
     private boolean ttsReady;
-    private boolean speakingEnabled = true;
+    private boolean speakingEnabled = false;
 
     public VoiceController(Context context, Listener listener) {
         this.context = context.getApplicationContext();
