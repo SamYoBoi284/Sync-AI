@@ -78,6 +78,12 @@ public final class VoiceController {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        // Give the user a 5-second silence buffer before the recognizer considers
+        // the utterance complete. Recognition implementations may clamp/ignore
+        // these hints, so VoiceController remains ready to be wrapped by the
+        // conversation loop later.
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L);
         recognizer.startListening(intent);
     }
 
