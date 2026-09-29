@@ -938,6 +938,11 @@ public final class MainActivity extends Activity {
         importButton.setEnabled(!busy);
     }
 
+    private void scrollToBottom() {
+        if (chatScroll == null) return;
+        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
     private void hideKeyboard() {
         View view = getCurrentFocus();
         if (view != null) {
