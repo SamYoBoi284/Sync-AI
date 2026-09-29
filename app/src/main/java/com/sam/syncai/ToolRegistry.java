@@ -42,7 +42,7 @@ public final class ToolRegistry {
 
     public String systemPrompt() {
         StringBuilder out = new StringBuilder();
-        out.append("You are Sync//AI, a local Android assistant. ");
+        out.append("You are Sync AI, a local Android assistant. ");
         out.append("You can answer normally and you can use the device tools listed below. ");
         out.append("When a user request requires a tool, output exactly one tool call and nothing else using this format: ");
         out.append("<tool_call>{\"name\":\"TOOL_NAME\",\"arguments\":{...}}</tool_call>. ");
@@ -52,7 +52,7 @@ public final class ToolRegistry {
         out.append("For app launching, use open_app with the app name the user means; tolerate aliases like FB, YT, Insta, and natural phrases like \"open the Discord app\". ");
         out.append("Use open_app for Bluetooth and Wi-Fi settings. Use open_app for ALL file-related requests such as Downloads, files, folders, storage, APKs, archives, and documents; these must open ZArchiver, never the system Files app. ");
         out.append("If open_app cannot find the exact requested app, it will return a candidate that requires user confirmation; never pretend the candidate was opened until the confirmation result is provided. ");
-        out.append("You can read and write only inside Sync//AI's private workspace using read_workspace_file and write_workspace_file. ");
+        out.append("You can read and write only inside Sync AI's private workspace using read_workspace_file and write_workspace_file. ");
         out.append("Use open_canvas when the user asks for a drawing canvas or wants to sketch.\n\nTOOLS:\n");
         for (SyncTool tool : tools.values()) {
             out.append("- ").append(tool.getName()).append(": ")
