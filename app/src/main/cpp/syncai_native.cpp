@@ -149,7 +149,9 @@ Java_com_sam_syncai_GgufNative_nativeDiagnostics(JNIEnv *env, jclass) {
     std::lock_guard<std::mutex> lock(g_mutex);
     std::string result = g_model
             ? model_info_text_locked() + "\n\nLAST REQUEST\n" + g_last_diagnostics
-            : "No model loaded.";
+            : (g_last_load_error.empty()
+                ? "No model loaded."
+                : "No model loaded.\n\nLAST LOAD ERROR\n" + g_last_load_error);
     return env->NewStringUTF(result.c_str());
 }
 
