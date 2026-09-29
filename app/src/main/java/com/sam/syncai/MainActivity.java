@@ -103,6 +103,7 @@ public final class MainActivity extends Activity {
         backend = new GgufModelBackend(this);
         toolRegistry = new ToolRegistry(this);
         memoryManager = new MemoryManager(this);
+        voiceOutputEnabled = getPreferences(MODE_PRIVATE).getBoolean("voice_output_enabled", true);
         voiceController = new VoiceController(this, new VoiceController.Listener() {
             @Override public void onListeningChanged(boolean listening) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText(listening ? "STOP" : "MIC"); }); }
             @Override public void onSpeechStarted() {
@@ -312,6 +313,9 @@ public final class MainActivity extends Activity {
             @Override public void toggleVoiceOutput() {
                 if (voiceController == null) return;
                 voiceOutputEnabled = !voiceOutputEnabled;
+                getPreferences(MODE_PRIVATE).edit()
+                        .putBoolean("voice_output_enabled", voiceOutputEnabled)
+                        .apply();
                 voiceController.setSpeakingEnabled(voiceOutputEnabled);
                 showToast(voiceOutputEnabled ? "Voice output enabled." : "Voice output disabled.");
             }
@@ -392,6 +396,14 @@ public final class MainActivity extends Activity {
     }
 
     private void startVoiceListening() {
+        if (voiceController == null || !voiceController.isAvailable()) {
+            if (voiceModeActive) {
+                voiceModeActive = false;
+                if (voiceModeOverlay != null) voiceModeOverlay.setVisibility(View.GONE);
+            }
+            showToast("Speech recognition is not available on this device.");
+            return;
+        }
         if (android.os.Build.VERSION.SDK_INT >= 23 &&
                 checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             voicePermissionRequestedForVoiceMode = true;
@@ -1207,6 +1219,9 @@ public final class MainActivity extends Activity {
                 }
             } else {
                 voicePermissionRequestedForVoiceMode = false;
+                if (voiceModeActive) {
+                    exitVoiceModePage();
+                }
                 showToast("Microphone permission was denied. Wake word and voice mode need microphone access.");
             }
             return;
