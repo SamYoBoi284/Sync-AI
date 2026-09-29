@@ -693,13 +693,10 @@ public final class MainActivity extends Activity {
     }
 
     private void scheduleVoiceIdleExit() {
+        // Voice Mode stays active until the user exits it explicitly or uses a farewell.
+        // We keep the cancellation hook for older state-machine paths, but do not
+        // terminate the assistant merely because the room becomes quiet.
         cancelVoiceIdleExit();
-        if (!voiceModeActive) return;
-        voiceSilenceExitRunnable = () -> {
-            voiceSilenceExitRunnable = null;
-            if (voiceModeActive) exitVoiceModePage();
-        };
-        mainHandler.postDelayed(voiceSilenceExitRunnable, 7000L);
     }
 
     private void scheduleVoiceRestartAfterResponse(long delayMs) {
