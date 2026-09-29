@@ -16,10 +16,32 @@ public final class ToolIntentRouter {
     private static final Pattern CREATE_FILE = Pattern.compile(
             "(?is)\\b(?:create|make|write)\\s+(?:a\\s+)?(?:text\\s+)?file\\s+(?:named|called)\\s+([^:,.!?]+?)\\s*:\\s*(.*)$");
 
+    private static final Pattern CONTEXT_FLASHLIGHT = Pattern.compile(
+            "(?i)^(?:turn|switch|shut)\\s+(?:(?:it|that|this)\\s+)?(?:back\\s+)?(on|off)\\b");
+    private static final Pattern CONTEXT_OPEN_APP = Pattern.compile(
+            "(?i)^(?:open|launch|start|run)\\s+(?:it|that|this)(?:\\s+again)?\\b");
+
     private static final Pattern NEGATION = Pattern.compile(
             "(?i)\\b(?:don't|do not|didn't|did not|cannot|can't|won't|will not|wouldn't|shouldn't|should not|never|why)\\b");
 
+    // Last successful tool/action target. This is deliberately small and in-memory:
+    // it is command context, not long-term memory. New successful tool calls replace it.
+    private static String lastToolName;
+    private static final Map<String, String> lastToolArguments = new LinkedHashMap<>();
+
     private ToolIntentRouter() {}
+
+    public static synchronized void rememberSuccessfulTool(ToolCall toolCall) {
+        if (toolCall == null || toolCall.name == null || toolCall.name.trim().isEmpty()) return;
+        lastToolName = toolCall.name;
+        lastToolArguments.clear();
+        if (toolCall.arguments != null) lastToolArguments.putAll(toolCall.arguments);
+    }
+
+    public static synchronized void clearContext() {
+        lastToolName = null;
+        lastToolArguments.clear();
+    }
 
     /**
      * Fast local command classifier.
@@ -32,6 +54,9 @@ public final class ToolIntentRouter {
         if (userText == null) return null;
         String text = userText.trim();
         if (text.isEmpty()) return null;
+
+        ToolCall contextual = resolveContextualCommand(text);
+        if (contextual != null) return contextual;
 
         Matcher m = FLASHLIGHT.matcher(text);
         while (m.find()) {
@@ -76,6 +101,46 @@ public final class ToolIntentRouter {
         }
 
         return null;
+    }
+
+    private static synchronized ToolCall resolveContextualCommand(String text) {
+        if (lastToolName == null || text == null) return null;
+
+        String candidate = stripCommandLeadIns(text.trim());
+        if (candidate.isEmpty() || NEGATION.matcher(candidate).find()) return null;
+
+        if ("flashlight".equals(lastToolName)) {
+            Matcher toggle = CONTEXT_FLASHLIGHT.matcher(candidate);
+            if (toggle.find()) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("enabled", Boolean.toString("on".equalsIgnoreCase(toggle.group(1))));
+                return new ToolCall("flashlight", args);
+            }
+        }
+
+        if ("open_app".equals(lastToolName) && lastToolArguments.containsKey("app")) {
+            Matcher reopen = CONTEXT_OPEN_APP.matcher(candidate);
+            if (reopen.find()) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("app", lastToolArguments.get("app"));
+                return new ToolCall("open_app", args);
+            }
+        }
+
+        return null;
+    }
+
+    private static String stripCommandLeadIns(String text) {
+        String result = text == null ? "" : text.trim();
+        String previous;
+        do {
+            previous = result;
+            result = result.replaceFirst(
+                    "(?i)^(?:okay|ok|alright|all right|hey|yo|please|can you|could you|would you|"
+                            + "can u|could u|i need you to|i want you to|go ahead and|then|and|also)"
+                            + "\\s*(?:[,;:]\\s*)?", "");
+        } while (!result.equals(previous));
+        return result.trim();
     }
 
     private static boolean isCommandContext(String text, int commandStart) {
