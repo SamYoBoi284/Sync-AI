@@ -325,8 +325,10 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
                         currentModelName(), runtime.backend().diagnostics(), "", "");
-                String finalText = response.toString().trim();
-                if (finalText.isEmpty()) finalText = "I got nothing back from the local model.";
+                String generated = response.toString().trim();
+                final String finalText = generated.isEmpty()
+                        ? "I got nothing back from the local model."
+                        : generated;
                 appendVoiceChat(clean, finalText, diag.format());
                 main.post(() -> {
                     processing.set(false);
