@@ -81,6 +81,11 @@ public final class MainActivity extends Activity {
     private TextView activeAssistantBubble;
     private boolean voiceModeActive;
     private ToolCall pendingFastToolCall;
+    private FrameLayout rootFrame;
+    private FrameLayout voiceModeOverlay;
+    private TextView voiceModeStatus;
+    private TextView voiceModeTranscript;
+    private TextView voiceModeResponse;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -91,9 +96,31 @@ public final class MainActivity extends Activity {
         memoryManager = new MemoryManager(this);
         voiceController = new VoiceController(this, new VoiceController.Listener() {
             @Override public void onListeningChanged(boolean listening) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText(listening ? "STOP" : "MIC"); }); }
-            @Override public void onPartialText(String text) { runOnUiThread(() -> { if (input != null) input.setText(text); }); }
-            @Override public void onFinalText(String text) { runOnUiThread(() -> { if (input != null) { input.setText(text); input.setSelection(input.length()); } }); }
-            @Override public void onError(String message) { voiceModeActive = false; runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText("MIC"); showToast(message); }); }
+            @Override public void onPartialText(String text) {
+                runOnUiThread(() -> {
+                    if (input != null) input.setText(text);
+                    updateVoiceTranscript(text);
+                });
+            }
+            @Override public void onFinalText(String text) {
+                runOnUiThread(() -> {
+                    if (input != null) {
+                        input.setText(text);
+                        input.setSelection(input.length());
+                    }
+                    updateVoiceTranscript(text);
+                    if (voiceModeStatus != null) voiceModeStatus.setText("THINKING…");
+                    if (voiceButton != null) voiceButton.setText("MIC");
+                    sendMessage();
+                });
+            }
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (voiceModeStatus != null) voiceModeStatus.setText("READY");
+                    if (voiceButton != null) voiceButton.setText("MIC");
+                    showToast(message);
+                });
+            }
         });
         buildUi();
         addMessageView(ChatMessage.Role.ASSISTANT,
@@ -208,6 +235,8 @@ public final class MainActivity extends Activity {
             }
         });
 
+        buildVoiceModeOverlay(frame);
+
         contentRoot.setOnApplyWindowInsetsListener((v, insets) -> {
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 int ime = insets.getInsets(WindowInsets.Type.ime()).bottom;
@@ -218,8 +247,12 @@ public final class MainActivity extends Activity {
         });
         contentRoot.requestApplyInsets();
 
+        rootFrame = frame;
         setContentView(frame);
         refreshStatus();
+        if (Intent.ACTION_ASSIST.equals(getIntent().getAction())) {
+            frame.post(() -> enterVoiceModePage(true));
+        }
     }
 
     private LinearLayout card() {
@@ -258,13 +291,142 @@ public final class MainActivity extends Activity {
     }
 
     private void toggleVoiceInput() {
-        if (voiceController == null || !voiceController.isAvailable()) { showToast("Speech recognition is not available on this device."); return; }
-        if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) { voiceController.stopListening(); return; }
-        if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO); return; }
+        if (voiceController == null || !voiceController.isAvailable()) {
+            showToast("Speech recognition is not available on this device.");
+            return;
+        }
+        if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE) {
+            if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) {
+                voiceController.stopListening();
+                if (voiceModeStatus != null) voiceModeStatus.setText("READY");
+            } else {
+                startVoiceListening();
+            }
+            return;
+        }
+        enterVoiceModePage(true);
+    }
+
+    private void startVoiceListening() {
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
+            return;
+        }
         voiceModeActive = true;
         voiceController.setSpeakingEnabled(true);
+        if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
+        if (voiceButton != null) voiceButton.setText("STOP");
         voiceController.startListening();
     }
+
+    private void buildVoiceModeOverlay(FrameLayout host) {
+        voiceModeOverlay = new FrameLayout(this);
+        voiceModeOverlay.setVisibility(View.GONE);
+        voiceModeOverlay.setBackgroundColor(Color.rgb(5, 7, 12));
+
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER_HORIZONTAL);
+        page.setPadding(dp(24), dp(34), dp(24), dp(28));
+
+        TextView header = text("SYNC AI", 18, TEXT, true);
+        header.setGravity(Gravity.CENTER);
+        page.addView(header, new LinearLayout.LayoutParams(-1, dp(42)));
+
+        TextView sub = text("VOICE MODE", 10, CYAN, true);
+        sub.setGravity(Gravity.CENTER);
+        page.addView(sub, new LinearLayout.LayoutParams(-1, dp(26)));
+
+        voiceModeStatus = text("READY", 12, MUTED, true);
+        voiceModeStatus.setGravity(Gravity.CENTER);
+        page.addView(voiceModeStatus, new LinearLayout.LayoutParams(-1, dp(34)));
+
+        TextView orb = text("◉", 92, PURPLE, true);
+        orb.setGravity(Gravity.CENTER);
+        orb.setBackground(round(Color.rgb(20, 15, 34), dp(120)));
+        orb.setOnClickListener(v -> {
+            if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) {
+                voiceController.stopListening();
+                if (voiceModeStatus != null) voiceModeStatus.setText("READY");
+                if (voiceButton != null) voiceButton.setText("MIC");
+            } else {
+                startVoiceListening();
+            }
+        });
+        LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(dp(190), dp(190));
+        orbLp.topMargin = dp(42);
+        page.addView(orb, orbLp);
+
+        voiceModeTranscript = text("Tap the orb and speak.", 18, TEXT, false);
+        voiceModeTranscript.setGravity(Gravity.CENTER);
+        voiceModeTranscript.setLineSpacing(0, 1.15f);
+        LinearLayout.LayoutParams transcriptLp = new LinearLayout.LayoutParams(-1, 0, 1);
+        transcriptLp.topMargin = dp(34);
+        transcriptLp.bottomMargin = dp(12);
+        page.addView(voiceModeTranscript, transcriptLp);
+
+        voiceModeResponse = text("", 15, CYAN, false);
+        voiceModeResponse.setGravity(Gravity.CENTER);
+        voiceModeResponse.setLineSpacing(0, 1.15f);
+        page.addView(voiceModeResponse, new LinearLayout.LayoutParams(-1, dp(72)));
+
+        TextView power = text("⏻", 32, TEXT, true);
+        power.setGravity(Gravity.CENTER);
+        power.setBackground(round(Color.rgb(28, 33, 49), dp(40)));
+        power.setOnClickListener(v -> exitVoiceModePage());
+        page.addView(power, new LinearLayout.LayoutParams(dp(82), dp(64)));
+
+        voiceModeOverlay.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        host.addView(voiceModeOverlay, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private void enterVoiceModePage(boolean autoListen) {
+        if (voiceModeOverlay == null) return;
+        voiceModeActive = true;
+        voiceModeOverlay.setVisibility(View.VISIBLE);
+        voiceModeTranscript.setText("Tap the orb and speak.");
+        voiceModeResponse.setText("");
+        voiceModeStatus.setText("READY");
+        if (android.os.Build.VERSION.SDK_INT >= 27) {
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        }
+        if (autoListen) startVoiceListening();
+    }
+
+    private void exitVoiceModePage() {
+        if (voiceController != null) voiceController.stopListening();
+        voiceModeActive = false;
+        if (voiceModeOverlay != null) voiceModeOverlay.setVisibility(View.GONE);
+        if (voiceButton != null) voiceButton.setText("MIC");
+        if (android.os.Build.VERSION.SDK_INT >= 27) {
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        }
+    }
+
+    private void updateVoiceTranscript(String text) {
+        if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE &&
+                voiceModeTranscript != null && text != null) {
+            voiceModeTranscript.setText(text);
+        }
+    }
+
+    private void updateVoiceResponse(String text) {
+        if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE &&
+                voiceModeResponse != null && text != null) {
+            voiceModeResponse.setText(text);
+            if (voiceModeStatus != null) voiceModeStatus.setText("READY");
+            if (voiceButton != null) voiceButton.setText("MIC");
+        }
+    }
+
+
 
     private void openModelPicker() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -550,8 +712,8 @@ public final class MainActivity extends Activity {
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, finalResult));
                 sendButton.setEnabled(true);
                 if (voiceModeActive && voiceController != null && !finalResult.startsWith("ERROR:")) {
+                    updateVoiceResponse(finalResult);
                     voiceController.speak(finalResult);
-                    voiceModeActive = false;
                 }
                 scrollToBottom();
             });
@@ -618,8 +780,10 @@ public final class MainActivity extends Activity {
 
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
                 final boolean shouldSpeak = voiceModeActive;
-                if (shouldSpeak && voiceController != null) voiceController.speak(text);
-                voiceModeActive = false;
+                if (shouldSpeak && voiceController != null) {
+                    updateVoiceResponse(text);
+                    voiceController.speak(text);
+                }
                 runOnUiThread(() -> {
                     sendButton.setEnabled(true);
                     // Model import remains available from the side dashboard.
@@ -853,7 +1017,7 @@ public final class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (Intent.ACTION_ASSIST.equals(intent.getAction())) {
-            input.requestFocus();
+            enterVoiceModePage(true);
         }
     }
 
