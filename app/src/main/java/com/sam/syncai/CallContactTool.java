@@ -68,30 +68,61 @@ public final class CallContactTool implements SyncTool {
 
     private List<ContactMatch> findMatches(String requested) {
         List<ContactMatch> result = new ArrayList<>();
-        Uri uri = Uri.withAppendedPath(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI,
+
+        Uri contactFilter = Uri.withAppendedPath(
+                ContactsContract.Contacts.CONTENT_FILTER_URI,
                 Uri.encode(requested));
-        String[] projection = {
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                ContactsContract.CommonDataKinds.Phone.NUMBER
+
+        String[] contactProjection = {
+                ContactsContract.Contacts._ID,
+                ContactsContract.Contacts.DISPLAY_NAME
         };
 
-        android.database.Cursor cursor = context.getContentResolver().query(
-                uri, projection, null, null, null);
-        if (cursor == null) return result;
+        android.database.Cursor contacts = context.getContentResolver().query(
+                contactFilter, contactProjection, null, null, null);
+        if (contacts == null) return result;
 
         try {
-            int nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
-            int numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-            while (cursor.moveToNext()) {
-                String name = nameIndex >= 0 ? cursor.getString(nameIndex) : null;
-                String number = numberIndex >= 0 ? cursor.getString(numberIndex) : null;
-                if (name == null || number == null || number.trim().isEmpty()) continue;
-                result.add(new ContactMatch(name, number));
+            int idIndex = contacts.getColumnIndex(ContactsContract.Contacts._ID);
+            int nameIndex = contacts.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME);
+
+            while (contacts.moveToNext()) {
+                long contactId = idIndex >= 0 ? contacts.getLong(idIndex) : -1L;
+                String name = nameIndex >= 0 ? contacts.getString(nameIndex) : null;
+                if (contactId < 0 || name == null || name.trim().isEmpty()) continue;
+
+                String[] phoneProjection = {
+                        ContactsContract.CommonDataKinds.Phone.NUMBER
+                };
+                String selection =
+                        ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=?";
+                String[] selectionArgs = {Long.toString(contactId)};
+
+                android.database.Cursor phones = context.getContentResolver().query(
+                        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        phoneProjection,
+                        selection,
+                        selectionArgs,
+                        null);
+
+                if (phones == null) continue;
+                try {
+                    int numberIndex = phones.getColumnIndex(
+                            ContactsContract.CommonDataKinds.Phone.NUMBER);
+                    while (phones.moveToNext()) {
+                        String number = numberIndex >= 0 ? phones.getString(numberIndex) : null;
+                        if (number != null && !number.trim().isEmpty()) {
+                            result.add(new ContactMatch(name, number));
+                        }
+                    }
+                } finally {
+                    phones.close();
+                }
             }
         } finally {
-            cursor.close();
+            contacts.close();
         }
+
         return result;
     }
 
