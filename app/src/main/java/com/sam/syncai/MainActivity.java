@@ -59,6 +59,10 @@ public final class MainActivity extends Activity {
     private GgufModelBackend backend;
     private ToolRegistry toolRegistry;
     private MemoryManager memoryManager;
+    private ChatHistoryStore chatHistoryStore;
+    private RequestDiagnostics activeDiagnostics;
+    private String lastDiagnostics = "No requests recorded yet.";
+    private int accentColor;
     private ToolCall pendingPermissionToolCall;
     private List<ChatMessage> pendingWorkingMessages;
     private TextView pendingToolBubble;
@@ -80,7 +84,6 @@ public final class MainActivity extends Activity {
     private Button voiceButton;
     private Button importButton;
     private VoiceController voiceController;
-    private WakeWordController foregroundWakeWordController;
     private boolean voicePermissionRequestedForVoiceMode;
     private SideDashboard sideDashboard;
     private ProgressBar progress;
@@ -105,6 +108,8 @@ public final class MainActivity extends Activity {
         backend = new GgufModelBackend(this);
         toolRegistry = new ToolRegistry(this);
         memoryManager = new MemoryManager(this);
+        chatHistoryStore = new ChatHistoryStore(this);
+        accentColor = PersonalizationManager.getAccent(this);
         voiceOutputEnabled = getPreferences(MODE_PRIVATE).getBoolean("voice_output_enabled", true);
         voiceController = new VoiceController(this, new VoiceController.Listener() {
             @Override public void onListeningChanged(boolean listening) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText(listening ? "STOP" : "MIC"); }); }
@@ -157,13 +162,7 @@ public final class MainActivity extends Activity {
         });
         voiceController.setSpeakingEnabled(voiceOutputEnabled);
         buildUi();
-        boolean launchedAsVoiceAssistant = isVoiceLaunchIntent(getIntent());
-        if (!launchedAsVoiceAssistant) {
-            ensureWakeWordPermissionAndStart();
-        }
-
-        addMessageView(ChatMessage.Role.ASSISTANT,
-                "Sync AI is ready.\nImport a GGUF model to start chatting locally.");
+        restoreChatHistory();
         restoreLoadedModel();
     }
 
