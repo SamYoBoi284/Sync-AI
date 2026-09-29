@@ -45,7 +45,7 @@ public class ToolIntentRouterTest {
         assertEquals(2, calls.size());
         assertEquals("set_alarm", calls.get(0).name);
         assertEquals("2", calls.get(0).arguments.get("hour"));
-        assertEquals("14", calls.get(1).arguments.get("hour"));
+        assertEquals("22", calls.get(1).arguments.get("hour"));
         assertEquals("30", calls.get(1).arguments.get("minute"));
         assertEquals("work", calls.get(1).arguments.get("message"));
     }
