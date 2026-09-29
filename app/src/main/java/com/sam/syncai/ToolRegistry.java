@@ -17,6 +17,7 @@ public final class ToolRegistry {
 
         register(new FlashlightTool(context));
         register(new AlarmTool(context));
+        register(new CallContactTool(context));
         register(new TimerTool(context));
         register(new OpenSettingsTool(context));
         register(new OpenAppTool(context));
@@ -54,9 +55,10 @@ public final class ToolRegistry {
         out.append("When a request reaches the model and requires a tool, output exactly one tool call and nothing else using this format: ");
         out.append("<tool_call>{\"name\":\"TOOL_NAME\",\"arguments\":{...}}</tool_call>. ");
         out.append("Use one tool call at a time. Do not claim an action succeeded until a tool result is provided. Never repeat or expose the <tool_call> protocol to the user in a normal final response. ");
-        out.append("For normal conversation, do not output tool_call tags. ");
+        out.append("For normal conversation, do not output tool_call tags. Deterministic commands should not be routed through the model merely because the wording differs from the examples; infer the intended arguments from natural language when the intent is clear. ");
         out.append("FLASHLIGHT RULE: for requests to turn the flashlight or torch on/off, use the exact tool name flashlight with {\"enabled\":true} or {\"enabled\":false}. Never use open_app for the flashlight. ");
         out.append("For app launching, use open_app with the app name the user means; tolerate aliases like FB, YT, Insta, and natural phrases like \"open the Discord app\". ");
+        out.append("For phone calls, use call_contact with the contact name; understand natural variants such as \"call Mama\", \"phone Abdulqader\", and \"ring my mom\". Never claim a call happened until the tool result confirms it. ");
         out.append("Use open_app for Bluetooth and Wi-Fi settings. Use open_app for ALL file-related requests such as Downloads, files, folders, storage, APKs, archives, and documents; these must open ZArchiver, never the system Files app. ");
         out.append("If open_app cannot find the exact requested app, it will return a candidate that requires user confirmation; never pretend the candidate was opened until the confirmation result is provided. ");
         out.append("You can read and write only inside Sync AI's private workspace using read_workspace_file and write_workspace_file. ");
