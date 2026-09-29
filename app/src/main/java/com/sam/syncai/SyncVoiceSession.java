@@ -352,6 +352,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
             ChatMessage m = active.messages.get(i);
             messages.add(new ChatMessage(m.role, m.text));
         }
+        messages.add(new ChatMessage(ChatMessage.Role.USER, current));
         return messages;
     }
 
