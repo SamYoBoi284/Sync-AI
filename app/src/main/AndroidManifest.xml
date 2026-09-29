@@ -8,7 +8,7 @@
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <application
         android:allowBackup="true"
-        android:label="Sync//AI"
+        android:label="Sync AI"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
         <activity
