@@ -1029,6 +1029,12 @@ public final class MainActivity extends Activity {
             }
         }
 
+        if ("set_alarm".equals(toolCall.name) && android.os.Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            missing.add(android.Manifest.permission.POST_NOTIFICATIONS);
+        }
+
         return missing.toArray(new String[0]);
     }
 
