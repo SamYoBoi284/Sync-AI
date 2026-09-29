@@ -20,9 +20,10 @@ android {
             cmake {
                 arguments '-DCMAKE_BUILD_TYPE=Release',
                         '-DGGML_NATIVE=OFF',
-                        '-DGGML_CPU_ALL_VARIANTS=OFF',
+                        '-DGGML_CPU_ALL_VARIANTS=ON',
                         '-DGGML_OPENMP=OFF',
-                        '-DGGML_LLAMAFILE=OFF'
+                        '-DGGML_LLAMAFILE=OFF',
+                        '-DGGML_BACKEND_DL=ON'
             }
         }
     }
