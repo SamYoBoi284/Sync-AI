@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 public final class MemoryManager {
     private static final String FILE_NAME = "sync_memory.txt";
     private static final int MAX_BYTES = 16 * 1024 * 1024;
-    private static final int MAX_PROMPT_CHARS = 32000;
+    private static final int MAX_PROMPT_CHARS = 4000;
 
     private final Context context;
 
