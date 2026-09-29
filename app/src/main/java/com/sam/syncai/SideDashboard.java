@@ -22,7 +22,6 @@ public final class SideDashboard extends FrameLayout {
         void files();
         void canvas();
         void toggleVoiceOutput();
-        void openSettings();
     }
 
     private final Activity activity;
@@ -88,7 +87,7 @@ public final class SideDashboard extends FrameLayout {
         item(mainContent, "✎  Canvas", v -> actions.canvas(), true);
 
         section(mainContent, "SETTINGS");
-        item(mainContent, "⚙  Settings", v -> showSettings(), true);
+        item(mainContent, "⚙  Settings", v -> showSettings(), false);
 
         TextView hint = label("Everything stays local unless a tool explicitly opens another Android app.", 11,
                 Color.rgb(145,153,177), false);
