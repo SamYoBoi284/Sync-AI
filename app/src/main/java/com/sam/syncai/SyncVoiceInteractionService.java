@@ -13,7 +13,7 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
     public void onCreate() {
         super.onCreate();
         instance = this;
-        Log.i(TAG, "VoiceInteractionService ready; wakeword detection is disabled.");
+        Log.i(TAG, "VoiceInteractionService ready; no background microphone or wake-word listener is active.");
     }
 
     @Override
