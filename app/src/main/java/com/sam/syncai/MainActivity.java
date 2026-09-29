@@ -348,7 +348,7 @@ public final class MainActivity extends Activity {
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         b.setAllCaps(false);
         b.setPadding(dp(8), 0, dp(8), 0);
-        b.setBackground(round(Color.rgb(28, 33, 49), dp(13)));
+        b.setBackground(round(PersonalizationManager.withAlpha(accentColor, 58), dp(13)));
         return b;
     }
 
@@ -366,6 +366,164 @@ public final class MainActivity extends Activity {
         d.setColor(color);
         d.setCornerRadius(radius);
         return d;
+    }
+
+
+    private void restoreChatHistory() {
+        ChatHistoryStore.ChatSession session = chatHistoryStore.getActiveSession();
+        conversation.clear();
+        messageContainer.removeAllViews();
+
+        if (session.messages.isEmpty()) {
+            rememberMessage(new ChatMessage(
+                    ChatMessage.Role.ASSISTANT,
+                    "Sync AI is ready.\\nImport a GGUF model to start chatting locally."));
+        } else {
+            conversation.addAll(session.messages);
+            for (ChatMessage message : session.messages) {
+                renderStoredMessage(message);
+            }
+            scrollToBottom();
+        }
+    }
+
+    private void startNewChat() {
+        cancelVoiceTimers();
+        ToolIntentRouter.clearContext();
+        conversation.clear();
+        messageContainer.removeAllViews();
+        chatHistoryStore.createChat();
+        rememberMessage(new ChatMessage(
+                ChatMessage.Role.ASSISTANT,
+                "New chat started. What are we building?"));
+    }
+
+    private void showChatHistoryDialog() {
+        List<ChatHistoryStore.ChatSession> sessions = chatHistoryStore.getSessions();
+        String[] items = new String[sessions.size()];
+        for (int i = 0; i < sessions.size(); i++) {
+            ChatHistoryStore.ChatSession chat = sessions.get(i);
+            String stamp = new java.text.SimpleDateFormat(
+                    "MMM d, h:mm a", Locale.getDefault()).format(new java.util.Date(chat.updatedAt));
+            items[i] = chat.displayTitle() + "  •  " + stamp +
+                    (chat.id.equals(chatHistoryStore.getActiveSession().id) ? "  ✓" : "");
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("CHAT HISTORY")
+                .setItems(items, (dialog, which) -> switchChat(sessions.get(which).id))
+                .setPositiveButton("NEW CHAT", (dialog, which) -> startNewChat())
+                .setNegativeButton("CLOSE", null)
+                .show();
+    }
+
+    private void switchChat(String chatId) {
+        if (chatId == null || chatId.equals(chatHistoryStore.getActiveSession().id)) return;
+        ToolIntentRouter.clearContext();
+        chatHistoryStore.activateChat(chatId);
+        ChatHistoryStore.ChatSession session = chatHistoryStore.getActiveSession();
+
+        conversation.clear();
+        conversation.addAll(session.messages);
+        messageContainer.removeAllViews();
+        for (ChatMessage message : session.messages) {
+            renderStoredMessage(message);
+        }
+        scrollToBottom();
+        showToast("Opened " + session.displayTitle());
+    }
+
+    private void renderStoredMessage(ChatMessage message) {
+        TextView body = addMessageView(message.role, message.text);
+        if (message.diagnostics == null || message.diagnostics.trim().isEmpty()) return;
+
+        if (body.getParent() instanceof LinearLayout) {
+            TextView diagnostics = text(
+                    "DIAGNOSTICS\\n" + message.diagnostics,
+                    9, MUTED, false);
+            diagnostics.setLineSpacing(0, 1.05f);
+            diagnostics.setPadding(0, dp(8), 0, 0);
+            ((LinearLayout) body.getParent()).addView(diagnostics);
+        }
+    }
+
+    private void rememberMessage(ChatMessage message) {
+        if (message == null) return;
+        rememberMessage(message);
+        if (chatHistoryStore != null) {
+            chatHistoryStore.saveActive(conversation);
+        }
+    }
+
+    private void beginDiagnostics(String route) {
+        activeDiagnostics = new RequestDiagnostics(route);
+    }
+
+    private String finishDiagnostics(RequestDiagnostics diagnostics) {
+        if (diagnostics == null) return "";
+        lastDiagnostics = diagnostics.finalSummary();
+        activeDiagnostics = null;
+        return lastDiagnostics;
+    }
+
+    private String currentModelName() {
+        ModelInfo model = modelManager == null ? null : modelManager.getLoadedModel();
+        return model == null ? "none" : model.name;
+    }
+
+    private void showPersonalizationDialog() {
+        int selected = PersonalizationManager.getAccentIndex(this);
+        String[] names = PersonalizationManager.NAMES;
+        new AlertDialog.Builder(this)
+                .setTitle("PERSONALIZATION")
+                .setSingleChoiceItems(names, selected, (dialog, which) -> {
+                    PersonalizationManager.setAccent(this, which);
+                    accentColor = PersonalizationManager.getAccent(this);
+                    dialog.dismiss();
+                    refreshAccentColors();
+                    showToast("Accent color: " + names[which]);
+                })
+                .setNegativeButton("CLOSE", null)
+                .show();
+    }
+
+    private void refreshAccentColors() {
+        if (messageContainer == null) return;
+        invalidateOptionsMenu();
+        recreate();
+    }
+
+    private void showAboutDialog() {
+        String version = "Sync AI " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")";
+        StringBuilder info = new StringBuilder();
+        info.append(version).append("\\n\\n");
+        info.append("Created by Sam\\n");
+        info.append("صُنع بواسطة حسام\\n\\n");
+        info.append("Local Android agent built around deterministic Android tools + llama.cpp.\\n");
+        info.append("Model: ").append(currentModelName()).append("\\n");
+        info.append("Architecture: arm64-v8a\\n");
+        info.append("Runtime: local CPU\\n\\n");
+        info.append("LAST REQUEST DIAGNOSTICS\\n").append(lastDiagnostics);
+        new AlertDialog.Builder(this)
+                .setTitle("ABOUT SYNC AI")
+                .setMessage(info.toString())
+                .setPositiveButton("RUNTIME DIAGNOSTICS", (d, w) -> showRuntimeDiagnostics())
+                .setNegativeButton("CLOSE", null)
+                .show();
+    }
+
+    private void showRuntimeDiagnostics() {
+        String nativeInfo = backend != null && backend.isLoaded()
+                ? backend.diagnostics()
+                : "No model loaded.";
+        String info = "REQUEST\\n" + lastDiagnostics +
+                "\\n\\nMODEL RUNTIME\\n" + nativeInfo +
+                "\\n\\nMODEL\\n" + currentModelName();
+        new AlertDialog.Builder(this)
+                .setTitle("DIAGNOSTICS")
+                .setMessage(info)
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void toggleVoiceInput() {
@@ -412,7 +570,7 @@ public final class MainActivity extends Activity {
     private void buildVoiceModeOverlay(FrameLayout host) {
         voiceModeOverlay = new FrameLayout(this);
         voiceModeOverlay.setVisibility(View.GONE);
-        voiceModeOverlay.setBackgroundColor(Color.rgb(5, 7, 12));
+        voiceModeOverlay.setBackgroundColor(Color.argb(122, 5, 7, 12));
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -431,7 +589,7 @@ public final class MainActivity extends Activity {
         voiceModeStatus.setGravity(Gravity.CENTER);
         page.addView(voiceModeStatus, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        TextView orb = text("◉", 92, PURPLE, true);
+        TextView orb = text("◉", 92, accentColor, true);
         orb.setGravity(Gravity.CENTER);
         orb.setBackground(round(Color.rgb(20, 15, 34), dp(120)));
         orb.setOnClickListener(v -> {
@@ -457,7 +615,7 @@ public final class MainActivity extends Activity {
         transcriptLp.bottomMargin = dp(12);
         page.addView(voiceModeTranscript, transcriptLp);
 
-        voiceModeResponse = text("", 15, CYAN, false);
+        voiceModeResponse = text("", 15, accentColor, false);
         voiceModeResponse.setGravity(Gravity.CENTER);
         voiceModeResponse.setLineSpacing(0, 1.15f);
         page.addView(voiceModeResponse, new LinearLayout.LayoutParams(-1, dp(72)));
@@ -927,6 +1085,10 @@ public final class MainActivity extends Activity {
             working.add(new ChatMessage(ChatMessage.Role.SYSTEM, attachmentContext.toString()));
         }
 
+        if (activeDiagnostics != null) {
+            activeDiagnostics.addRouting(0);
+        }
+
         // Keep the native prompt small on a 4 GB phone. The latest turns carry
         // the useful conversational state; older turns can remain in the UI.
         int historyStart = Math.max(0, conversation.size() - 6);
@@ -1108,7 +1270,12 @@ public final class MainActivity extends Activity {
                     return;
                 }
 
-                conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
+                String diagnostics = "";
+                if (activeDiagnostics != null) {
+                    activeDiagnostics.setNativeInfo(backend.diagnostics());
+                    diagnostics = finishDiagnostics(activeDiagnostics);
+                }
+                rememberMessage(new ChatMessage(ChatMessage.Role.ASSISTANT, text, diagnostics));
                 final boolean shouldSpeak = voiceModeActive;
                 if (shouldSpeak) {
                     finishVoiceResponse(text);
@@ -1349,10 +1516,12 @@ public final class MainActivity extends Activity {
         LinearLayout bubble = new LinearLayout(this);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(14), dp(10), dp(14), dp(10));
-        bubble.setBackground(round(user ? Color.rgb(48, 31, 76) : Color.rgb(18, 22, 33), dp(16)));
+        bubble.setBackground(round(user
+                ? PersonalizationManager.withAlpha(accentColor, 95)
+                : Color.rgb(18, 22, 33), dp(16)));
 
         TextView label = text(user ? "YOU" : "SYNC AI", 10,
-                user ? Color.rgb(210, 176, 255) : CYAN, true);
+                user ? PersonalizationManager.withAlpha(accentColor, 235) : accentColor, true);
         bubble.addView(label);
 
         TextView body = text(value, 15, TEXT, false);
