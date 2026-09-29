@@ -4,150 +4,138 @@
 Repository: `SamYoBoi284/Sync-AI`
 Active branch: `feature/voice-settings-ui`
 
-Sync AI is a local Android assistant targeting the Samsung Galaxy A16 4G (4 GB RAM, Android 16, arm64-v8a, Shizuku, no root). The runtime is Java + C++ JNI + llama.cpp with imported GGUF models.
+Sync AI is a local Android assistant targeting the Samsung Galaxy A16 4G (4 GB RAM, Android 16, arm64-v8a). Runtime: Java + C++ JNI + llama.cpp with imported GGUF models.
 
-## What we accomplished
+## Completed
 
-### Local AI/runtime
-- GGUF model import and app-private model storage.
+### Core runtime
+- GGUF model import + app-private model storage.
 - llama.cpp CPU inference through the native backend.
-- Model loading/unloading and runtime diagnostics.
-- Qwen2.5-0.5B-Instruct Q4_K_M tested on-device.
-- Native tuning for a 4 GB phone: compact context/history, capped generation, CPU threading, backend loading, and diagnostics.
+- Runtime/native diagnostics for prompt tokens, context size, CPU threads, prompt evaluation time, generation time, generated token count, and tokens/sec.
+- Compact prompt/history limits tuned for a 4 GB phone.
+- Deterministic commands do not require a loaded LLM.
 
-### Tool system
-- Deterministic intent parsing now supports compound actions instead of only one tool call.
-- Calculator accepts natural operator wording (`times`, `multiplied by`, `divided by`, `over`, `plus`, `minus`, `mod`) and arbitrary arithmetic chains/parentheses.
-- Alarm parsing supports natural times plus multiple alarms in one utterance and labels such as `titled work`, `called gym`, or `named school`.
-- Added deterministic `call_contact` for phrases such as `call Mama`, `phone Abdulqader`, and `ring my mom`, with contact lookup + direct calling.
-- Fast-tool execution now supports a queue of deterministic actions and requests only the permissions required by those actions.
-- `SyncTool` + `ToolRegistry` architecture.
-- Existing independent tools include calculator, flashlight, alarm, timer, contact calling, app/settings opening, workspace files, and Canvas.
-- `ToolIntentRouter` runs before model inference for deterministic commands.
-- Recent successful tool/action context supports contextual commands such as “turn it off” → previous flashlight.
-- Tier 2 now also supports safe repeated actions such as calling the same contact again, restarting the last timer, and repeating the last calculation when the referent is explicit.
-- App launching supports aliases/fuzzy matching and confirmation when a match is uncertain.
-- Flashlight uses Android CameraManager + permission handling.
-- Calculator uses a local expression parser.
-- Alarm/timer use Android AlarmClock intents.
-
-### Locked tool architecture
-**Tier 1 — Deterministic tools:** execute unambiguous Android commands directly, with no LLM dependency. Examples: flashlight, calculator, alarm, timer, app launch, settings, files, clipboard, volume/media, camera, etc.
-
-**Tier 2 — Contextual resolution:** resolve clear references using recent successful tool context, e.g. “turn it off” or “open it again”. Still deterministic; do not invoke the LLM for an unambiguous referent.
-
-**Tier 3 — LLM reasoning:** only for real language reasoning, planning, drafting, ambiguity resolution, or conversation.
-
+### Deterministic tool architecture
 Target flow:
 `USER → Tier 1 → Tier 2 → LLM fallback → tool/result loop → response`
 
-The model is the brain; Sync AI's tool registry is the deterministic hands.
+**Tier 1:** direct Android tools execute immediately when intent is unambiguous.
+**Tier 2:** recent successful action context resolves explicit follow-ups without the LLM.
+**Tier 3:** the local model handles real conversation, ambiguity, planning, drafting, and language reasoning.
 
-### Tool protocol
-- Model tool calls use `<tool_call>...</tool_call>`.
-- Tool execution + tool-result continuation already exists.
-- Recent fix: incomplete `<tool_call>` output without the closing tag is now parsed.
-- Recent fix: raw tool-call protocol is hidden from the user-facing streaming bubble.
-- Recent fix: common calculator, alarm, and timer phrases route directly through Tier 1.
-- System prompt now reinforces Sync AI's identity and keeps tool protocol internal.
-
-### UI / workspace
-- Side dashboard with chats, workspace, Canvas, and nested settings.
-- Canvas is AI-owned working space for planning/drafting/organization rather than a second manual chat box.
-- Canvas read/write/replace/open tools exist.
-- File attachment and imported memory flows exist.
-- Keyboard-safe composer insets are implemented.
-- Full-screen voice-mode overlay exists.
-
-### Assistant / voice integration
-- Android assistant-role selection is implemented.
-- Samsung recognizes Sync AI as the selected default assistant option.
-- `VoiceInteractionService` + `VoiceInteractionSessionService` integration is implemented.
-- Dedicated assistant settings activity and invocation metadata are present.
-- Assistant intents enter the same Sync AI voice/tool pipeline.
-- openWakeWord integration with the bundled HEY_JARVIS model has been started.
-- Samsung side-button invocation and wake-word reliability still need real-device fixes/testing.
-
-## What's next
-
-### 1. Finish Tier 1
-Continue expanding deterministic parsing and execution for:
+Current independent tools include:
+- calculator
+- time/date
+- system info
 - flashlight
-- calculator (more natural unit/percent/voice phrasing)
-- alarm (repeat days, dismiss/snooze/show alarms)
-- timer (more natural duration phrasing)
+- native alarm scheduling
+- timer
 - contact calls
-- app launch
-- Android settings
-- files/ZArchiver
-- clipboard
-- volume/media
-- camera
-- other safe Android intents
+- app/settings opening
+- workspace files
+- Canvas
 
-Add regression coverage for natural wording, aliases, punctuation, and command lead-ins.
+Recent routing coverage includes natural lead-ins, slang, calculator word operators, percentages, compound alarms, contact calling, app aliases, and contextual follow-ups such as `turn it off`.
 
-### 2. Finish Tier 2
-- Preserve the last successful tool target for each deterministic domain where pronoun resolution is safe.
-- Support contextual variants like `turn that off`, `set another one for 9`, `call him again`, and `open that again` only when the referent is unambiguous.
+### System/device tools
+Deterministic local system queries cover:
+battery/charging, Wi-Fi, Bluetooth, volume, brightness, RAM, storage, device info, network status, flashlight state, current-app status where Android Usage Access permits it, and Sync AI scheduled alarms/timers.
 
-### 2b. Tool coverage
-- Generalize recent-action state beyond flashlight/open-app.
-- Store only the small target context needed for resolution.
-- Resolve pronouns only when unambiguous.
-- Prevent stale context from hijacking new requests.
-- Clear context on new chat where appropriate.
+### Chat history
+- Persistent `ChatHistoryStore` saves up to 100 chats and 2,000 messages per chat.
+- Active chat is restored after app restart.
+- New chat creates a separate persistent session.
+- Chat history UI can reopen saved conversations.
+- Stored assistant messages retain request diagnostics, including generation/tool errors, so failures can be reviewed or screenshotted later.
+- The model still receives only the recent working context rather than the entire stored archive.
 
-### 3. Harden Tier 3
-- Robust local tool-call parsing.
-- Never display raw protocol tags.
-- Feed actual tool results back into the model.
-- Cap recursive tool depth.
-- Keep the prompt compact enough for 4 GB RAM.
-- Improve conversational personality without relying on a larger model.
+### Diagnostics
+- Every routed request now has a request ID, route, stage, model, total/routing/tool/LLM timings, native runtime details, and error stage/message when available.
+- Diagnostics are visible from Runtime and the About screen.
+- About supports copying the diagnostics text to the clipboard.
+- Stored chat responses retain the diagnostic block.
 
-### 4. Add more independent tools
-Volume, media controls, clipboard, camera, notification/settings navigation, and other permitted Android actions.
+### Voice / assistant integration
+- Android `RoleManager` assistant selection is implemented.
+- Samsung can use Sync AI as the default assistant.
+- `VoiceInteractionService` + `VoiceInteractionSessionService` invoke the same Sync AI pipeline.
+- Voice Mode is a translucent overlay over the existing chat, with transcript, response, central control, continuous re-listening, and a power/exit control.
+- Voice Mode may operate on the lock screen using the existing assistant launch path.
+- Speech recognition is created lazily only when Voice Mode starts and is explicitly released when Voice Mode exits.
+- Microphone permission is requested from the Voice Mode path; the app no longer registers a custom background recognition service.
 
-### 5. Finish continuous voice mode
-- Recognizer uses up to 5 seconds of silence to decide the utterance ended.
-- Then submit immediately; do not add another 5-second delay.
-- Automatically listen again after Sync responds.
-- Exit after about 7 seconds of complete silence after a response.
-- Explicit farewells exit immediately.
-- Restore wake-word detection after exiting.
+### Wake-word removal
+- Wake-word functionality has been removed from the current branch.
+- Custom `SyncRecognitionService` and its recognition-service XML metadata were deleted.
+- `voice_interaction_service.xml` no longer points at a custom recognition service.
+- No background wake-word detector is part of the current architecture.
+- Default-assistant functionality remains available through Android's VoiceInteractionService.
 
-### 6. Fix Samsung assistant + wake word
-- Make Side-button long-press actually launch Sync AI voice mode through the VoiceInteractionService/session path.
-- Resolve Samsung's “None” invocation display.
-- Verify microphone ownership and HEY_JARVIS detection while backgrounded and locked.
+### Personalization
+- Eight accent colors: Purple, Cyan, Blue, Green, Orange, Red, Pink, White.
+- Accent changes apply without recreating/reloading the model.
+- Assistant tone setting: Casual, Balanced, Technical.
+- Tone preference is injected into the local model system prompt.
+- Memory import is grouped under Personalization in Settings.
 
-### 7. Tune model/runtime
-- Measure native inference latency independently of model size.
-- Compare Qwen2.5-1.5B Q4_K_M against 0.5B after routing is solid.
-- Deterministic commands must remain instant even if the model is unloaded or slow.
+### Settings / About
+Settings now contain:
+- Assistant: Voice output
+- Workspace: Files, Models, Import model, Runtime
+- Personalization: Accent colors, Assistant tone, Memory
+- About: version/build details and diagnostics tools
 
-## Immediate real-device test plan
-1. `yo, whats 29 * 2` → direct calculator → `58`.
+About identifies:
+- Sync AI version + version code
+- Created by Sam
+- Arabic credit: `أنشأه حسام`
+- local CPU / arm64 runtime
+- current loaded model
+- microphone use limited to Voice Mode
+- latest request diagnostics
+- Runtime diagnostics + Copy actions
+
+### Canvas / workspace
+- Canvas is an AI-owned workspace for planning, drafting, organizing, and revision.
+- Canvas read/write/replace/open tools are implemented.
+- File attachment/imported memory flows remain available.
+
+### Regression tests
+- Added JUnit dependency and deterministic routing tests covering:
+  - time queries
+  - direct flashlight commands
+  - contextual flashlight follow-up
+  - compound alarms
+  - natural-language calculator percentages
+  - conversational fall-through
+
+## What remains
+- Real-device test of microphone behavior after removing the custom recognition service.
+- Real-device test of the translucent voice overlay and lock-screen assistant path.
+- Verify current GitHub Actions build after the latest commits.
+- Continue expanding safe Tier 1 Android tools (volume/media, clipboard, camera, notification/settings navigation, etc.).
+- Continue refining Tier 2 contextual state and preventing stale context from hijacking unrelated requests.
+- Measure and optimize actual llama.cpp latency on the A16; deterministic commands should remain instant regardless of model latency.
+- Compare a slightly larger local model after routing/runtime diagnostics are stable.
+
+## Current real-device regression checklist
+1. `yo, whats 29 * 2` → direct calculator → 58.
 2. `what is 29 / 2 * 7` → direct calculator.
 3. `10 percent of 200` → direct calculator.
-4. `set an alarm for 6:30 AM` → direct alarm tool.
-5. `set an alarm for 2:45 am and another one for 10:30 pm titled work` → two direct alarm calls.
-6. `set a timer for 5 minutes` → direct timer tool.
+4. `set an alarm for 6:30 AM` → native alarm tool.
+5. `set an alarm for 2:45 am and another one for 10:30 pm titled work` → two direct alarms.
+6. `set a timer for 5 minutes` → direct timer.
 7. `turn on my flashlight` / `switch flashlight off` → direct flashlight.
 8. `turn it off` → Tier 2 flashlight context.
-9. `call Mama` / `phone Abdulqader` → deterministic contact lookup + direct call after permissions.
-10. `how ya doin bro` → normal conversational response.
-7. LLM tool output → no raw `<tool_call>` visible as the final message.
-8. Samsung side button / wake word → Sync AI voice mode.
+9. `call Mama` / `phone Abdulqader` → deterministic contact lookup + call after permissions.
+10. `how ya doin bro` → normal conversation.
+11. LLM tool output → no raw `<tool_call>` protocol visible to the user.
+12. Side button/default assistant → translucent Sync AI Voice Mode; microphone is active only while that mode is running.
+13. Exit Voice Mode → recognizer is released and app no longer maintains a recognition session.
+14. Close/reopen app → active chat and prior errors/diagnostics are still present.
+15. About → version, credits, diagnostics, and Copy action.
+16. Personalization → all 8 accent colors + tone changes persist across app restarts.
 
-## Baseline
-The last known successful CI state before this fix pass was Actions build #199 on this branch. Rebuild and device-test after the current commits; a passing compile alone does not prove runtime behavior.
-
-
-## Latest fix-pass changes
-- Generalized deterministic routing to `parseAll()` so compound requests can produce multiple ToolCalls.
-- Added `CallContactTool` with `READ_CONTACTS` + `CALL_PHONE` runtime permissions.
-- Alarm execution now requests `EXTRA_SKIP_UI` and returns the actual alarm label/time result.
-- MainActivity now executes deterministic tool queues sequentially and aggregates their results.
-- Current GitHub Actions build was triggered after these changes; verify the latest run before installing.
+## Baseline / verification
+Previous known-good CI state: Actions build #199.
+The current pass contains additional routing, diagnostics, voice lifecycle, settings, persistence, and recognition-service changes. CI and device testing are still the final verification gate.
