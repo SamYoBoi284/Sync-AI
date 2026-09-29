@@ -12,7 +12,13 @@ public final class ToolIntentRouter {
     private static final Pattern OPEN_APP = Pattern.compile(
             "(?i)\\b(?:open|launch|start|run)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|[.!?,;]|$)");
     private static final Pattern CALCULATE = Pattern.compile(
-            "(?i)\\b(?:calculate|compute|work\\s+out|what\\s+is|what's)\\s+(.+?)(?=\\s+(?:please|now)\\b|[?!;]|$)");
+            "(?i)\\b(?:calculate|compute|work\\s+out|what\\s+is|what's|whats)\\s+(.+?)(?=\\s+(?:please|now)\\b|[?!;]|$)");
+    private static final Pattern ALARM = Pattern.compile(
+            "(?i)\\b(?:set|create|schedule)\\s+(?:an?\\s+)?alarm\\s+(?:for|at)\\s+(\\d{1,2})(?:\\s*:\\s*|\\s+)?(\\d{2})?\\s*(am|pm)?\\b");
+    private static final Pattern TIMER = Pattern.compile(
+            "(?i)\\b(?:set|start)\\s+(?:a\\s+)?timer(?:\\s+for)?\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+    private static final Pattern STANDALONE_MATH = Pattern.compile(
+            "^[0-9.\\s()+*/%^-]+$");
     private static final Pattern CREATE_FILE = Pattern.compile(
             "(?is)\\b(?:create|make|write)\\s+(?:a\\s+)?(?:text\\s+)?file\\s+(?:named|called)\\s+([^:,.!?]+?)\\s*:\\s*(.*)$");
 
@@ -78,6 +84,41 @@ public final class ToolIntentRouter {
             }
         }
 
+        m = ALARM.matcher(text);
+        while (m.find()) {
+            if (!isCommandContext(text, m.start())) continue;
+            int hour = parseClockHour(m.group(1), m.group(3));
+            int minute = m.group(2) == null || m.group(2).isEmpty() ? 0 : Integer.parseInt(m.group(2));
+            if (hour >= 0 && minute >= 0 && minute <= 59) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("hour", Integer.toString(hour));
+                args.put("minute", Integer.toString(minute));
+                args.put("message", "Wake up");
+                return new ToolCall("set_alarm", args);
+            }
+        }
+
+        m = TIMER.matcher(text);
+        while (m.find()) {
+            if (!isCommandContext(text, m.start())) continue;
+            double amount = Double.parseDouble(m.group(1));
+            String unit = m.group(2).toLowerCase(Locale.US);
+            int seconds;
+            if (unit.startsWith("hour") || unit.startsWith("hr")) {
+                seconds = (int) Math.round(amount * 3600.0);
+            } else if (unit.startsWith("minute") || unit.startsWith("min")) {
+                seconds = (int) Math.round(amount * 60.0);
+            } else {
+                seconds = (int) Math.round(amount);
+            }
+            if (seconds >= 1 && seconds <= 86400) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("seconds", Integer.toString(seconds));
+                args.put("message", "Timer");
+                return new ToolCall("set_timer", args);
+            }
+        }
+
         m = OPEN_APP.matcher(text);
         while (m.find()) {
             if (!isCommandContext(text, m.start())) continue;
@@ -98,6 +139,13 @@ public final class ToolIntentRouter {
                 args.put("expression", expression);
                 return new ToolCall("calculator", args);
             }
+        }
+
+        String mathCandidate = stripCommandLeadIns(text).replaceAll("(?i)\\?$", "").trim();
+        if (STANDALONE_MATH.matcher(mathCandidate).matches() && looksLikeMath(mathCandidate)) {
+            Map<String, String> args = new LinkedHashMap<>();
+            args.put("expression", mathCandidate);
+            return new ToolCall("calculator", args);
         }
 
         return null;
@@ -183,7 +231,18 @@ public final class ToolIntentRouter {
                 .replace("divided by", "/")
                 .replace("over", "/")
                 .replaceAll("\\bwhat\\s+is\\b", "")
+                .replaceAll("\\bwhat's\\b", "")
+                .replaceAll("\\bwhats\\b", "")
                 .trim();
         return normalized.matches("[0-9.\\s()+*/%^-]+");
+    }
+
+    private static int parseClockHour(String rawHour, String amPm) {
+        int hour = Integer.parseInt(rawHour);
+        if (amPm == null || amPm.isEmpty()) return hour <= 23 ? hour : -1;
+        String meridiem = amPm.toLowerCase(Locale.US);
+        if (hour < 1 || hour > 12) return -1;
+        if ("am".equals(meridiem)) return hour == 12 ? 0 : hour;
+        return hour == 12 ? 12 : hour + 12;
     }
 }
