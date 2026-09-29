@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 public final class ToolIntentRouter {
     private static final Pattern FLASHLIGHT = Pattern.compile(
-            "^\\s*(?:please\\s+)?(?:turn\\s+)?(on|off)\\s+(?:the\\s+)?(?:phone\\s+)?(?:flashlight|torch)\\s*[.!?]*\\s*$",
+            "^\\s*(?:please\\s+)?(?:turn\\s+)?(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\s*[.!?]*\\s*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern OPEN_APP = Pattern.compile(
             "^\\s*(?:please\\s+)?(?:open|launch|start|run)\\s+(?:the\\s+)?(.+?)(?:\\s+app)?\\s*[.!?]*\\s*$",
