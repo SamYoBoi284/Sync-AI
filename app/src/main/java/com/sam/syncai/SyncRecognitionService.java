@@ -81,9 +81,6 @@ public final class SyncRecognitionService extends RecognitionService {
                     try { listener.partialResults(results); } catch (RemoteException ignored) { }
                 }
 
-                @Override public void onEvent(int eventType, Bundle params) {
-                    try { listener.event(eventType, params); } catch (RemoteException ignored) { }
-                }
             });
 
             Intent forwarded = new Intent(recognizerIntent);
