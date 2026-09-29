@@ -22,6 +22,7 @@ import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -63,6 +64,8 @@ public final class MainActivity extends Activity {
     private TextView activeAssistantBubble;
     private LinearLayout root;
     private int accent;
+    private SideDashboard sideDashboard;
+    private FrameLayout rootFrame;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -91,53 +94,25 @@ public final class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(8), dp(8), dp(8), dp(8));
-        root.setBackgroundColor(BG);
-
-        LinearLayout shell = new LinearLayout(this);
-        shell.setOrientation(LinearLayout.HORIZONTAL);
-        root.addView(shell, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        LinearLayout dashboard = card();
-        dashboard.setPadding(dp(6), dp(8), dp(6), dp(8));
-        LinearLayout.LayoutParams dashLp = new LinearLayout.LayoutParams(dp(92), -1);
-        dashLp.rightMargin = dp(8);
-        shell.addView(dashboard, dashLp);
-
-        TextView dashTitle = text("SYNC\n//AI", 17, TEXT, true);
-        dashTitle.setGravity(Gravity.CENTER);
-        dashboard.addView(dashTitle, new LinearLayout.LayoutParams(-1, dp(60)));
-
-        Button chats = dashboardButton("CHATS");
-        chats.setOnClickListener(v -> showChatsDialog());
-        dashboard.addView(chats);
-
-        Button newChatButton = dashboardButton("+ NEW CHAT");
-        newChatButton.setOnClickListener(v -> newChat());
-        dashboard.addView(newChatButton);
-
-        Button voiceButton = dashboardButton("VOICE");
-        voiceButton.setOnClickListener(v -> launchVoiceMode());
-        dashboard.addView(voiceButton);
-
-        View spacer = new View(this);
-        dashboard.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        Button settings = dashboardButton("SETTINGS");
-        settings.setOnClickListener(v -> showSettings());
-        dashboard.addView(settings);
-
-        LinearLayout mainColumn = new LinearLayout(this);
-        mainColumn.setOrientation(LinearLayout.VERTICAL);
-        shell.addView(mainColumn, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout contentRoot = new LinearLayout(this);
+        contentRoot.setOrientation(LinearLayout.VERTICAL);
+        contentRoot.setPadding(dp(16), dp(14), dp(16), dp(10));
+        contentRoot.setBackgroundColor(BG);
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("SYNC//AI", 25, TEXT, true);
+
+        Button menuButton = actionButton("☰");
+        menuButton.setTextSize(20);
+        menuButton.setOnClickListener(v -> {
+            if (sideDashboard != null) sideDashboard.open();
+        });
+        header.addView(menuButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        TextView title = text("SYNC AI", 25, TEXT, true);
+        title.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
-        mainColumn.addView(header);
+        contentRoot.addView(header);
 
         LinearLayout statusCard = card();
         LinearLayout statusInner = new LinearLayout(this);
@@ -148,7 +123,7 @@ public final class MainActivity extends Activity {
         statusInner.addView(modelText);
         statusInner.addView(statusText, new LinearLayout.LayoutParams(-1, dp(24)));
         statusCard.addView(statusInner);
-        mainColumn.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(72)));
+        contentRoot.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(72)));
 
         LinearLayout controls = new LinearLayout(this);
         controls.setPadding(0, dp(8), 0, dp(7));
@@ -160,12 +135,12 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams runtimeLp = new LinearLayout.LayoutParams(0, dp(44), 1);
         runtimeLp.leftMargin = dp(7);
         controls.addView(runtimeButton, runtimeLp);
-        mainColumn.addView(controls);
+        contentRoot.addView(controls);
 
         progress = new ProgressBar(this);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
-        mainColumn.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
+        contentRoot.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
         chatScroll = new ScrollView(this);
         chatScroll.setFillViewport(true);
@@ -174,7 +149,7 @@ public final class MainActivity extends Activity {
         messageContainer.setOrientation(LinearLayout.VERTICAL);
         messageContainer.setPadding(dp(2), dp(12), dp(2), dp(12));
         chatScroll.addView(messageContainer);
-        mainColumn.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        contentRoot.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout composerCard = card();
         composerCard.setPadding(dp(7), dp(7), dp(7), dp(7));
@@ -182,7 +157,7 @@ public final class MainActivity extends Activity {
         composer.setGravity(Gravity.BOTTOM);
 
         input = new EditText(this);
-        input.setHint("Message Sync//AI…");
+        input.setHint("Message Sync AI…");
         input.setHintTextColor(Color.rgb(92, 100, 123));
         input.setTextColor(TEXT);
         input.setTextSize(15);
@@ -206,9 +181,66 @@ public final class MainActivity extends Activity {
         composer.addView(sendButton, sendLp);
 
         composerCard.addView(composer);
-        mainColumn.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(70)));
+        contentRoot.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(70)));
 
-        setContentView(root);
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(BG);
+        frame.addView(contentRoot, new FrameLayout.LayoutParams(-1, -1));
+
+        FrameLayout edgeSwipeZone = new FrameLayout(this);
+        edgeSwipeZone.setBackgroundColor(Color.TRANSPARENT);
+        final float[] swipeStart = new float[2];
+        final boolean[] tracking = new boolean[1];
+        edgeSwipeZone.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    tracking[0] = event.getX() <= dp(32);
+                    if (!tracking[0]) return false;
+                    swipeStart[0] = event.getX();
+                    swipeStart[1] = event.getY();
+                    return true;
+                case android.view.MotionEvent.ACTION_MOVE:
+                    if (!tracking[0]) return false;
+                    float dx = event.getX() - swipeStart[0];
+                    float dy = Math.abs(event.getY() - swipeStart[1]);
+                    if (dx > dp(56) && dx > dy * 1.35f) {
+                        if (sideDashboard != null && !sideDashboard.isOpen()) sideDashboard.open();
+                        tracking[0] = false;
+                    }
+                    return true;
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    tracking[0] = false;
+                    return true;
+                default:
+                    return tracking[0];
+            }
+        });
+        frame.addView(edgeSwipeZone, new FrameLayout.LayoutParams(-1, -1));
+
+        sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
+            @Override public void newChat() { MainActivity.this.newChat(); }
+            @Override public void chats() { showChatsDialog(); }
+            @Override public void models() { showModelsDialog(); }
+            @Override public void importModel() { openModelPicker(); }
+            @Override public void runtime() { showRuntimeInfo(); }
+            @Override public void memory() { showPersonalization(); }
+            @Override public void personalization() { showPersonalization(); }
+            @Override public void tone() { showSettings(); }
+            @Override public void about() { showAbout(); }
+            @Override public void assistant() { launchVoiceMode(); }
+            @Override public void files() {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                startActivityForResult(intent, REQ_IMPORT_MEMORY);
+            }
+            @Override public void canvas() { showSettings(); }
+            @Override public void toggleVoiceOutput() { showSettings(); }
+        });
+
+        rootFrame = frame;
+        setContentView(frame);
         applyAccent();
     }
 
@@ -479,7 +511,7 @@ public final class MainActivity extends Activity {
     private List<ChatMessage> buildModelContext(String current) {
         java.util.ArrayList<ChatMessage> messages = new java.util.ArrayList<>();
         String memory = runtime.preferences().getMemory();
-        String system = "You are Sync//AI, a concise offline Android companion. "
+        String system = "You are Sync AI, a concise offline Android companion. "
                 + "Talk naturally and casually. Understand slang, typos, shorthand, and bro/bfam wording. "
                 + "Do not volunteer robotic identity disclaimers. "
                 + "Deterministic Android tools handle device actions before the model.";
@@ -504,7 +536,7 @@ public final class MainActivity extends Activity {
             return "I'm good bro. Local Sync is alive and kicking.";
         }
         if (l.contains("who are you") || l.contains("what are you")) {
-            return "I'm Sync//AI — your local Android AI shell. The model runs on-device.";
+            return "I'm Sync AI — your local Android AI shell. The model runs on-device.";
         }
         return "I'm here, bro. Import a local GGUF model for full conversational replies.";
     }
@@ -567,7 +599,7 @@ public final class MainActivity extends Activity {
         if (activeChat.messages.isEmpty()) {
             addMessageView(new ChatMessage(
                     ChatMessage.Role.ASSISTANT,
-                    "Sync//AI is ready.\nImport a GGUF model for local conversation, or use the deterministic Android tools."));
+                    "Sync AI is ready.\nImport a GGUF model for local conversation, or use the deterministic Android tools."));
         }
         scrollToBottom();
     }
@@ -792,7 +824,7 @@ public final class MainActivity extends Activity {
 
         Button assistant = sectionButton(
                 "ANDROID ASSISTANT SETTINGS",
-                "Select Sync//AI as the default digital assistant");
+                "Select Sync AI as the default digital assistant");
         assistant.setOnClickListener(v -> {
             try {
                 startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
@@ -814,7 +846,7 @@ public final class MainActivity extends Activity {
         String runtimeInfo = runtime.backend().diagnostics();
         String latest = latestDiagnostics();
         String message =
-                "Sync//AI\n\n" +
+                "Sync AI\n\n" +
                 "Version: " + version + "\n" +
                 "Created By Sam\n" +
                 "صنعه حسام\n\n" +
@@ -859,7 +891,7 @@ public final class MainActivity extends Activity {
         ClipboardManager clipboard =
                 (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard != null) {
-            clipboard.setPrimaryClip(ClipData.newPlainText("Sync//AI diagnostics", text));
+            clipboard.setPrimaryClip(ClipData.newPlainText("Sync AI diagnostics", text));
             showToast("Diagnostics copied.");
         }
     }
@@ -874,7 +906,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showRuntimeInfo() {
-        String info = "Sync//AI " + BuildConfig.VERSION_NAME + "\n\n" +
+        String info = "Sync AI " + BuildConfig.VERSION_NAME + "\n\n" +
                 "Runtime: llama.cpp\n" +
                 "Model format: GGUF\n" +
                 "Execution: local CPU\n" +
