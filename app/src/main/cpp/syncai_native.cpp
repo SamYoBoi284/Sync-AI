@@ -9,14 +9,19 @@
 #include <unistd.h>
 #include <cstdio>
 #include <thread>
+#include <chrono>
 
 #include "llama.h"
+#include "ggml-backend.h"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SyncAI", __VA_ARGS__)
 
 static std::mutex g_mutex;
 static llama_model * g_model = nullptr;
 static std::string g_last_error;
+static double g_last_prompt_ms = 0.0;
+static double g_last_generation_ms = 0.0;
+static int g_last_generated_tokens = 0;
 
 static void syncai_llama_log(ggml_log_level level, const char * text, void *) {
     if (!text) return;
@@ -56,6 +61,12 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path, js
 
     g_last_error.clear();
     llama_log_set(syncai_llama_log, nullptr);
+
+    std::string nativeDir = jstring_to_string(env, nativeLibDir);
+    if (!nativeDir.empty()) {
+        // Load the best CPU backend variant for the device at runtime.
+        ggml_backend_load_all_from_path(nativeDir.c_str());
+    }
     llama_backend_init();
 
     if (g_model) {
@@ -117,8 +128,12 @@ Java_com_sam_syncai_GgufNative_nativeInfo(JNIEnv * env, jclass) {
              "Parameters: %.2fB\n"
              "Tensor size: %.2f GiB\n"
              "Training context: %d\n"
-             "Backend: CPU",
-             desc, paramsB, sizeGiB, trainCtx);
+             "Backend: CPU\n"
+             "Last prompt eval: %.1f ms\n"
+             "Last generation: %.1f ms\n"
+             "Last generated tokens: %d",
+             desc, paramsB, sizeGiB, trainCtx,
+             g_last_prompt_ms, g_last_generation_ms, g_last_generated_tokens);
     return env->NewStringUTF(info);
 }
 
@@ -188,7 +203,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     ctxParams.n_ubatch = contextSize;
 
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
-    const int threads = std::max(2, std::min(4, cpuCount));
+    const int threads = std::max(2, std::min(8, cpuCount));
     ctxParams.n_threads = threads;
     ctxParams.n_threads_batch = threads;
 
@@ -264,6 +279,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(safeTemp));
     llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
+    const auto promptStart = std::chrono::steady_clock::now();
     llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
     if (llama_decode(ctx, batch) != 0) {
         llama_sampler_free(sampler);
@@ -274,10 +290,16 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         return;
     }
 
+    const auto promptEnd = std::chrono::steady_clock::now();
+    g_last_prompt_ms = std::chrono::duration<double, std::milli>(promptEnd - promptStart).count();
+
+    const auto generationStart = std::chrono::steady_clock::now();
+    g_last_generated_tokens = 0;
     std::string pendingUtf8;
     for (int generated = 0; generated < generationLimit; ++generated) {
         llama_token token = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, token)) break;
+        ++g_last_generated_tokens;
 
         char piece[256];
         int n = llama_token_to_piece(vocab, token, piece, sizeof(piece), 0, true);
@@ -316,6 +338,9 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     }
 
     if (!pendingUtf8.empty()) emit(env, callback, tokenMethod, pendingUtf8);
+    const auto generationEnd = std::chrono::steady_clock::now();
+    g_last_generation_ms =
+            std::chrono::duration<double, std::milli>(generationEnd - generationStart).count();
     llama_sampler_free(sampler);
     llama_free(ctx);
     env->CallVoidMethod(callback, completeMethod);
