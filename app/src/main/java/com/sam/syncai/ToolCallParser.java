@@ -30,6 +30,23 @@ public final class ToolCallParser {
         }
         if (json == null || json.trim().isEmpty()) return null;
 
+        // Small local models sometimes emit a near-tool syntax such as:
+        // {open_app, "light"}{"arguments": {"enabled":true}}
+        // Accept only tightly recognizable variants; never execute arbitrary text.
+        if (json.trim().startsWith("{") && json.contains("}{")) {
+            String compact = json.trim();
+            int split = compact.indexOf("}{");
+            if (split > 0) {
+                String head = compact.substring(0, split + 1);
+                String tail = compact.substring(split + 1);
+                String name = head.replace("{", "").replace("}", "").replace(""", "").trim();
+                name = name.replaceFirst("(?i)^tool\\s*[:=]\\s*", "");
+                if (!name.isEmpty() && tail.trim().startsWith("{")) {
+                    json = "{\\"name\\":\\"" + name + "\\",\\"arguments\\":" + tail.trim() + "}";
+                }
+            }
+        }
+
         try {
             JSONObject root = new JSONObject(json.trim());
             String name = root.optString("name", root.optString("tool", "")).trim();
