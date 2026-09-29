@@ -35,6 +35,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_MODEL = 1201;
     private static final int REQ_CAMERA_PERMISSION = 1301;
+    private static final int REQ_TOOL_PERMISSIONS = 1303;
     private static final int REQ_ATTACH_FILES = 1202;
     private static final int REQ_IMPORT_MEMORY = 1203;
     private static final int REQ_ASSISTANT_ROLE = 1204;
@@ -83,6 +84,7 @@ public final class MainActivity extends Activity {
     private TextView activeAssistantBubble;
     private boolean voiceModeActive;
     private ToolCall pendingFastToolCall;
+    private List<ToolCall> pendingFastToolCalls;
     private FrameLayout rootFrame;
     private FrameLayout voiceModeOverlay;
     private TextView voiceModeStatus;
@@ -690,8 +692,8 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        ToolCall fastTool = ToolIntentRouter.parse(message);
-        if (fastTool != null) {
+        List<ToolCall> fastTools = ToolIntentRouter.parseAll(message);
+        if (!fastTools.isEmpty()) {
             input.setText("");
             hideKeyboard();
             conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
@@ -700,7 +702,7 @@ public final class MainActivity extends Activity {
             activeAssistantBubble.setText("Working…");
             activeAssistantBubble.setTextColor(MUTED);
             sendButton.setEnabled(false);
-            executeFastTool(fastTool, activeAssistantBubble);
+            executeFastTools(fastTools, activeAssistantBubble);
             return;
         }
 
@@ -754,45 +756,96 @@ public final class MainActivity extends Activity {
     }
 
     private void executeFastTool(ToolCall toolCall, TextView bubble) {
-        SyncTool tool = toolRegistry.get(toolCall.name);
-        if (tool == null) {
-            finishGenerationWithError(bubble, "Unknown tool requested: " + toolCall.name + ".", null);
+        java.util.List<ToolCall> one = new java.util.ArrayList<>();
+        one.add(toolCall);
+        executeFastTools(one, bubble);
+    }
+
+    private void executeFastTools(java.util.List<ToolCall> toolCalls, TextView bubble) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            sendButton.setEnabled(true);
             return;
         }
 
-        if ("flashlight".equals(toolCall.name) &&
-                checkSelfPermission(android.Manifest.permission.CAMERA)
-                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            pendingFastToolCall = toolCall;
+        java.util.LinkedHashSet<String> missing = new java.util.LinkedHashSet<>();
+        for (ToolCall call : toolCalls) {
+            SyncTool tool = toolRegistry.get(call.name);
+            if (tool == null) {
+                finishGenerationWithError(bubble, "Unknown tool requested: " + call.name + ".", null);
+                return;
+            }
+            for (String permission : missingPermissionsForTool(call)) missing.add(permission);
+        }
+
+        if (!missing.isEmpty()) {
+            pendingFastToolCalls = new java.util.ArrayList<>(toolCalls);
             pendingToolBubble = bubble;
-            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_CAMERA_PERMISSION);
+            requestPermissions(missing.toArray(new String[0]), REQ_TOOL_PERMISSIONS);
             return;
         }
 
         ioExecutor.execute(() -> {
-            String result;
-            try {
-                result = tool.execute(toolCall.arguments);
-            } catch (Throwable t) {
-                String error = t.getMessage();
-                result = "ERROR: " + (error == null ? t.toString() : error);
+            StringBuilder results = new StringBuilder();
+            boolean anyError = false;
+
+            for (ToolCall call : toolCalls) {
+                SyncTool tool = toolRegistry.get(call.name);
+                String result;
+                try {
+                    result = tool.execute(call.arguments);
+                } catch (Throwable t) {
+                    String error = t.getMessage();
+                    result = "ERROR: " + (error == null ? t.toString() : error);
+                }
+
+                if (results.length() > 0) results.append("\n");
+                results.append(result);
+
+                if (!result.startsWith("ERROR:")) {
+                    ToolIntentRouter.rememberSuccessfulTool(call);
+                } else {
+                    anyError = true;
+                }
             }
-            final String finalResult = result;
+
+            final String finalResult = results.toString();
+            final boolean finalError = anyError;
             runOnUiThread(() -> {
                 bubble.setText(finalResult);
-                bubble.setTextColor(finalResult.startsWith("ERROR:") ? Color.rgb(255, 130, 145) : TEXT);
+                bubble.setTextColor(finalError ? Color.rgb(255, 130, 145) : TEXT);
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, finalResult));
-                if (!finalResult.startsWith("ERROR:")) {
-                    ToolIntentRouter.rememberSuccessfulTool(toolCall);
-                }
                 sendButton.setEnabled(true);
-                if (voiceModeActive && voiceController != null && !finalResult.startsWith("ERROR:")) {
+                if (voiceModeActive && voiceController != null && !finalError) {
                     updateVoiceResponse(finalResult);
                     voiceController.speak(finalResult);
                 }
                 scrollToBottom();
             });
         });
+    }
+
+    private String[] missingPermissionsForTool(ToolCall toolCall) {
+        java.util.ArrayList<String> missing = new java.util.ArrayList<>();
+        if (toolCall == null) return new String[0];
+
+        if ("flashlight".equals(toolCall.name) &&
+                checkSelfPermission(android.Manifest.permission.CAMERA)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            missing.add(android.Manifest.permission.CAMERA);
+        }
+
+        if ("call_contact".equals(toolCall.name)) {
+            if (checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missing.add(android.Manifest.permission.READ_CONTACTS);
+            }
+            if (checkSelfPermission(android.Manifest.permission.CALL_PHONE)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missing.add(android.Manifest.permission.CALL_PHONE);
+            }
+        }
+
+        return missing.toArray(new String[0]);
     }
 
     private void runGeneration(List<ChatMessage> working, int toolDepth, TextView bubble) {
@@ -845,16 +898,15 @@ public final class MainActivity extends Activity {
                     }
 
                     working.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
-                    if ("flashlight".equals(toolCall.name) &&
-                            checkSelfPermission(android.Manifest.permission.CAMERA)
-                                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    String[] missingToolPermissions = missingPermissionsForTool(toolCall);
+                    if (missingToolPermissions.length > 0) {
                         pendingPermissionToolCall = toolCall;
                         pendingWorkingMessages = working;
                         pendingToolBubble = bubble;
                         pendingToolDepth = toolDepth;
                         runOnUiThread(() -> requestPermissions(
-                                new String[]{android.Manifest.permission.CAMERA},
-                                REQ_CAMERA_PERMISSION));
+                                missingToolPermissions,
+                                REQ_TOOL_PERMISSIONS));
                         return;
                     }
 
@@ -1034,24 +1086,31 @@ public final class MainActivity extends Activity {
             }
             return;
         }
-        if (requestCode != REQ_CAMERA_PERMISSION) return;
+        if (requestCode != REQ_TOOL_PERMISSIONS && requestCode != REQ_CAMERA_PERMISSION) return;
 
-        if (pendingFastToolCall != null) {
-            ToolCall fastTool = pendingFastToolCall;
+        if (pendingFastToolCalls != null) {
+            java.util.List<ToolCall> fastTools = pendingFastToolCalls;
             TextView fastBubble = pendingToolBubble;
-            pendingFastToolCall = null;
+            pendingFastToolCalls = null;
             pendingToolBubble = null;
-            boolean granted = grantResults.length > 0 &&
-                    grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+
+            boolean granted = grantResults.length > 0;
+            for (int result : grantResults) {
+                if (result != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    granted = false;
+                    break;
+                }
+            }
+
             if (!granted) {
                 if (fastBubble != null) {
-                    fastBubble.setText("ERROR: Camera permission is required to control the flashlight.");
+                    fastBubble.setText("ERROR: Required permission was denied for this tool request.");
                     fastBubble.setTextColor(Color.rgb(255, 130, 145));
                 }
                 sendButton.setEnabled(true);
                 return;
             }
-            executeFastTool(fastTool, fastBubble);
+            executeFastTools(fastTools, fastBubble);
             return;
         }
 
@@ -1067,13 +1126,18 @@ public final class MainActivity extends Activity {
 
         if (toolCall == null || working == null || bubble == null) return;
 
-        boolean granted = grantResults.length > 0 &&
-                grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        boolean granted = grantResults.length > 0;
+        for (int result : grantResults) {
+            if (result != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                granted = false;
+                break;
+            }
+        }
 
         if (!granted) {
             working.add(new ChatMessage(
                     ChatMessage.Role.SYSTEM,
-                    "Tool result for flashlight: ERROR: CAMERA permission was denied."));
+                    "Tool result for " + toolCall.name + ": ERROR: Required Android permission was denied."));
             runGeneration(working, depth + 1, bubble);
             return;
         }
