@@ -9,6 +9,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.WindowInsets;
 import android.view.View;
@@ -219,6 +220,34 @@ public final class MainActivity extends Activity {
         frame.setBackgroundColor(BG);
         frame.addView(contentRoot, new FrameLayout.LayoutParams(-1, -1));
 
+        // ChatGPT-style edge swipe: a narrow transparent zone listens only from the
+        // left edge so normal chat controls keep their touch behavior.
+        FrameLayout edgeSwipeZone = new FrameLayout(this);
+        edgeSwipeZone.setBackgroundColor(Color.TRANSPARENT);
+        final float[] swipeStart = new float[2];
+        edgeSwipeZone.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    swipeStart[0] = event.getX();
+                    swipeStart[1] = event.getY();
+                    return true;
+                case android.view.MotionEvent.ACTION_MOVE:
+                    float dx = event.getX() - swipeStart[0];
+                    float dy = Math.abs(event.getY() - swipeStart[1]);
+                    if (dx > dp(72) && dx > dy * 1.35f) {
+                        if (sideDashboard != null && !sideDashboard.isOpen()) sideDashboard.open();
+                        return true;
+                    }
+                    return true;
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    return true;
+                default:
+                    return true;
+            }
+        });
+        frame.addView(edgeSwipeZone, new FrameLayout.LayoutParams(dp(30), -1, Gravity.START));
+
         sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
             @Override public void newChat() { conversation.clear(); messageContainer.removeAllViews(); addMessageView(ChatMessage.Role.ASSISTANT, "New chat started. What are we building?"); }
             @Override public void models() { showModelsDialog(); }
@@ -233,6 +262,7 @@ public final class MainActivity extends Activity {
                 voiceController.setSpeakingEnabled(!voiceController.isSpeakingEnabled());
                 showToast(voiceController.isSpeakingEnabled() ? "Voice output enabled." : "Voice output disabled.");
             }
+            @Override public void openSettings() { }
         });
 
         buildVoiceModeOverlay(frame);
@@ -469,20 +499,41 @@ public final class MainActivity extends Activity {
             showToast("The assistant role is not available on this device.");
             return;
         }
+
+        // If Sync AI already holds the role, Android will not show another role
+        // chooser. Open the system voice-assistant settings instead so this button
+        // always produces a visible action on Samsung/Android builds.
         if (roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-            showToast("Sync AI is already the default assistant.");
+            openAssistantSettings();
             return;
         }
+
         startActivityForResult(
                 roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT),
                 REQ_ASSISTANT_ROLE);
+    }
+
+    private void openAssistantSettings() {
+        Intent intent = new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS);
+        if (intent.resolveActivity(getPackageManager()) == null) {
+            intent = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+        }
+        if (intent.resolveActivity(getPackageManager()) != null) {
+            startActivity(intent);
+        } else {
+            showToast("Android did not expose an assistant settings screen.");
+        }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQ_ASSISTANT_ROLE) {
-            if (resultCode == RESULT_OK) showToast("Sync AI is now the default assistant.");
+            if (resultCode == RESULT_OK) {
+                showToast("Sync AI is now the default assistant.");
+            } else {
+                showToast("Assistant selection was cancelled.");
+            }
             return;
         }
 
