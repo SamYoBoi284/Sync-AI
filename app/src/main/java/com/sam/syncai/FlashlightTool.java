@@ -55,6 +55,8 @@ public final class FlashlightTool implements SyncTool {
         }
 
         cameraManager.setTorchMode(selectedCamera, enabled);
+        context.getSharedPreferences("sync_flashlight_state", Context.MODE_PRIVATE)
+                .edit().putBoolean("enabled", enabled).apply();
         return enabled ? "Flashlight turned on." : "Flashlight turned off.";
     }
 }
