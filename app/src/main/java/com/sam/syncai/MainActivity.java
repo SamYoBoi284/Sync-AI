@@ -287,7 +287,7 @@ public final class MainActivity extends Activity {
         rootFrame = frame;
         setContentView(frame);
         refreshStatus();
-        if (Intent.ACTION_ASSIST.equals(getIntent().getAction())) {
+        if (isVoiceLaunchIntent(getIntent())) {
             frame.post(() -> enterVoiceModePage(true));
         }
     }
@@ -1079,11 +1079,18 @@ public final class MainActivity extends Activity {
         chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
     }
 
+    private boolean isVoiceLaunchIntent(Intent intent) {
+        if (intent == null) return false;
+        String action = intent.getAction();
+        return Intent.ACTION_ASSIST.equals(action) ||
+                Intent.ACTION_VOICE_COMMAND.equals(action);
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (Intent.ACTION_ASSIST.equals(intent.getAction())) {
+        if (isVoiceLaunchIntent(intent)) {
             enterVoiceModePage(true);
         }
     }
