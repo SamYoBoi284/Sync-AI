@@ -262,6 +262,7 @@ public final class MainActivity extends Activity {
         if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) { voiceController.stopListening(); return; }
         if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO); return; }
         voiceModeActive = true;
+        voiceController.setSpeakingEnabled(true);
         voiceController.startListening();
     }
 
@@ -737,7 +738,7 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_RECORD_AUDIO) {
             boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            if (granted) { voiceModeActive = true; voiceController.startListening(); } else { voiceModeActive = false; showToast("Microphone permission was denied."); }
+            if (granted) { voiceModeActive = true; voiceController.setSpeakingEnabled(true); voiceController.startListening(); } else { voiceModeActive = false; showToast("Microphone permission was denied."); }
             return;
         }
         if (requestCode != REQ_CAMERA_PERMISSION) return;
