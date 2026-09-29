@@ -77,7 +77,6 @@ public final class MainActivity extends Activity {
     private Button voiceButton;
     private Button importButton;
     private VoiceController voiceController;
-    private WakeWordController wakeWordController;
     private boolean voicePermissionRequestedForVoiceMode;
     private SideDashboard sideDashboard;
     private ProgressBar progress;
@@ -125,27 +124,13 @@ public final class MainActivity extends Activity {
                 });
             }
         });
-        wakeWordController = new WakeWordController(this, new WakeWordController.Listener() {
-            @Override public void onWakeWordDetected(float score) {
-                runOnUiThread(() -> {
-                    if (voiceModeActive) return;
-                    wakeWordController.stop();
-                    enterVoiceModePage(true);
-                });
-            }
-
-            @Override public void onWakeWordError(String message) {
-                runOnUiThread(() -> showToast("Wake word unavailable: " + message));
-            }
-        });
-
         buildUi();
         if (android.os.Build.VERSION.SDK_INT >= 23 &&
                 checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             voicePermissionRequestedForVoiceMode = false;
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
         } else {
-            startWakeWordDetection();
+            SyncVoiceInteractionService.startWakeWord();
         }
 
         addMessageView(ChatMessage.Role.ASSISTANT,
@@ -376,7 +361,6 @@ public final class MainActivity extends Activity {
             return;
         }
         voiceModeActive = true;
-        if (wakeWordController != null) wakeWordController.stop();
         voiceController.setSpeakingEnabled(true);
         if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
         if (voiceButton != null) voiceButton.setText("STOP");
@@ -472,16 +456,7 @@ public final class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
-        startWakeWordDetection();
-    }
-
-    private void startWakeWordDetection() {
-        if (wakeWordController == null || voiceModeActive) return;
-        if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-        wakeWordController.start();
+        SyncVoiceInteractionService.stopWakeWord();
     }
 
     private void updateVoiceTranscript(String text) {
@@ -1037,7 +1012,7 @@ public final class MainActivity extends Activity {
                     voicePermissionRequestedForVoiceMode = false;
                     startVoiceListening();
                 } else {
-                    startWakeWordDetection();
+                    SyncVoiceInteractionService.startWakeWord();
                 }
             } else {
                 voicePermissionRequestedForVoiceMode = false;
@@ -1288,19 +1263,8 @@ public final class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
-    @Override protected void onResume() {
-        super.onResume();
-        if (!voiceModeActive) startWakeWordDetection();
-    }
-
-    @Override protected void onPause() {
-        if (wakeWordController != null) wakeWordController.stop();
-        super.onPause();
-    }
-
     @Override protected void onDestroy() {
         ioExecutor.shutdownNow();
-        if (wakeWordController != null) wakeWordController.release();
         if (voiceController != null) voiceController.shutdown();
         backend.unload();
         super.onDestroy();
