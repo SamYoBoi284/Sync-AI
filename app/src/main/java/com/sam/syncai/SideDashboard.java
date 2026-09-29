@@ -22,11 +22,14 @@ public final class SideDashboard extends FrameLayout {
         void files();
         void canvas();
         void toggleVoiceOutput();
+        void openSettings();
     }
 
     private final Activity activity;
     private final Actions actions;
     private LinearLayout panel;
+    private LinearLayout mainContent;
+    private LinearLayout settingsContent;
     private View scrim;
     private boolean open;
 
@@ -58,58 +61,117 @@ public final class SideDashboard extends FrameLayout {
         pp.setMargins(0, dp(8), 0, dp(8));
         addView(panel, pp);
 
+        buildMainContent();
+        buildSettingsContent();
+        panel.addView(mainContent, new LinearLayout.LayoutParams(-1, 0, 1));
+        panel.addView(settingsContent, new LinearLayout.LayoutParams(-1, 0, 1));
+        settingsContent.setVisibility(GONE);
+        panel.setTranslationX(-dp(340));
+    }
+
+    private void buildMainContent() {
+        mainContent = new LinearLayout(activity);
+        mainContent.setOrientation(LinearLayout.VERTICAL);
+
         TextView brand = label("SYNC//AI", 24, Color.rgb(240,242,250), true);
-        panel.addView(brand, new LinearLayout.LayoutParams(-1, dp(46)));
+        mainContent.addView(brand, new LinearLayout.LayoutParams(-1, dp(46)));
 
         TextView subtitle = label("LOCAL AGENT", 10, Color.rgb(80,215,255), true);
-        panel.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(28)));
+        mainContent.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(28)));
 
-        section("CHATS");
-        item("＋  New chat", v -> actions.newChat());
-        item("◉  Current chat", null);
+        section(mainContent, "CHATS");
+        item(mainContent, "＋  New chat", v -> actions.newChat(), true);
+        item(mainContent, "◉  Current chat", null, true);
 
-        section("WORKSPACE");
-        item("▣  Models", v -> actions.models());
-        item("↓  Import model", v -> actions.importModel());
-        item("▤  Runtime", v -> actions.runtime());
-        item("🧠  Import memory", v -> actions.memory());
-        item("📎  Files", v -> actions.files());
-        item("✎  Canvas", v -> actions.canvas());
+        section(mainContent, "WORKSPACE");
+        item(mainContent, "◎  Default assistant", v -> actions.assistant(), true);
+        item(mainContent, "✎  Canvas", v -> actions.canvas(), true);
 
-        section("ASSISTANT");
-        item("◎  Default assistant", v -> actions.assistant());
-        item("◉  Voice output", v -> actions.toggleVoiceOutput());
+        section(mainContent, "SETTINGS");
+        item(mainContent, "⚙  Settings", v -> showSettings(), true);
 
         TextView hint = label("Everything stays local unless a tool explicitly opens another Android app.", 11,
                 Color.rgb(145,153,177), false);
         hint.setPadding(0, dp(16), dp(8), 0);
-        panel.addView(hint, new LinearLayout.LayoutParams(-1, 0, 1));
+        mainContent.addView(hint, new LinearLayout.LayoutParams(-1, 0, 1));
 
+        addCloseButton(mainContent);
+    }
+
+    private void buildSettingsContent() {
+        settingsContent = new LinearLayout(activity);
+        settingsContent.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout titleRow = new LinearLayout(activity);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView back = label("‹", 30, Color.rgb(240,242,250), true);
+        back.setGravity(Gravity.CENTER);
+        back.setBackground(round(Color.rgb(21,25,38), dp(13)));
+        back.setOnClickListener(v -> showMain());
+        titleRow.addView(back, new LinearLayout.LayoutParams(dp(48), dp(46)));
+
+        TextView title = label("SETTINGS", 18, Color.rgb(240,242,250), true);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, dp(46), 1);
+        titleLp.leftMargin = dp(10);
+        titleRow.addView(title, titleLp);
+        settingsContent.addView(titleRow);
+
+        section(settingsContent, "ASSISTANT");
+        item(settingsContent, "◉  Voice output", v -> actions.toggleVoiceOutput(), true);
+
+        section(settingsContent, "WORKSPACE");
+        item(settingsContent, "📎  Files", v -> actions.files(), true);
+        item(settingsContent, "🧠  Import memory", v -> actions.memory(), true);
+        item(settingsContent, "▣  Models", v -> actions.models(), true);
+        item(settingsContent, "↓  Import model", v -> actions.importModel(), true);
+        item(settingsContent, "▤  Runtime", v -> actions.runtime(), true);
+
+        TextView hint = label("Local models, memory and workspace files are kept on this phone.", 11,
+                Color.rgb(145,153,177), false);
+        hint.setPadding(0, dp(16), dp(8), 0);
+        settingsContent.addView(hint, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        addCloseButton(settingsContent);
+    }
+
+    private void addCloseButton(LinearLayout target) {
         TextView close = label("CLOSE", 11, Color.rgb(240,242,250), true);
         close.setGravity(Gravity.CENTER);
         close.setBackground(round(Color.rgb(28,33,49), dp(13)));
         close.setOnClickListener(v -> close());
-        panel.addView(close, new LinearLayout.LayoutParams(-1, dp(46)));
-
-        panel.setTranslationX(-dp(340));
+        target.addView(close, new LinearLayout.LayoutParams(-1, dp(46)));
     }
 
-    private void section(String title) {
+    private void showSettings() {
+        mainContent.setVisibility(GONE);
+        settingsContent.setVisibility(VISIBLE);
+    }
+
+    private void showMain() {
+        settingsContent.setVisibility(GONE);
+        mainContent.setVisibility(VISIBLE);
+    }
+
+    private void section(LinearLayout target, String title) {
         TextView t = label(title, 9, Color.rgb(145,153,177), true);
         t.setPadding(0, dp(16), 0, dp(6));
-        panel.addView(t, new LinearLayout.LayoutParams(-1, dp(28)));
+        target.addView(t, new LinearLayout.LayoutParams(-1, dp(28)));
     }
 
-    private void item(String title, View.OnClickListener listener) {
+    private void item(LinearLayout target, String title, View.OnClickListener listener, boolean closeAfter) {
         TextView t = label(title, 14, Color.rgb(240,242,250), false);
         t.setGravity(Gravity.CENTER_VERTICAL);
         t.setPadding(dp(12), 0, dp(8), 0);
         t.setBackground(round(Color.rgb(21,25,38), dp(13)));
-        if (listener != null) t.setOnClickListener(v -> {
-            listener.onClick(v);
-            close();
-        });
-        panel.addView(t, new LinearLayout.LayoutParams(-1, dp(46)));
+        if (listener != null) {
+            t.setOnClickListener(v -> {
+                listener.onClick(v);
+                if (closeAfter) close();
+            });
+        }
+        target.addView(t, new LinearLayout.LayoutParams(-1, dp(46)));
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams)t.getLayoutParams();
         lp.bottomMargin = dp(5);
         t.setLayoutParams(lp);
@@ -117,6 +179,7 @@ public final class SideDashboard extends FrameLayout {
 
     public void open() {
         if (open) return;
+        showMain();
         open = true;
         setVisibility(VISIBLE);
         scrim.animate().alpha(1f).setDuration(180).start();
@@ -129,6 +192,7 @@ public final class SideDashboard extends FrameLayout {
             return;
         }
         open = false;
+        showMain();
         scrim.animate().alpha(0f).setDuration(160).start();
         panel.animate().translationX(-dp(340)).setDuration(220).setInterpolator(new DecelerateInterpolator())
                 .withEndAction(() -> setVisibility(INVISIBLE)).start();
