@@ -400,7 +400,6 @@ public final class MainActivity extends Activity {
         }
         voiceModeActive = true;
         voiceStopRequestedByUser = false;
-        cancelVoiceIdleExit();
         if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
         if (voiceButton != null) voiceButton.setText("STOP");
         voiceController.startListening();
@@ -551,10 +550,14 @@ public final class MainActivity extends Activity {
         updateVoiceResponse(text);
         if (!voiceModeActive) return;
         if (voiceController == null || !voiceOutputEnabled) {
+            scheduleVoiceIdleExit();
             scheduleVoiceRestartAfterResponse(250L);
             return;
         }
-        voiceController.speak(text, () -> scheduleVoiceRestartAfterResponse(150L));
+        voiceController.speak(text, () -> {
+            scheduleVoiceIdleExit();
+            scheduleVoiceRestartAfterResponse(150L);
+        });
     }
 
     private boolean isVoiceFarewell(String text) {
