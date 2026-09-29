@@ -802,9 +802,19 @@ public final class MainActivity extends Activity {
         backend.generate(working, config, new LocalModelBackend.GenerateCallback() {
             @Override public void onToken(String token) {
                 response.append(token);
+                String visible = response.toString();
+                String trimmedVisible = visible.trim();
+                boolean protocolText = trimmedVisible.contains("<tool_call>") ||
+                        trimmedVisible.startsWith("{\"name\"") ||
+                        trimmedVisible.startsWith("{\"tool\"");
                 runOnUiThread(() -> {
-                    bubble.setText(response.toString());
-                    bubble.setTextColor(TEXT);
+                    if (protocolText) {
+                        bubble.setText("Preparing tool…");
+                        bubble.setTextColor(MUTED);
+                    } else {
+                        bubble.setText(visible);
+                        bubble.setTextColor(TEXT);
+                    }
                     scrollToBottom();
                 });
             }
@@ -814,6 +824,10 @@ public final class MainActivity extends Activity {
                 ToolCall toolCall = ToolCallParser.parse(text);
 
                 if (toolCall != null) {
+                    runOnUiThread(() -> {
+                        bubble.setText("Using " + toolCall.name + "…");
+                        bubble.setTextColor(MUTED);
+                    });
                     SyncTool tool = toolRegistry.get(toolCall.name);
                     if (tool == null) {
                         finishGenerationWithError(
