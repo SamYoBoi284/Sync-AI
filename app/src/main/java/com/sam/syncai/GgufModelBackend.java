@@ -76,6 +76,6 @@ public final class GgufModelBackend implements LocalModelBackend {
 
     public String diagnostics() {
         if (!isLoaded()) return "No model loaded.";
-        return GgufNative.nativeInfo();
+        return GgufNative.nativeDiagnostics();
     }
 }
