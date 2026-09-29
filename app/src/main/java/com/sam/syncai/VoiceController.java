@@ -34,38 +34,7 @@ public final class VoiceController {
     public VoiceController(Context context, Listener listener) {
         this.context = context.getApplicationContext();
         this.listener = listener;
-        if (SpeechRecognizer.isRecognitionAvailable(this.context)) {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(this.context);
-            recognizer.setRecognitionListener(new RecognitionListener() {
-                @Override public void onReadyForSpeech(Bundle params) {
-                    listener.onListeningChanged(true);
-                }
-                @Override public void onBeginningOfSpeech() {
-                    listener.onSpeechStarted();
-                }
-                @Override public void onRmsChanged(float rmsdB) { }
-                @Override public void onBufferReceived(byte[] buffer) { }
-                @Override public void onEndOfSpeech() {
-                    listener.onListeningChanged(false);
-                }
-                @Override public void onError(int error) {
-                    listener.onListeningChanged(false);
-                    listener.onError(errorMessage(error));
-                }
-                @Override public void onResults(Bundle results) {
-                    listener.onListeningChanged(false);
-                    ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                    if (matches != null && !matches.isEmpty()) listener.onFinalText(matches.get(0));
-                }
-                @Override public void onPartialResults(Bundle results) {
-                    ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                    if (matches != null && !matches.isEmpty()) listener.onPartialText(matches.get(0));
-                }
-                @Override public void onEvent(int eventType, Bundle params) { }
-            });
-        }
-
-        tts = new TextToSpeech(this.context, status -> {
+        // SpeechRecognizer is created lazily only when Voice Mode starts.\n        tts = new TextToSpeech(this.context, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
@@ -93,10 +62,43 @@ public final class VoiceController {
     }
 
     public boolean isAvailable() {
-        return recognizer != null;
+        return SpeechRecognizer.isRecognitionAvailable(this.context);
+    }
+
+    private void ensureRecognizer() {
+        if (recognizer != null || !SpeechRecognizer.isRecognitionAvailable(this.context)) return;
+        recognizer = SpeechRecognizer.createSpeechRecognizer(this.context);
+        recognizer.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) {
+                listener.onListeningChanged(true);
+            }
+            @Override public void onBeginningOfSpeech() {
+                listener.onSpeechStarted();
+            }
+            @Override public void onRmsChanged(float rmsdB) { }
+            @Override public void onBufferReceived(byte[] buffer) { }
+            @Override public void onEndOfSpeech() {
+                listener.onListeningChanged(false);
+            }
+            @Override public void onError(int error) {
+                listener.onListeningChanged(false);
+                listener.onError(errorMessage(error));
+            }
+            @Override public void onResults(Bundle results) {
+                listener.onListeningChanged(false);
+                ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (matches != null && !matches.isEmpty()) listener.onFinalText(matches.get(0));
+            }
+            @Override public void onPartialResults(Bundle results) {
+                ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (matches != null && !matches.isEmpty()) listener.onPartialText(matches.get(0));
+            }
+            @Override public void onEvent(int eventType, Bundle params) { }
+        });
     }
 
     public void startListening() {
+        ensureRecognizer();
         if (recognizer == null) {
             listener.onError("No speech recognition service is available on this device.");
             return;
@@ -117,6 +119,14 @@ public final class VoiceController {
 
     public void stopListening() {
         if (recognizer != null) recognizer.stopListening();
+    }
+
+    public void releaseRecognition() {
+        if (recognizer != null) {
+            recognizer.cancel();
+            recognizer.destroy();
+            recognizer = null;
+        }
     }
 
     public void setSpeakingEnabled(boolean enabled) {
@@ -141,7 +151,7 @@ public final class VoiceController {
     }
 
     public void shutdown() {
-        if (recognizer != null) recognizer.destroy();
+        releaseRecognition();
         speechDoneCallback = null;
         if (tts != null) {
             tts.stop();
