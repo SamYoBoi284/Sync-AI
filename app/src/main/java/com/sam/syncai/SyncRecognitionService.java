@@ -12,7 +12,6 @@ import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -81,6 +80,11 @@ public final class SyncRecognitionService extends RecognitionService {
                     try { listener.partialResults(results); } catch (RemoteException ignored) { }
                 }
 
+                @Override public void onEvent(int eventType, Bundle params) {
+                    // RecognitionService.Callback has no event() forwarding API.
+                    // The framework only requires RecognitionListener to implement
+                    // this callback, so there is nothing to forward here.
+                }
             });
 
             Intent forwarded = new Intent(recognizerIntent);
