@@ -9,9 +9,11 @@ import java.util.List;
 import java.util.Map;
 
 public final class ToolRegistry {
+    private final Context context;
     private final Map<String, SyncTool> tools = new LinkedHashMap<>();
 
     public ToolRegistry(Context context) {
+        this.context = context.getApplicationContext();
         register(new CalculatorTool());
         register(new TimeTool(context));
         register(new SystemInfoTool(context));
