@@ -455,7 +455,6 @@ public final class MainActivity extends Activity {
             ChatMessage m = activeChat.messages.get(i);
             messages.add(new ChatMessage(m.role, m.text));
         }
-        messages.add(new ChatMessage(ChatMessage.Role.USER, current));
         return messages;
     }
 
@@ -800,17 +799,17 @@ public final class MainActivity extends Activity {
     }
 
     private String latestDiagnostics() {
-        DiagnosticRecord latest = null;
-        String text = "";
+        long latestTimestamp = -1L;
+        String latestText = "";
         for (ChatRecord chat : runtime.chatStore().all()) {
             for (ChatMessage message : chat.messages) {
-                if (message.hasDiagnostics() &&
-                        (latest == null || message.timestamp > latest.startedAt)) {
-                    text = message.diagnostics;
+                if (message.hasDiagnostics() && message.timestamp > latestTimestamp) {
+                    latestTimestamp = message.timestamp;
+                    latestText = message.diagnostics;
                 }
             }
         }
-        return text;
+        return latestText;
     }
 
     private void copyDiagnostics(String text) {
