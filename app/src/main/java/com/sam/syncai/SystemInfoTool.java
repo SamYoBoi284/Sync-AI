@@ -238,13 +238,20 @@ public final class SystemInfoTool implements SyncTool {
         try {
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
             if (manager == null) return "Flashlight state unavailable.";
+            boolean available = false;
             for (String id : manager.getCameraIdList()) {
                 CameraCharacteristics c = manager.getCameraCharacteristics(id);
-                if (!Boolean.TRUE.equals(c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE))) continue;
-                return "Flashlight: " + (manager.getTorchMode(id) == android.hardware.camera2.CameraManager.TORCH_MODE_ON
-                        ? "on" : "off") + ".";
+                if (Boolean.TRUE.equals(c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE))) {
+                    available = true;
+                    break;
+                }
             }
-            return "Flashlight: unavailable.";
+            if (!available) return "Flashlight: unavailable.";
+
+            boolean enabled = context.getSharedPreferences(
+                    "sync_flashlight_state", Context.MODE_PRIVATE)
+                    .getBoolean("enabled", false);
+            return "Flashlight: " + (enabled ? "on" : "off") + ".";
         } catch (Throwable e) {
             return "Flashlight state unavailable.";
         }
