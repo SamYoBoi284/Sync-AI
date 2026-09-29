@@ -37,6 +37,7 @@
         </activity>
         <service
             android:name=".SyncVoiceInteractionService"
+            android:label="Sync AI"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:directBootAware="true"
             android:exported="true">
@@ -49,6 +50,7 @@
         </service>
         <service
             android:name=".SyncVoiceInteractionSessionService"
+            android:label="Sync AI Voice Session"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:directBootAware="true"
             android:exported="true">
