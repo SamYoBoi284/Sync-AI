@@ -25,6 +25,7 @@ Sync AI is a local Android assistant targeting the Samsung Galaxy A16 4G (4 GB R
 - Existing independent tools include calculator, flashlight, alarm, timer, contact calling, app/settings opening, workspace files, and Canvas.
 - `ToolIntentRouter` runs before model inference for deterministic commands.
 - Recent successful tool/action context supports contextual commands such as “turn it off” → previous flashlight.
+- Tier 2 now also supports safe repeated actions such as calling the same contact again, restarting the last timer, and repeating the last calculation when the referent is explicit.
 - App launching supports aliases/fuzzy matching and confirmation when a match is uncertain.
 - Flashlight uses Android CameraManager + permission handling.
 - Calculator uses a local expression parser.
@@ -128,11 +129,15 @@ Volume, media controls, clipboard, camera, notification/settings navigation, and
 
 ## Immediate real-device test plan
 1. `yo, whats 29 * 2` → direct calculator → `58`.
-2. `set an alarm for 6:30 AM` → direct alarm tool.
-3. `set a timer for 5 minutes` → direct timer tool.
-4. `turn on my flashlight` → direct flashlight.
-5. `turn it off` → Tier 2 flashlight context.
-6. `how ya doin bro` → normal conversational response.
+2. `what is 29 / 2 * 7` → direct calculator.
+3. `10 percent of 200` → direct calculator.
+4. `set an alarm for 6:30 AM` → direct alarm tool.
+5. `set an alarm for 2:45 am and another one for 10:30 pm titled work` → two direct alarm calls.
+6. `set a timer for 5 minutes` → direct timer tool.
+7. `turn on my flashlight` / `switch flashlight off` → direct flashlight.
+8. `turn it off` → Tier 2 flashlight context.
+9. `call Mama` / `phone Abdulqader` → deterministic contact lookup + direct call after permissions.
+10. `how ya doin bro` → normal conversational response.
 7. LLM tool output → no raw `<tool_call>` visible as the final message.
 8. Samsung side button / wake word → Sync AI voice mode.
 
