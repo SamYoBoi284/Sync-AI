@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 public final class MemoryManager {
     private static final String FILE_NAME = "sync_memory.txt";
     private static final int MAX_BYTES = 16 * 1024 * 1024;
-    private static final int MAX_PROMPT_CHARS = 4000;
+    private static final int MAX_PROMPT_CHARS = 2000;
 
     private final Context context;
 
@@ -73,7 +73,7 @@ public final class MemoryManager {
         int read;
         while ((read = in.read(buffer)) != -1) {
             total += read;
-            if (total > maxBytes) throw new IllegalArgumentException("Selected file is too large. Maximum is 1 MB.");
+            if (total > maxBytes) throw new IllegalArgumentException("Selected file is too large. Maximum is 16 MB.");
             out.write(buffer, 0, read);
         }
         return out.toByteArray();
