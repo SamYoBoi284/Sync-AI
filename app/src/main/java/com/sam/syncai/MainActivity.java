@@ -418,12 +418,14 @@ public final class MainActivity extends Activity {
     }
 
     private void updateVoiceResponse(String text) {
-        if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE &&
-                voiceModeResponse != null && text != null) {
-            voiceModeResponse.setText(text);
-            if (voiceModeStatus != null) voiceModeStatus.setText("READY");
-            if (voiceButton != null) voiceButton.setText("MIC");
-        }
+        if (text == null) return;
+        runOnUiThread(() -> {
+            if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE && voiceModeResponse != null) {
+                voiceModeResponse.setText(text);
+                if (voiceModeStatus != null) voiceModeStatus.setText("READY");
+                if (voiceButton != null) voiceButton.setText("MIC");
+            }
+        });
     }
 
 
