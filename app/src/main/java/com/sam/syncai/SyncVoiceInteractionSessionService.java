@@ -25,9 +25,18 @@ public final class SyncVoiceInteractionSessionService extends VoiceInteractionSe
 
         @Override public void onShow(Bundle args, int showFlags) {
             super.onShow(args, showFlags);
+            SyncVoiceInteractionService.stopWakeWord();
+
             Intent intent = new Intent(getContext(), MainActivity.class);
-            intent.setAction(Intent.ACTION_VOICE_COMMAND);
-            startVoiceActivity(intent);
+            intent.setAction(Intent.ACTION_ASSIST);
+            intent.addFlags(
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP |
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+
+            // This is the canonical assistant-activity path for a session
+            // invoked by the system (including a hardware assistant button).
+            startAssistantActivity(intent);
         }
     }
 }
