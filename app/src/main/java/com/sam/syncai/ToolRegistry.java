@@ -55,8 +55,10 @@ public final class ToolRegistry {
         out.append("You can read and write only inside Sync AI's private workspace using read_workspace_file and write_workspace_file. ");
         out.append("Use open_canvas when the user asks for a drawing canvas or wants to sketch.\n\nTOOLS:\n");
         for (SyncTool tool : tools.values()) {
+            String description = tool.getDescription();
+            if (description.length() > 180) description = description.substring(0, 180);
             out.append("- ").append(tool.getName()).append(": ")
-                    .append(tool.getDescription()).append(" Arguments: ")
+                    .append(description).append(" args=")
                     .append(tool.getInputSchema()).append("\n");
         }
         return out.toString();
