@@ -106,8 +106,6 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path) {
 
     llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = 0;
-    params.use_mmap = true;
-    params.use_mlock = false;
     params.check_tensors = true;
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
