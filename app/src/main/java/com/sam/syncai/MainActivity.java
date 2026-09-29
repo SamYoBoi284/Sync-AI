@@ -94,6 +94,7 @@ public final class MainActivity extends Activity {
     private Runnable voiceSilenceExitRunnable;
     private Runnable voiceRestartRunnable;
     private boolean voiceOutputEnabled = true;
+    private boolean voiceStopRequestedByUser;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -139,6 +140,10 @@ public final class MainActivity extends Activity {
                         showToast(message);
                         return;
                     }
+                    if (voiceStopRequestedByUser) {
+                        voiceStopRequestedByUser = false;
+                        return;
+                    }
                     if (voiceModeStatus != null) voiceModeStatus.setText("READY");
                     if (voiceButton != null) voiceButton.setText("MIC");
                     if (!isVoiceFarewell(message)) {
@@ -147,6 +152,7 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+        voiceController.setSpeakingEnabled(voiceOutputEnabled);
         buildUi();
         boolean launchedAsVoiceAssistant = isVoiceLaunchIntent(getIntent());
         if (!launchedAsVoiceAssistant) {
@@ -364,7 +370,9 @@ public final class MainActivity extends Activity {
         }
         if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE) {
             if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) {
+                voiceStopRequestedByUser = true;
                 voiceController.stopListening();
+                cancelVoiceIdleExit();
                 if (voiceModeStatus != null) voiceModeStatus.setText("READY");
             } else {
                 startVoiceListening();
@@ -382,6 +390,7 @@ public final class MainActivity extends Activity {
             return;
         }
         voiceModeActive = true;
+        voiceStopRequestedByUser = false;
         cancelVoiceIdleExit();
         if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
         if (voiceButton != null) voiceButton.setText("STOP");
@@ -470,6 +479,7 @@ public final class MainActivity extends Activity {
 
     private void exitVoiceModePage() {
         cancelVoiceTimers();
+        voiceStopRequestedByUser = true;
         if (voiceController != null) voiceController.stopListening();
         voiceModeActive = false;
         if (voiceModeOverlay != null) voiceModeOverlay.setVisibility(View.GONE);
