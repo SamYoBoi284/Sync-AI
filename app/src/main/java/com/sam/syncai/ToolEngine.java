@@ -64,7 +64,7 @@ public final class ToolEngine {
     private static final Pattern TIMER =
             Pattern.compile("(?i)(?:timer(?:\\s+(?:for|of))?|remind me in)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)");
     private static final Pattern ALARM =
-            Pattern.compile("(?i)(?:alarm|wake me|wake up)\\s+(?:at\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
+            Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
             Pattern.compile("(?i)^(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+)$");
     private static final Pattern CALL =
@@ -148,8 +148,10 @@ public final class ToolEngine {
     }
 
     private Result handleSingle(String command) throws Exception {
-        if (command.matches(".*\\b(?:what(?:'s| is)?|tell me|give me)\\b.*\\btime\\b.*")
-                || command.matches(".*\\btime\\s+is\\s+it\\b.*")) {
+        if (command.contains("current time")
+                || command.matches(".*\\b(?:what(?:'s| is)?|tell me|give me)\\b.*\\btime\\b.*")
+                || command.matches(".*\\btime\\s+is\\s+it\\b.*")
+                || command.matches(".*\\btime\\b.*\\bnow\\b.*")) {
             return result("system_time", currentTime());
         }
 
@@ -219,6 +221,13 @@ public final class ToolEngine {
         }
 
         if (command.contains("bluetooth")) {
+            if (Build.VERSION.SDK_INT >= 31 &&
+                    context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                return new Result(true, false,
+                        "Bluetooth status needs Android's nearby-devices permission.",
+                        "bluetooth", 0, android.Manifest.permission.BLUETOOTH_CONNECT);
+            }
             android.bluetooth.BluetoothAdapter adapter =
                     android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if (adapter == null) return result("bluetooth", "Bluetooth is not available on this device.");
