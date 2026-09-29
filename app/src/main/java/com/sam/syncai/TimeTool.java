@@ -22,7 +22,7 @@ public final class TimeTool implements SyncTool {
     }
 
     @Override public String getInputSchema() {
-        return "{"query":"time|date|day|all"}";
+        return "{\"query\":\"time|date|day|all\"}";
     }
 
     @Override public String execute(Map<String, String> arguments) {
