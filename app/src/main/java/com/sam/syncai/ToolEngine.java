@@ -154,7 +154,9 @@ public final class ToolEngine {
                 || command.matches(".*\\bwhat(?:'s| is)?(?: the)? time(?: now| right now)?\\b.*")
                 || command.matches(".*\\btell me(?: the)? time\\b.*")
                 || command.matches(".*\\btime (?:is it|now|right now)\\b.*")
-                || command.contains("do you know the time")) {
+                || command.contains("do you know the time")
+                || command.matches(".*\\bwhat time (?:we got|do we have|have we got)\\b.*")
+                || command.matches(".*\\btime check\\b.*")) {
             return result("system_time", currentTime());
         }
 
@@ -367,6 +369,11 @@ public final class ToolEngine {
     private Result launchApp(String query) {
         PackageManager pm = context.getPackageManager();
         String wanted = query.toLowerCase(Locale.US).trim();
+        if ("fb".equals(wanted)) wanted = "facebook";
+        else if ("ig".equals(wanted)) wanted = "instagram";
+        else if ("wa".equals(wanted)) wanted = "whatsapp";
+        else if ("yt".equals(wanted)) wanted = "youtube";
+        else if ("dc".equals(wanted)) wanted = "discord";
         String packageName = null;
         CharSequence label = null;
 
