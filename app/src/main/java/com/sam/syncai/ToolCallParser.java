@@ -21,6 +21,22 @@ public final class ToolCallParser {
         Matcher matcher = TAGGED.matcher(text);
         if (matcher.find()) json = matcher.group(1);
 
+        // Tiny local models may omit the closing </tool_call> tag while
+        // still producing valid JSON. Treat the opening tag as sufficient
+        // to enter the tool-call parser instead of leaking raw protocol text.
+        if (json == null) {
+            String lower = text.toLowerCase(java.util.Locale.US);
+            int openTag = lower.indexOf("<tool_call>");
+            if (openTag >= 0) {
+                json = text.substring(openTag + "<tool_call>".length()).trim();
+            }
+        }
+
+        if (json != null) {
+            int closeTag = json.toLowerCase(java.util.Locale.US).indexOf("</tool_call>");
+            if (closeTag >= 0) json = json.substring(0, closeTag).trim();
+        }
+
         if (json == null) {
             String trimmed = text.trim();
             if (trimmed.startsWith("{") && trimmed.endsWith("}") &&
