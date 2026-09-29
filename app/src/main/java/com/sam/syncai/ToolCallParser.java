@@ -39,10 +39,10 @@ public final class ToolCallParser {
             if (split > 0) {
                 String head = compact.substring(0, split + 1);
                 String tail = compact.substring(split + 1);
-                String name = head.replace("{", "").replace("}", "").replace(""", "").trim();
+                String name = head.replace("{", "").replace("}", "").replace("\"", "").trim();
                 name = name.replaceFirst("(?i)^tool\\s*[:=]\\s*", "");
                 if (!name.isEmpty() && tail.trim().startsWith("{")) {
-                    json = "{\\"name\\":\\"" + name + "\\",\\"arguments\\":" + tail.trim() + "}";
+                    json = "{\"name\":\"" + name + "\",\"arguments\":" + tail.trim() + "}";
                 }
             }
         }
