@@ -95,6 +95,7 @@ public final class MainActivity extends Activity {
     private TextView voiceModeStatus;
     private TextView voiceModeTranscript;
     private TextView voiceModeResponse;
+    private TextView voiceModeOrb;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable voiceSilenceExitRunnable;
     private Runnable voiceRestartRunnable;
@@ -298,6 +299,7 @@ public final class MainActivity extends Activity {
             @Override public void runtime() { showRuntimeInfo(); }
             @Override public void memory() { openMemoryPicker(); }
             @Override public void personalization() { showPersonalizationDialog(); }
+            @Override public void tone() { showToneDialog(); }
             @Override public void about() { showAboutDialog(); }
             @Override public void assistant() { requestAssistantRole(); }
             @Override public void files() { openAttachmentPicker(); }
@@ -457,6 +459,8 @@ public final class MainActivity extends Activity {
 
     private void beginDiagnostics(String route) {
         activeDiagnostics = new RequestDiagnostics(route);
+        activeDiagnostics.setModel(currentModelName());
+        activeDiagnostics.setStage("routing");
     }
 
     private String finishDiagnostics(RequestDiagnostics diagnostics) {
@@ -570,7 +574,9 @@ public final class MainActivity extends Activity {
     private void buildVoiceModeOverlay(FrameLayout host) {
         voiceModeOverlay = new FrameLayout(this);
         voiceModeOverlay.setVisibility(View.GONE);
-        voiceModeOverlay.setBackgroundColor(Color.argb(122, 5, 7, 12));
+        // Nearly transparent: the existing chat remains visible underneath while
+        // Voice Mode provides only a lightweight interaction layer.
+        voiceModeOverlay.setBackgroundColor(Color.argb(34, 5, 7, 12));
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -590,8 +596,9 @@ public final class MainActivity extends Activity {
         page.addView(voiceModeStatus, new LinearLayout.LayoutParams(-1, dp(34)));
 
         TextView orb = text("◉", 92, accentColor, true);
+        voiceModeOrb = orb;
         orb.setGravity(Gravity.CENTER);
-        orb.setBackground(round(Color.rgb(20, 15, 34), dp(120)));
+        orb.setBackground(round(Color.argb(105, 20, 15, 34), dp(120)));
         orb.setOnClickListener(v -> {
             if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) {
                 voiceStopRequestedByUser = true;
@@ -653,6 +660,7 @@ public final class MainActivity extends Activity {
         if (voiceController != null) voiceController.stopListening();
         voiceModeActive = false;
         if (voiceModeOverlay != null) voiceModeOverlay.setVisibility(View.GONE);
+        if (voiceController != null) voiceController.releaseRecognition();
         if (voiceButton != null) voiceButton.setText("MIC");
         if (android.os.Build.VERSION.SDK_INT >= 27) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
@@ -928,8 +936,9 @@ public final class MainActivity extends Activity {
                     progress.setVisibility(View.GONE);
                     setBusy(false);
                     refreshStatus();
-                    addMessageView(ChatMessage.Role.ASSISTANT,
-                            "Model loaded. You are now running inference locally on this device.");
+                    String modelMessage = "Model loaded. You are now running inference locally on this device.";
+                    addMessageView(ChatMessage.Role.ASSISTANT, modelMessage);
+                    rememberMessage(new ChatMessage(ChatMessage.Role.ASSISTANT, modelMessage));
                 });
             }
 
@@ -1072,6 +1081,7 @@ public final class MainActivity extends Activity {
         }
 
         if (!missing.isEmpty()) {
+            if (activeDiagnostics != null) activeDiagnostics.setStage("permissions");
             pendingFastToolCalls = new java.util.ArrayList<>(toolCalls);
             pendingToolBubble = bubble;
             requestPermissions(missing.toArray(new String[0]), REQ_TOOL_PERMISSIONS);
@@ -1079,6 +1089,7 @@ public final class MainActivity extends Activity {
         }
 
         final RequestDiagnostics diagnostics = activeDiagnostics;
+        if (diagnostics != null) diagnostics.setStage("deterministic_tool_execution");
         final long toolStart = System.nanoTime();
 
         ioExecutor.execute(() -> {
@@ -1162,6 +1173,7 @@ public final class MainActivity extends Activity {
         StringBuilder response = new StringBuilder();
         GenerationConfig config = new GenerationConfig();
         final RequestDiagnostics diagnostics = activeDiagnostics;
+        if (diagnostics != null) diagnostics.setStage("llm_generation");
         final long llmStart = System.nanoTime();
 
         backend.generate(working, config, new LocalModelBackend.GenerateCallback() {
@@ -1271,6 +1283,7 @@ public final class MainActivity extends Activity {
             TextView bubble) {
         SyncTool tool = toolRegistry.get(toolCall.name);
         String result;
+        if (activeDiagnostics != null) activeDiagnostics.setStage("tool:" + toolCall.name);
         final long toolStart = System.nanoTime();
         try {
             result = tool.execute(toolCall.arguments);
@@ -1389,8 +1402,8 @@ public final class MainActivity extends Activity {
 
     private void finishGenerationWithError(TextView bubble, String message, Exception error) {
         final RequestDiagnostics diagnostics = activeDiagnostics;
-        if (diagnostics != null && error != null && diagnostics != null) {
-            diagnostics.setError(error.getMessage() == null ? error.toString() : error.getMessage());
+        if (diagnostics != null && error != null) {
+            diagnostics.setError(diagnostics.route, error.getMessage() == null ? error.toString() : error.getMessage());
         }
         final String diagnosticsText = finishDiagnostics(diagnostics);
 
@@ -1610,7 +1623,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showRuntimeInfo() {
-        String info = "Sync AI 0.2.0\n\n" +
+        String info = "Sync AI " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")\n\n" +
                 "Assistant role: " + assistantRoleStatus() + "\n" +
                 "Memory: " + (memoryManager.exists() ? "imported" : "none") + "\n" +
                 "Pending files: " + pendingAttachments.size() + "\n" +
@@ -1619,7 +1632,9 @@ public final class MainActivity extends Activity {
                 "Model format: GGUF\n" +
                 "Execution: local CPU\n" +
                 "ABI: arm64-v8a\n" +
-                "Network required for inference: no\n\n" +
+                "Network required for inference: no\n" +
+                "Mic use: Voice Mode only\n\n" +
+                "LAST REQUEST DIAGNOSTICS\n" + lastDiagnostics + "\n\n" +
                 "Models are imported into app-private storage.";
         new AlertDialog.Builder(this)
                 .setTitle("SYNC AI RUNTIME")
@@ -1706,7 +1721,10 @@ public final class MainActivity extends Activity {
         }
         cancelVoiceTimers();
         ioExecutor.shutdownNow();
-        if (voiceController != null) voiceController.shutdown();
+        if (voiceController != null) {
+            voiceController.releaseRecognition();
+            voiceController.shutdown();
+        }
         backend.unload();
         super.onDestroy();
     }
