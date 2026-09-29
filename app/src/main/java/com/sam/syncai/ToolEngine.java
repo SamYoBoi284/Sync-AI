@@ -40,17 +40,24 @@ public final class ToolEngine {
         public final String response;
         public final String toolName;
         public final long durationMs;
+        public final String permission;
 
         Result(boolean handled, boolean success, String response, String toolName, long durationMs) {
+            this(handled, success, response, toolName, durationMs, null);
+        }
+
+        Result(boolean handled, boolean success, String response, String toolName,
+               long durationMs, String permission) {
             this.handled = handled;
             this.success = success;
             this.response = response;
             this.toolName = toolName;
             this.durationMs = durationMs;
+            this.permission = permission;
         }
 
         static Result none() {
-            return new Result(false, false, "", "", 0);
+            return new Result(false, false, "", "", 0, null);
         }
     }
 
@@ -91,10 +98,18 @@ public final class ToolEngine {
             if (result.handled && result.success) remember(command, result.toolName);
             return withDuration(result, started);
         } catch (Exception e) {
+            if (e instanceof SecurityException) {
+                String permission = e.getMessage() != null && e.getMessage().contains("READ_CONTACTS")
+                        ? android.Manifest.permission.READ_CONTACTS
+                        : android.Manifest.permission.CAMERA;
+                return new Result(true, false,
+                        "Android permission is required for that action. Allow it and try again.",
+                        "permission", System.currentTimeMillis() - started, permission);
+            }
             return new Result(true, false,
                     "I couldn't complete that tool action: " +
                             (e.getMessage() == null ? e.toString() : e.getMessage()),
-                    "tool-error", System.currentTimeMillis() - started);
+                    "tool-error", System.currentTimeMillis() - started, null);
         }
     }
 
@@ -456,7 +471,7 @@ public final class ToolEngine {
 
     private static String normalize(String input) {
         return input.toLowerCase(Locale.US)
-                .replace('’', '\'')
+                .replace('’', (char)39)
                 .replaceAll("[!?;]+", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
@@ -491,6 +506,13 @@ public final class ToolEngine {
                 .replace("?", "")
                 .trim();
         return value;
+    }
+
+    public synchronized void clearContext() {
+        lastCommand = "";
+        lastTool = "";
+        lastApp = "";
+        lastContact = "";
     }
 
     private void remember(String command, String tool) {
