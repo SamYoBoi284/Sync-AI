@@ -32,6 +32,7 @@ public final class AlarmTool implements SyncTool {
         Intent intent = new Intent(AlarmClock.ACTION_SET_ALARM);
         intent.putExtra(AlarmClock.EXTRA_HOUR, hour);
         intent.putExtra(AlarmClock.EXTRA_MINUTES, minute);
+        intent.putExtra(AlarmClock.EXTRA_SKIP_UI, true);
         String message = arguments.get("message");
         if (message != null && !message.trim().isEmpty()) {
             intent.putExtra(AlarmClock.EXTRA_MESSAGE, message);
@@ -41,7 +42,8 @@ public final class AlarmTool implements SyncTool {
             throw new IllegalStateException("No alarm application can handle this request.");
         }
         context.startActivity(intent);
-        return String.format(java.util.Locale.US, "Alarm request opened for %02d:%02d.", hour, minute);
+        String label = message == null || message.trim().isEmpty() ? "Wake up" : message.trim();
+        return String.format(java.util.Locale.US, "Alarm set for %02d:%02d — %s.", hour, minute, label);
     }
 
     private static int parseInt(Map<String, String> arguments, String key) {
