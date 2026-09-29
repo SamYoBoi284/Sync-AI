@@ -118,7 +118,7 @@ public final class ToolEngine {
                 Math.max(result.durationMs, System.currentTimeMillis() - started), result.permission);
     }
 
-    private Result handleCompound(String command) {
+    private Result handleCompound(String command) throws Exception {
         String[] parts = command.split("\\s+(?:and then|then|and)\\s+");
         if (parts.length < 2) return Result.none();
 
