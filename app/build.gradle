@@ -1,5 +1,9 @@
 plugins { id 'com.android.application' }
 
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
+
 android {
     namespace 'com.sam.syncai'
     compileSdk 35
@@ -22,7 +26,8 @@ android {
                         '-DGGML_NATIVE=OFF',
                         '-DGGML_CPU_ALL_VARIANTS=ON',
                         '-DGGML_OPENMP=OFF',
-                        '-DGGML_LLAMAFILE=OFF'
+                        '-DGGML_LLAMAFILE=OFF',
+                        '-DGGML_BACKEND_DL=ON'
             }
         }
     }
@@ -44,3 +49,5 @@ android {
         }
     }
 }
+
+

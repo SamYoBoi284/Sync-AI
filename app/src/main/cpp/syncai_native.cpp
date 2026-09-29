@@ -5,15 +5,36 @@
 #include <cstring>
 #include <mutex>
 #include <string>
-#include <vector>\n#include <unistd.h>\n#include <cstdio>
+#include <vector>
+#include <unistd.h>
+#include <cstdio>
 #include <thread>
+#include <chrono>
 
 #include "llama.h"
+#include "ggml-backend.h"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SyncAI", __VA_ARGS__)
 
 static std::mutex g_mutex;
 static llama_model * g_model = nullptr;
+static std::string g_last_error;
+static double g_last_prompt_ms = 0.0;
+static double g_last_generation_ms = 0.0;
+static int g_last_generated_tokens = 0;
+static int g_last_prompt_tokens = 0;
+static int g_last_context_size = 0;
+static int g_last_threads = 0;
+static double g_last_tokens_per_second = 0.0;
+
+static void syncai_llama_log(ggml_log_level level, const char * text, void *) {
+    if (!text) return;
+    __android_log_print(level >= GGML_LOG_LEVEL_ERROR ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
+                        "SyncAI/llama.cpp", "%s", text);
+    if (level >= GGML_LOG_LEVEL_ERROR) {
+        g_last_error.append(text);
+    }
+}
 
 static std::string jstring_to_string(JNIEnv * env, jstring value) {
     if (!value) return {};
@@ -33,10 +54,23 @@ static void emit(JNIEnv * env, jobject callback, jmethodID tokenMethod, const st
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
+Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path, jstring nativeLibDir) {
+    (void) nativeLibDir;
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    if (!path) return 2;
+    if (!path) {
+        g_last_error = "No model path was provided.";
+        return 2;
+    }
+
+    g_last_error.clear();
+    llama_log_set(syncai_llama_log, nullptr);
+
+    std::string nativeDir = jstring_to_string(env, nativeLibDir);
+    if (!nativeDir.empty()) {
+        // Load the best CPU backend variant for the device at runtime.
+        ggml_backend_load_all_from_path(nativeDir.c_str());
+    }
     llama_backend_init();
 
     if (g_model) {
@@ -50,11 +84,21 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
     if (!g_model) {
+        if (g_last_error.empty()) {
+            g_last_error = "llama.cpp returned a model-load failure without an error log. Check the model format, file integrity, available RAM, and backend initialization.";
+        }
         LOGE("Failed to load GGUF model: %s", modelPath.c_str());
         return 1;
     }
 
     return 0;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_sam_syncai_GgufNative_nativeLastError(JNIEnv * env, jclass) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return env->NewStringUTF(g_last_error.c_str());
 }
 
 extern "C"
@@ -82,10 +126,24 @@ Java_com_sam_syncai_GgufNative_nativeInfo(JNIEnv * env, jclass) {
     const double paramsB = static_cast<double>(llama_model_n_params(g_model)) / 1e9;
     const int32_t trainCtx = llama_model_n_ctx_train(g_model);
 
-    char info[768];
+    char info[1024];
     snprintf(info, sizeof(info),
-             "Architecture: %s\nParameters: %.2fB\nTensor size: %.2f GiB\nTraining context: %d\nBackend: CPU",
-             desc, paramsB, sizeGiB, trainCtx);
+             "Architecture: %s\n"
+             "Parameters: %.2fB\n"
+             "Tensor size: %.2f GiB\n"
+             "Training context: %d\n"
+             "Backend: CPU\n"
+             "Last context size: %d\n"
+             "Last prompt tokens: %d\n"
+             "Last CPU threads: %d\n"
+             "Last prompt eval: %.1f ms\n"
+             "Last generation: %.1f ms\n"
+             "Last generated tokens: %d\n"
+             "Last generation speed: %.2f tok/s",
+             desc, paramsB, sizeGiB, trainCtx,
+             g_last_context_size, g_last_prompt_tokens, g_last_threads,
+             g_last_prompt_ms, g_last_generation_ms, g_last_generated_tokens,
+             g_last_tokens_per_second);
     return env->NewStringUTF(info);
 }
 
@@ -144,13 +202,18 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
     const uint32_t contextSize = static_cast<uint32_t>(
-        std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx))
+        std::min<int32_t>(1024, std::max<int32_t>(768, trainedCtx))
     );
+
+    // The prompt is submitted as one batch. Keep n_batch large enough for
+    // the complete prompt so llama_decode never receives more tokens than
+    // the context's configured batch capacity.
     ctxParams.n_ctx = contextSize;
-    ctxParams.n_batch = 512;
-    ctxParams.n_ubatch = 512;
+    ctxParams.n_batch = contextSize;
+    ctxParams.n_ubatch = contextSize;
+
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
-    const int threads = std::max(2, std::min(6, cpuCount - 1));
+    const int threads = std::max(2, std::min(8, cpuCount));
     ctxParams.n_threads = threads;
     ctxParams.n_threads_batch = threads;
 
@@ -194,14 +257,24 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const int promptCount = -llama_tokenize(
         vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
         nullptr, 0, true, true);
-    if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize)) {
+
+    g_last_context_size = static_cast<int>(contextSize);
+    g_last_threads = threads;
+
+    const int generationLimit = std::max(1, std::min(64, static_cast<int>(maxTokens)));
+    if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize) ||
+        promptCount + generationLimit >= static_cast<int>(contextSize)) {
         llama_free(ctx);
-        jstring message = env->NewStringUTF("Prompt is too large for the selected context window.");
+        jstring message = env->NewStringUTF(
+                "The prompt is too large for the selected context window. "
+                "Try removing large memory/file attachments or starting a new chat.");
         env->CallVoidMethod(callback, errorMethod, message);
         env->DeleteLocalRef(message);
         return;
     }
 
+    g_last_prompt_tokens = promptCount;
+    g_last_tokens_per_second = 0.0;
     std::vector<llama_token> tokens(promptCount);
     if (llama_tokenize(
             vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
@@ -221,6 +294,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(safeTemp));
     llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
+    const auto promptStart = std::chrono::steady_clock::now();
     llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
     if (llama_decode(ctx, batch) != 0) {
         llama_sampler_free(sampler);
@@ -231,12 +305,16 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         return;
     }
 
-    std::string pendingUtf8;
-    const int generationLimit = std::max(1, std::min(1024, static_cast<int>(maxTokens)));
+    const auto promptEnd = std::chrono::steady_clock::now();
+    g_last_prompt_ms = std::chrono::duration<double, std::milli>(promptEnd - promptStart).count();
 
+    const auto generationStart = std::chrono::steady_clock::now();
+    g_last_generated_tokens = 0;
+    std::string pendingUtf8;
     for (int generated = 0; generated < generationLimit; ++generated) {
         llama_token token = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, token)) break;
+        ++g_last_generated_tokens;
 
         char piece[256];
         int n = llama_token_to_piece(vocab, token, piece, sizeof(piece), 0, true);
@@ -249,8 +327,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         }
 
         if (!pendingUtf8.empty()) {
-            const size_t maxSafe = pendingUtf8.size();
-            size_t emitLen = maxSafe;
+            size_t emitLen = pendingUtf8.size();
             while (emitLen > 0) {
                 const unsigned char c = static_cast<unsigned char>(pendingUtf8[emitLen - 1]);
                 if ((c & 0xC0) != 0x80) break;
@@ -276,6 +353,12 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     }
 
     if (!pendingUtf8.empty()) emit(env, callback, tokenMethod, pendingUtf8);
+    const auto generationEnd = std::chrono::steady_clock::now();
+    g_last_generation_ms =
+            std::chrono::duration<double, std::milli>(generationEnd - generationStart).count();
+    g_last_tokens_per_second = g_last_generation_ms > 0.0
+            ? (static_cast<double>(g_last_generated_tokens) / (g_last_generation_ms / 1000.0))
+            : 0.0;
     llama_sampler_free(sampler);
     llama_free(ctx);
     env->CallVoidMethod(callback, completeMethod);

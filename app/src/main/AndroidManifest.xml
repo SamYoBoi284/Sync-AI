@@ -1,18 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="ru.zdevs.zarchiver" />
+    </queries>
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:allowBackup="true"
-        android:label="Sync//AI"
+        android:icon="@drawable/sync_ai_icon"
+        android:roundIcon="@drawable/sync_ai_icon"
+        android:label="Sync AI"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
+        <receiver android:name=".AlarmReceiver" android:exported="false" />
+        <activity android:name=".AlarmActivity" android:excludeFromRecents="true" android:exported="false" />
+        <activity android:name=".CanvasActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+        <service
+            android:name=".SyncVoiceInteractionService"
+            android:label="Sync AI"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+        </service>
+        <activity
+            android:name=".SyncAssistantSettingsActivity"
+            android:label="Sync AI Assistant"
+            android:exported="true" />
+        <service
+            android:name=".SyncVoiceInteractionSessionService"
+            android:label="Sync AI Voice Session"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:directBootAware="true"
+            android:exported="true" />
     </application>
 </manifest>
