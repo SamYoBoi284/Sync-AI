@@ -49,7 +49,8 @@ public final class SystemInfoTool implements SyncTool {
         if ("all".equals(query)) {
             return battery() + "\n" + network() + "\n" + wifi() + "\n" +
                     bluetooth() + "\n" + volume() + "\n" + brightness() + "\n" +
-                    ram() + "\n" + storage() + "\n" + device() + "\n" + flashlight();
+                    ram() + "\n" + storage() + "\n" + device() + "\n" + flashlight() +
+                    "\n" + currentApp() + "\n" + scheduled("alarm") + "\n" + scheduled("timer");
         }
 
         switch (query) {
