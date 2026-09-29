@@ -1413,17 +1413,16 @@ cancelVoiceTimers();
             boolean granted = grantResults.length > 0 &&
                     grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
             if (granted) {
-                if (voicePermissionRequestedForVoiceMode || voiceModeActive) {
-                    voicePermissionRequestedForVoiceMode = false;
+                voicePermissionRequestedForVoiceMode = false;
+                if (voiceModeActive) {
                     startVoiceListening();
-                } else {
-}
+                }
             } else {
                 voicePermissionRequestedForVoiceMode = false;
                 if (voiceModeActive) {
                     exitVoiceModePage();
                 }
-                showToast("Microphone permission was denied. Wake word and voice mode need microphone access.");
+                showToast("Microphone permission was denied. Voice mode needs microphone access.");
             }
             return;
         }
@@ -1445,10 +1444,11 @@ cancelVoiceTimers();
 
             if (!granted) {
                 if (fastBubble != null) {
-                    fastBubble.setText("ERROR: Required permission was denied for this tool request.");
-                    fastBubble.setTextColor(Color.rgb(255, 130, 145));
+                    finishGenerationWithError(
+                            fastBubble,
+                            "ERROR: Required permission was denied for this tool request.",
+                            null);
                 }
-                sendButton.setEnabled(true);
                 return;
             }
             executeFastTools(fastTools, fastBubble);
