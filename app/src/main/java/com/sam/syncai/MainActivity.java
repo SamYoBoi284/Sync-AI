@@ -79,6 +79,8 @@ public final class MainActivity extends Activity {
     private SideDashboard sideDashboard;
     private ProgressBar progress;
     private TextView activeAssistantBubble;
+    private boolean voiceModeActive;
+    private ToolCall pendingFastToolCall;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -91,7 +93,7 @@ public final class MainActivity extends Activity {
             @Override public void onListeningChanged(boolean listening) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText(listening ? "STOP" : "MIC"); }); }
             @Override public void onPartialText(String text) { runOnUiThread(() -> { if (input != null) input.setText(text); }); }
             @Override public void onFinalText(String text) { runOnUiThread(() -> { if (input != null) { input.setText(text); input.setSelection(input.length()); } }); }
-            @Override public void onError(String message) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText("MIC"); showToast(message); }); }
+            @Override public void onError(String message) { voiceModeActive = false; runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText("MIC"); showToast(message); }); }
         });
         buildUi();
         addMessageView(ChatMessage.Role.ASSISTANT,
@@ -259,6 +261,7 @@ public final class MainActivity extends Activity {
         if (voiceController == null || !voiceController.isAvailable()) { showToast("Speech recognition is not available on this device."); return; }
         if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) { voiceController.stopListening(); return; }
         if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO); return; }
+        voiceModeActive = true;
         voiceController.startListening();
     }
 
@@ -452,6 +455,14 @@ public final class MainActivity extends Activity {
         activeAssistantBubble.setTextColor(MUTED);
 
         sendButton.setEnabled(false);
+        // High-confidence device commands should not require a full local-model
+        // generation just to perform a simple action.
+        ToolCall fastTool = ToolIntentRouter.parse(message);
+        if (fastTool != null) {
+            executeFastTool(fastTool, activeAssistantBubble);
+            return;
+        }
+
         // Model import remains available from the side dashboard while chatting.
 
         List<ChatMessage> working = new ArrayList<>();
@@ -472,6 +483,45 @@ public final class MainActivity extends Activity {
 
         working.addAll(conversation);
         runGeneration(working, 0, activeAssistantBubble);
+    }
+
+    private void executeFastTool(ToolCall toolCall, TextView bubble) {
+        SyncTool tool = toolRegistry.get(toolCall.name);
+        if (tool == null) {
+            finishGenerationWithError(bubble, "Unknown tool requested: " + toolCall.name + ".", null);
+            return;
+        }
+
+        if ("flashlight".equals(toolCall.name) &&
+                checkSelfPermission(android.Manifest.permission.CAMERA)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendingFastToolCall = toolCall;
+            pendingToolBubble = bubble;
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_CAMERA_PERMISSION);
+            return;
+        }
+
+        ioExecutor.execute(() -> {
+            String result;
+            try {
+                result = tool.execute(toolCall.arguments);
+            } catch (Throwable t) {
+                String error = t.getMessage();
+                result = "ERROR: " + (error == null ? t.toString() : error);
+            }
+            final String finalResult = result;
+            runOnUiThread(() -> {
+                bubble.setText(finalResult);
+                bubble.setTextColor(finalResult.startsWith("ERROR:") ? Color.rgb(255, 130, 145) : TEXT);
+                conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, finalResult));
+                sendButton.setEnabled(true);
+                if (voiceModeActive && voiceController != null && !finalResult.startsWith("ERROR:")) {
+                    voiceController.speak(finalResult);
+                    voiceModeActive = false;
+                }
+                scrollToBottom();
+            });
+        });
     }
 
     private void runGeneration(List<ChatMessage> working, int toolDepth, TextView bubble) {
@@ -533,7 +583,9 @@ public final class MainActivity extends Activity {
                 }
 
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
-                if (voiceController != null) voiceController.speak(text);
+                final boolean shouldSpeak = voiceModeActive;
+                if (shouldSpeak && voiceController != null) voiceController.speak(text);
+                voiceModeActive = false;
                 runOnUiThread(() -> {
                     sendButton.setEnabled(true);
                     // Model import remains available from the side dashboard.
@@ -677,10 +729,29 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_RECORD_AUDIO) {
             boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            if (granted) voiceController.startListening(); else showToast("Microphone permission was denied.");
+            if (granted) { voiceModeActive = true; voiceController.startListening(); } else { voiceModeActive = false; showToast("Microphone permission was denied."); }
             return;
         }
         if (requestCode != REQ_CAMERA_PERMISSION) return;
+
+        if (pendingFastToolCall != null) {
+            ToolCall fastTool = pendingFastToolCall;
+            TextView fastBubble = pendingToolBubble;
+            pendingFastToolCall = null;
+            pendingToolBubble = null;
+            boolean granted = grantResults.length > 0 &&
+                    grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (!granted) {
+                if (fastBubble != null) {
+                    fastBubble.setText("ERROR: Camera permission is required to control the flashlight.");
+                    fastBubble.setTextColor(Color.rgb(255, 130, 145));
+                }
+                sendButton.setEnabled(true);
+                return;
+            }
+            executeFastTool(fastTool, fastBubble);
+            return;
+        }
 
         ToolCall toolCall = pendingPermissionToolCall;
         List<ChatMessage> working = pendingWorkingMessages;
