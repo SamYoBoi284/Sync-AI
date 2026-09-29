@@ -27,11 +27,14 @@ public final class CanvasManager {
     public static void write(Context context, String title, String body) throws Exception {
         String safeTitle = title == null || title.trim().isEmpty() ? "Untitled Canvas" : title.trim();
         String safeBody = body == null ? "" : body;
-        String content = safeTitle + "\n\n" + safeBody;
+        writeRaw(context, safeTitle + "\n\n" + safeBody);
+    }
+
+    public static void writeRaw(Context context, String content) throws Exception {
+        if (content == null) content = "";
         if (content.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) {
             throw new IllegalArgumentException("Canvas is limited to 1 MB.");
         }
-        File file = file(context);
-        Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
+        Files.write(file(context).toPath(), content.getBytes(StandardCharsets.UTF_8));
     }
 }
