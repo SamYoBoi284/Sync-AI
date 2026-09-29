@@ -475,6 +475,19 @@ public final class MainActivity extends Activity {
         return model == null ? "none" : model.name;
     }
 
+    private void showToneDialog() {
+        int selected = PersonalizationManager.getToneIndex(this);
+        new AlertDialog.Builder(this)
+                .setTitle("ASSISTANT TONE")
+                .setSingleChoiceItems(PersonalizationManager.TONE_NAMES, selected, (dialog, which) -> {
+                    PersonalizationManager.setTone(this, which);
+                    dialog.dismiss();
+                    showToast("Assistant tone: " + PersonalizationManager.getToneName(this));
+                })
+                .setNegativeButton("CLOSE", null)
+                .show();
+    }
+
     private void showPersonalizationDialog() {
         int selected = PersonalizationManager.getAccentIndex(this);
         String[] names = PersonalizationManager.NAMES;
