@@ -3,10 +3,13 @@ package com.sam.syncai;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 
 import java.util.ArrayList;
 import java.util.Locale;
@@ -14,6 +17,7 @@ import java.util.Locale;
 public final class VoiceController {
     public interface Listener {
         void onListeningChanged(boolean listening);
+        void onSpeechStarted();
         void onPartialText(String text);
         void onFinalText(String text);
         void onError(String message);
@@ -25,6 +29,7 @@ public final class VoiceController {
     private TextToSpeech tts;
     private boolean ttsReady;
     private boolean speakingEnabled = false;
+    private Runnable speechDoneCallback;
 
     public VoiceController(Context context, Listener listener) {
         this.context = context.getApplicationContext();
@@ -35,7 +40,9 @@ public final class VoiceController {
                 @Override public void onReadyForSpeech(Bundle params) {
                     listener.onListeningChanged(true);
                 }
-                @Override public void onBeginningOfSpeech() { }
+                @Override public void onBeginningOfSpeech() {
+                    listener.onSpeechStarted();
+                }
                 @Override public void onRmsChanged(float rmsdB) { }
                 @Override public void onBufferReceived(byte[] buffer) { }
                 @Override public void onEndOfSpeech() {
@@ -60,7 +67,28 @@ public final class VoiceController {
 
         tts = new TextToSpeech(this.context, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
-            if (ttsReady) tts.setLanguage(Locale.getDefault());
+            if (ttsReady) {
+                tts.setLanguage(Locale.getDefault());
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    private void finishSpeech() {
+                        Runnable done = speechDoneCallback;
+                        speechDoneCallback = null;
+                        if (done != null) {
+                            new Handler(Looper.getMainLooper()).post(done);
+                        }
+                    }
+
+                    @Override public void onStart(String utteranceId) { }
+
+                    @Override public void onDone(String utteranceId) {
+                        finishSpeech();
+                    }
+
+                    @Override public void onError(String utteranceId) {
+                        finishSpeech();
+                    }
+                });
+            }
         });
     }
 
@@ -100,12 +128,21 @@ public final class VoiceController {
     }
 
     public void speak(String text) {
-        if (!speakingEnabled || !ttsReady || text == null || text.trim().isEmpty()) return;
+        speak(text, null);
+    }
+
+    public void speak(String text, Runnable onDone) {
+        if (!speakingEnabled || !ttsReady || text == null || text.trim().isEmpty()) {
+            if (onDone != null) onDone.run();
+            return;
+        }
+        speechDoneCallback = onDone;
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "syncai-response");
     }
 
     public void shutdown() {
         if (recognizer != null) recognizer.destroy();
+        speechDoneCallback = null;
         if (tts != null) {
             tts.stop();
             tts.shutdown();
