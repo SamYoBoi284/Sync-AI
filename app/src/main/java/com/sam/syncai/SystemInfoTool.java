@@ -38,7 +38,7 @@ public final class SystemInfoTool implements SyncTool {
     }
 
     @Override public String getInputSchema() {
-        return "{"query":"battery|charging|wifi|bluetooth|volume|brightness|ram|storage|device|network|flashlight|all"}";
+        return "{\"query\":\"battery|charging|wifi|bluetooth|volume|brightness|ram|storage|device|network|flashlight|current_app|alarms|timers|all\"}";
     }
 
     @Override public String execute(Map<String, String> arguments) {
