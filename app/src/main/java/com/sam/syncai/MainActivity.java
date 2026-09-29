@@ -252,7 +252,12 @@ public final class MainActivity extends Activity {
         frame.addView(edgeSwipeZone, new FrameLayout.LayoutParams(-1, -1));
 
         sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
-            @Override public void newChat() { conversation.clear(); messageContainer.removeAllViews(); addMessageView(ChatMessage.Role.ASSISTANT, "New chat started. What are we building?"); }
+            @Override public void newChat() {
+                conversation.clear();
+                ToolIntentRouter.clearContext();
+                messageContainer.removeAllViews();
+                addMessageView(ChatMessage.Role.ASSISTANT, "New chat started. What are we building?");
+            }
             @Override public void models() { showModelsDialog(); }
             @Override public void importModel() { openModelPicker(); }
             @Override public void runtime() { showRuntimeInfo(); }
@@ -726,7 +731,7 @@ public final class MainActivity extends Activity {
 
         // Keep the native prompt small on a 4 GB phone. The latest turns carry
         // the useful conversational state; older turns can remain in the UI.
-        int historyStart = Math.max(0, conversation.size() - 8);
+        int historyStart = Math.max(0, conversation.size() - 6);
         for (int i = historyStart; i < conversation.size(); i++) {
             ChatMessage msg = conversation.get(i);
             String text = msg.text == null ? "" : msg.text;
@@ -765,6 +770,9 @@ public final class MainActivity extends Activity {
                 bubble.setText(finalResult);
                 bubble.setTextColor(finalResult.startsWith("ERROR:") ? Color.rgb(255, 130, 145) : TEXT);
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, finalResult));
+                if (!finalResult.startsWith("ERROR:")) {
+                    ToolIntentRouter.rememberSuccessfulTool(toolCall);
+                }
                 sendButton.setEnabled(true);
                 if (voiceModeActive && voiceController != null && !finalResult.startsWith("ERROR:")) {
                     updateVoiceResponse(finalResult);
@@ -884,6 +892,10 @@ public final class MainActivity extends Activity {
                 return;
             }
             result = "ERROR: App fallback confirmation data was malformed.";
+        }
+
+        if (!result.startsWith("ERROR:")) {
+            ToolIntentRouter.rememberSuccessfulTool(toolCall);
         }
 
         working.add(new ChatMessage(
