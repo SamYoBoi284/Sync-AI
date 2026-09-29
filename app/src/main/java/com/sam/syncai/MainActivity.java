@@ -434,13 +434,28 @@ public final class MainActivity extends Activity {
     }
 
     private void sendMessage() {
+        String message = input.getText().toString().trim();
+        if (message.isEmpty()) return;
+
+        // Deterministic common actions do not require a loaded model.
+        ToolCall fastTool = ToolIntentRouter.parse(message);
+        if (fastTool != null) {
+            input.setText("");
+            hideKeyboard();
+            conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
+            addMessageView(ChatMessage.Role.USER, message);
+            activeAssistantBubble = addMessageView(ChatMessage.Role.ASSISTANT, "");
+            activeAssistantBubble.setText("Working…");
+            activeAssistantBubble.setTextColor(MUTED);
+            sendButton.setEnabled(false);
+            executeFastTool(fastTool, activeAssistantBubble);
+            return;
+        }
+
         if (!backend.isLoaded()) {
             showToast("Load a GGUF model first.");
             return;
         }
-
-        String message = input.getText().toString().trim();
-        if (message.isEmpty()) return;
 
         input.setText("");
         hideKeyboard();
@@ -455,13 +470,6 @@ public final class MainActivity extends Activity {
         activeAssistantBubble.setTextColor(MUTED);
 
         sendButton.setEnabled(false);
-        // High-confidence device commands should not require a full local-model
-        // generation just to perform a simple action.
-        ToolCall fastTool = ToolIntentRouter.parse(message);
-        if (fastTool != null) {
-            executeFastTool(fastTool, activeAssistantBubble);
-            return;
-        }
 
         // Model import remains available from the side dashboard while chatting.
 
