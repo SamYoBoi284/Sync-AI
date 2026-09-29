@@ -147,10 +147,6 @@ public final class MainActivity extends Activity {
         title.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-        Button settingsButton = actionButton("⚙");
-        settingsButton.setTextSize(20);
-        settingsButton.setOnClickListener(v -> { if (sideDashboard != null) sideDashboard.open(); });
-        header.addView(settingsButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
         contentRoot.addView(header);
 
         LinearLayout statusCard = card();
@@ -225,28 +221,35 @@ public final class MainActivity extends Activity {
         FrameLayout edgeSwipeZone = new FrameLayout(this);
         edgeSwipeZone.setBackgroundColor(Color.TRANSPARENT);
         final float[] swipeStart = new float[2];
+        final boolean[] trackingEdgeSwipe = new boolean[1];
         edgeSwipeZone.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
                 case android.view.MotionEvent.ACTION_DOWN:
+                    trackingEdgeSwipe[0] = event.getX() <= dp(32);
+                    if (!trackingEdgeSwipe[0]) return false;
                     swipeStart[0] = event.getX();
                     swipeStart[1] = event.getY();
                     return true;
                 case android.view.MotionEvent.ACTION_MOVE:
+                    if (!trackingEdgeSwipe[0]) return false;
                     float dx = event.getX() - swipeStart[0];
                     float dy = Math.abs(event.getY() - swipeStart[1]);
-                    if (dx > dp(72) && dx > dy * 1.35f) {
+                    if (dx > dp(56) && dx > dy * 1.35f) {
                         if (sideDashboard != null && !sideDashboard.isOpen()) sideDashboard.open();
-                        return true;
+                        trackingEdgeSwipe[0] = false;
                     }
                     return true;
                 case android.view.MotionEvent.ACTION_UP:
                 case android.view.MotionEvent.ACTION_CANCEL:
+                    trackingEdgeSwipe[0] = false;
                     return true;
                 default:
-                    return true;
+                    return trackingEdgeSwipe[0];
             }
         });
-        frame.addView(edgeSwipeZone, new FrameLayout.LayoutParams(dp(30), -1, Gravity.START));
+        // The zone spans the screen so the finger can travel beyond the original
+        // 32dp edge while the listener only captures gestures that started there.
+        frame.addView(edgeSwipeZone, new FrameLayout.LayoutParams(-1, -1));
 
         sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
             @Override public void newChat() { conversation.clear(); messageContainer.removeAllViews(); addMessageView(ChatMessage.Role.ASSISTANT, "New chat started. What are we building?"); }
@@ -262,7 +265,6 @@ public final class MainActivity extends Activity {
                 voiceController.setSpeakingEnabled(!voiceController.isSpeakingEnabled());
                 showToast(voiceController.isSpeakingEnabled() ? "Voice output enabled." : "Voice output disabled.");
             }
-            @Override public void openSettings() { }
         });
 
         buildVoiceModeOverlay(frame);
