@@ -170,7 +170,6 @@ public final class ToolIntentRouter {
         java.util.List<MatcherData> matches = new java.util.ArrayList<>();
 
         while (matcher.find()) {
-            if (!isCommandContext(text, matcher.start())) continue;
             matches.add(new MatcherData(
                     matcher.start(), matcher.end(),
                     matcher.group(1), matcher.group(2), matcher.group(3)));
@@ -200,6 +199,7 @@ public final class ToolIntentRouter {
                 .matcher(text == null ? "" : text);
         if (!m.find()) return fallback;
         String label = m.group(1).trim();
+        label = label.replaceAll("(?i)\\s+(?:and|then)\\s*$", "").trim();
         return label.isEmpty() ? fallback : label;
     }
 
@@ -301,6 +301,7 @@ public final class ToolIntentRouter {
 
     private static String cleanTrailingWords(String value) {
         String result = value == null ? "" : value.trim();
+        result = result.replaceFirst("(?i)^my\\s+", "").trim();
         result = result.replaceAll("(?i)\\s+(?:please|now|for me)$", "").trim();
         result = result.replaceAll("(?i)\\s+app$", "").trim();
         return result;
