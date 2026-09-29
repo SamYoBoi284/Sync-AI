@@ -195,7 +195,8 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
                     @Override public void onStart(String id) {}
                     @Override public void onDone(String id) {
                         main.postDelayed(() -> {
-                            if (!destroyed && !processing.get()) startListening();
+                            processing.set(false);
+                            if (!destroyed) startListening();
                         }, 350);
                     }
                     @Override public void onError(String id) {
@@ -351,7 +352,6 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
             ChatMessage m = active.messages.get(i);
             messages.add(new ChatMessage(m.role, m.text));
         }
-        messages.add(new ChatMessage(ChatMessage.Role.USER, current));
         return messages;
     }
 
