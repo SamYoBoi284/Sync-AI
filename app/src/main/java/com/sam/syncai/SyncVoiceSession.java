@@ -123,6 +123,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         configureWindow();
         initSpeech();
         initTts();
+        restoreSelectedModel();
         startListeningOrRequestPermission();
     }
 
@@ -205,6 +206,22 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
                         }, 350);
                     }
                 });
+            }
+        });
+    }
+
+    private void restoreSelectedModel() {
+        if (runtime.backend().isLoaded()) return;
+        ModelInfo model = runtime.modelManager().getLoadedModel();
+        if (model == null) return;
+        updateState("LOADING MODEL");
+        runtime.backend().load(model, new LocalModelBackend.LoadCallback() {
+            @Override public void onLoaded() {
+                main.post(() -> updateState("LISTENING"));
+            }
+            @Override public void onError(Exception error) {
+                main.post(() -> responseView.setText(
+                        "Model load failed; deterministic tools remain available."));
             }
         });
     }
