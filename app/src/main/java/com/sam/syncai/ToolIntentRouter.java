@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 public final class ToolIntentRouter {
     private static final Pattern FLASHLIGHT = Pattern.compile(
-            "(?i)\\b(?:(?:turn|switch|toggle)\\s+)?(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\b|\\b(?:turn|switch|toggle)\\s+(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\b");
+            "(?i)\\b(?:(?:turn|switch|toggle)\\s+)?(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\b|\\b(?:turn|switch|toggle)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\s+(on|off)\\b|\\b(?:flashlight|torch)\\s+(on|off)\\b");
     private static final Pattern CALL_CONTACT = Pattern.compile(
             "(?i)\\b(?:call|phone|ring|dial)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|[.!?,;]|$)");
     private static final Pattern OPEN_APP = Pattern.compile(
@@ -16,9 +16,9 @@ public final class ToolIntentRouter {
     private static final Pattern CALCULATE = Pattern.compile(
             "(?i)\\b(?:calculate|compute|work\\s+out|solve|what\\s+is|what's|whats|how\\s+much\\s+is|how\\s+many)\\s+(.+?)(?=\\s+(?:please|now|for me)\\b|[?!;]|$)");
     private static final Pattern ALARM_TIME = Pattern.compile(
-            "(?i)(?:(?:set|create|schedule|add)\\s+(?:an?\\s+)?alarm\\s+(?:for|at)|(?:and\\s+)?(?:another\\s+(?:alarm|one)|one\\s+more)\\s+(?:for|at))\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b");
+            "(?i)(?:(?:set|create|schedule|add)\\s+(?:an?\\s+)?alarm\\s+(?:for|at)|(?:wake\\s+me(?:\\s+up)?|remind\\s+me)\\s+(?:for|at)|(?:and\\s+)?(?:another\\s+(?:alarm|one)|one\\s+more)\\s+(?:for|at)|(?:set)\\s+another\\s+(?:alarm|one)\\s+(?:for|at))\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b");
     private static final Pattern TIMER = Pattern.compile(
-            "(?i)\\b(?:set|start|create|make)\\s+(?:a\\s+)?timer(?:\\s+(?:for|of|at))?\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+            "(?i)\\b(?:set|start|create|make)\\s+(?:a\\s+)?timer(?:\\s+(?:for|of|at))?\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b|\\b(?:remind|notify)\\s+me\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
     private static final Pattern STANDALONE_MATH = Pattern.compile(
             "^[0-9.\\s()+*/%^-]+$");
     private static final Pattern CREATE_FILE = Pattern.compile(
@@ -83,7 +83,8 @@ public final class ToolIntentRouter {
         Matcher m = FLASHLIGHT.matcher(text);
         while (m.find()) {
             if (!isCommandContext(text, m.start())) continue;
-            String state = m.group(1);
+            String state = m.group(1) != null ? m.group(1) :
+                    (m.group(2) != null ? m.group(2) : m.group(3));
             Map<String, String> args = new LinkedHashMap<>();
             args.put("enabled", Boolean.toString("on".equalsIgnoreCase(state)));
             calls.add(new ToolCall("flashlight", args));
@@ -108,8 +109,10 @@ public final class ToolIntentRouter {
         m = TIMER.matcher(text);
         while (m.find()) {
             if (!isCommandContext(text, m.start())) continue;
-            double amount = Double.parseDouble(m.group(1));
-            String unit = m.group(2).toLowerCase(Locale.US);
+            String amountText = m.group(1) != null ? m.group(1) : m.group(2);
+            String unitText = m.group(2) != null ? m.group(2) : m.group(3);
+            double amount = Double.parseDouble(amountText);
+            String unit = unitText.toLowerCase(Locale.US);
             int seconds;
             if (unit.startsWith("hour") || unit.startsWith("hr")) {
                 seconds = (int) Math.round(amount * 3600.0);
@@ -210,6 +213,7 @@ public final class ToolIntentRouter {
 
     private static String normalizeMathWords(String value) {
         return value.toLowerCase(Locale.US)
+                .replaceAll("(\\d+(?:\\.\\d+)?)\\s*(?:percent|%)\\s+of\\s+(\\d+(?:\\.\\d+)?)", "$1*0.01*$2")
                 .replaceAll("\\bmultiplied\\s+by\\b", "*")
                 .replaceAll("\\btimes\\b", "*")
                 .replaceAll("\\bdivided\\s+by\\b", "/")
