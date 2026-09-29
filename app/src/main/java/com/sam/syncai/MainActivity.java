@@ -632,7 +632,7 @@ public final class MainActivity extends Activity {
 
     private void enterVoiceModePage(boolean autoListen) {
         if (voiceModeOverlay == null) return;
-cancelVoiceTimers();
+        cancelVoiceTimers();
         voiceModeActive = true;
         voiceModeOverlay.setVisibility(View.VISIBLE);
         voiceModeTranscript.setText("Tap the orb and speak.");
@@ -660,7 +660,7 @@ cancelVoiceTimers();
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
-}
+    }
 
     private void updateVoiceTranscript(String text) {
         if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE &&
@@ -1692,17 +1692,19 @@ cancelVoiceTimers();
     @Override
     protected void onResume() {
         super.onResume();
-        if (!voiceModeActive) {
-}
     }
 
     @Override
     protected void onPause() {
-super.onPause();
+        super.onPause();
     }
 
-    @Override protected void onDestroy() {
-cancelVoiceTimers();
+    @Override
+    protected void onDestroy() {
+        if (chatHistoryStore != null) {
+            chatHistoryStore.saveActive(conversation);
+        }
+        cancelVoiceTimers();
         ioExecutor.shutdownNow();
         if (voiceController != null) voiceController.shutdown();
         backend.unload();
