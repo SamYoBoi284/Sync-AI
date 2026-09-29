@@ -1,6 +1,8 @@
 package com.sam.syncai;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import com.openwakeword.OpenWakeWord;
@@ -23,8 +25,11 @@ public final class WakeWordController {
 
     private final Context context;
     private final Listener listener;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
     private OpenWakeWord detector;
     private volatile boolean running;
+    private volatile boolean stopping;
 
     public WakeWordController(Context context, Listener listener) {
         this.context = context.getApplicationContext();
@@ -35,8 +40,16 @@ public final class WakeWordController {
         return running;
     }
 
+    public boolean isStopping() {
+        return stopping;
+    }
+
     public synchronized void start() {
         if (running) return;
+        if (stopping) {
+            mainHandler.postDelayed(this::start, 350L);
+            return;
+        }
 
         try {
             if (detector == null) {
@@ -63,24 +76,52 @@ public final class WakeWordController {
     }
 
     public synchronized void stop() {
-        if (!running) return;
+        if (!running || stopping) return;
+
         running = false;
-        try {
-            if (detector != null) detector.stop();
-        } catch (Throwable error) {
-            Log.w(TAG, "Wake-word stop failed", error);
+        stopping = true;
+
+        final OpenWakeWord current = detector;
+        if (current == null) {
+            stopping = false;
+            return;
         }
+
+        // openWakeWord waits for its processing thread during stop(). Never
+        // block Android's main thread after a hotword detection.
+        Thread stopThread = new Thread(() -> {
+            try {
+                current.stop();
+            } catch (Throwable error) {
+                Log.w(TAG, "Wake-word stop failed", error);
+            } finally {
+                stopping = false;
+            }
+        }, "SyncWakeWordStop");
+        stopThread.start();
     }
 
     public synchronized void release() {
         running = false;
-        if (detector != null) {
+        stopping = true;
+
+        final OpenWakeWord current = detector;
+        detector = null;
+
+        if (current == null) {
+            stopping = false;
+            return;
+        }
+
+        Thread releaseThread = new Thread(() -> {
             try {
-                detector.release();
+                current.release();
             } catch (Throwable error) {
                 Log.w(TAG, "Wake-word release failed", error);
+            } finally {
+                stopping = false;
             }
-            detector = null;
-        }
+        }, "SyncWakeWordRelease");
+        releaseThread.start();
     }
 }
