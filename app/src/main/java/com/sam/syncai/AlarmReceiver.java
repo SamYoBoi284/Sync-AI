@@ -9,7 +9,6 @@ import android.content.Intent;
 import android.media.RingtoneManager;
 import android.os.Build;
 
-import androidx.core.app.NotificationCompat;
 
 public final class AlarmReceiver extends BroadcastReceiver {
     public static final String EXTRA_LABEL = "label";
@@ -45,17 +44,28 @@ public final class AlarmReceiver extends BroadcastReceiver {
                 alarmIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        android.app.Notification notification =
-                new NotificationCompat.Builder(context, CHANNEL_ID)
-                        .setSmallIcon(com.sam.syncai.R.drawable.sync_ai_icon)
-                        .setContentTitle("Sync AI alarm")
-                        .setContentText(label)
-                        .setCategory(android.app.Notification.CATEGORY_ALARM)
-                        .setPriority(NotificationCompat.PRIORITY_MAX)
-                        .setAutoCancel(false)
-                        .setOngoing(true)
-                        .setFullScreenIntent(fullScreen, true)
-                        .build();
+        android.app.Notification notification;
+        if (Build.VERSION.SDK_INT >= 26) {
+            notification = new android.app.Notification.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(com.sam.syncai.R.drawable.sync_ai_icon)
+                    .setContentTitle("Sync AI alarm")
+                    .setContentText(label)
+                    .setCategory(android.app.Notification.CATEGORY_ALARM)
+                    .setAutoCancel(false)
+                    .setOngoing(true)
+                    .setFullScreenIntent(fullScreen, true)
+                    .build();
+        } else {
+            notification = new android.app.Notification.Builder(context)
+                    .setSmallIcon(com.sam.syncai.R.drawable.sync_ai_icon)
+                    .setContentTitle("Sync AI alarm")
+                    .setContentText(label)
+                    .setCategory(android.app.Notification.CATEGORY_ALARM)
+                    .setAutoCancel(false)
+                    .setOngoing(true)
+                    .setContentIntent(fullScreen)
+                    .build();
+        }
 
         manager.notify(0x534E43, notification);
     }
