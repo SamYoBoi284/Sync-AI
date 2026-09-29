@@ -164,6 +164,15 @@ public final class MainActivity extends Activity {
         restoreLoadedModel();
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (isVoiceLaunchIntent(intent)) {
+            runOnUiThread(() -> enterVoiceModePage(true));
+        }
+    }
+
     private void buildUi() {
         LinearLayout contentRoot = new LinearLayout(this);
         contentRoot.setOrientation(LinearLayout.VERTICAL);
@@ -395,7 +404,6 @@ public final class MainActivity extends Activity {
         if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
         if (voiceButton != null) voiceButton.setText("STOP");
         voiceController.startListening();
-        scheduleVoiceIdleExit();
     }
 
     private void buildVoiceModeOverlay(FrameLayout host) {
@@ -425,7 +433,9 @@ public final class MainActivity extends Activity {
         orb.setBackground(round(Color.rgb(20, 15, 34), dp(120)));
         orb.setOnClickListener(v -> {
             if (voiceButton != null && "STOP".contentEquals(voiceButton.getText())) {
+                voiceStopRequestedByUser = true;
                 voiceController.stopListening();
+                cancelVoiceIdleExit();
                 if (voiceModeStatus != null) voiceModeStatus.setText("READY");
                 if (voiceButton != null) voiceButton.setText("MIC");
             } else {
