@@ -115,7 +115,7 @@ public final class MainActivity extends Activity {
         menuButton.setOnClickListener(v -> { if (sideDashboard != null) sideDashboard.open(); });
         header.addView(menuButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        TextView title = text("SYNC//AI", 25, TEXT, true);
+        TextView title = text("SYNC AI", 25, TEXT, true);
         title.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
 
@@ -825,7 +825,7 @@ public final class MainActivity extends Activity {
         bubble.setPadding(dp(14), dp(10), dp(14), dp(10));
         bubble.setBackground(round(user ? Color.rgb(48, 31, 76) : Color.rgb(18, 22, 33), dp(16)));
 
-        TextView label = text(user ? "YOU" : "SYNC//AI", 10,
+        TextView label = text(user ? "YOU" : "SYNC AI", 10,
                 user ? Color.rgb(210, 176, 255) : CYAN, true);
         bubble.addView(label);
 
@@ -935,7 +935,7 @@ public final class MainActivity extends Activity {
                 "Network required for inference: no\n\n" +
                 "Models are imported into app-private storage.";
         new AlertDialog.Builder(this)
-                .setTitle("SYNC//AI RUNTIME")
+                .setTitle("SYNC AI RUNTIME")
                 .setMessage(info)
                 .setPositiveButton("OK", null)
                 .show();
