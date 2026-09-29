@@ -6,10 +6,12 @@ import android.util.Log;
 import com.openwakeword.OpenWakeWord;
 
 /**
- * Small wrapper around openWakeWord.
+ * On-device wake-word wrapper.
  *
- * First pass intentionally uses the bundled HEY_JARVIS model so we can verify
- * the complete on-device wake-word pipeline before training a custom model.
+ * The selected VoiceInteractionService owns the background detector.
+ * MainActivity may use a short-lived instance while the app is visible so the
+ * feature can still be tested before Samsung has attached the app as the
+ * system assistant.
  */
 public final class WakeWordController {
     public interface Listener {
@@ -22,7 +24,7 @@ public final class WakeWordController {
     private final Context context;
     private final Listener listener;
     private OpenWakeWord detector;
-    private boolean running;
+    private volatile boolean running;
 
     public WakeWordController(Context context, Listener listener) {
         this.context = context.getApplicationContext();
@@ -33,14 +35,14 @@ public final class WakeWordController {
         return running;
     }
 
-    public void start() {
+    public synchronized void start() {
         if (running) return;
 
         try {
             if (detector == null) {
                 detector = new OpenWakeWord.Builder(context)
                         .setModel(OpenWakeWord.BuiltInModel.HEY_JARVIS)
-                        .setThreshold(0.35f)
+                        .setThreshold(0.30f)
                         .setDebounceMs(1800L)
                         .build();
             }
@@ -49,18 +51,18 @@ public final class WakeWordController {
             Log.i(TAG, "Starting HEY_JARVIS detector.");
             detector.start(score -> {
                 if (!running) return;
-                Log.d(TAG, "HEY_JARVIS detected, score=" + score);
+                Log.i(TAG, "HEY_JARVIS detected, score=" + score);
                 listener.onWakeWordDetected(score);
             });
         } catch (Throwable error) {
             running = false;
-            Log.e(TAG, "Wake-word detector failed", error);
+            Log.e(TAG, "Wake-word detector failed to start", error);
             listener.onWakeWordError(
-                    error.getMessage() == null ? "Wake-word detector failed." : error.getMessage());
+                    error.getMessage() == null ? "Wake-word detector failed to start." : error.getMessage());
         }
     }
 
-    public void stop() {
+    public synchronized void stop() {
         if (!running) return;
         running = false;
         try {
@@ -70,16 +72,13 @@ public final class WakeWordController {
         }
     }
 
-    public void release() {
+    public synchronized void release() {
         running = false;
         if (detector != null) {
             try {
-                detector.stop();
-            } catch (Throwable ignored) {
-            }
-            try {
                 detector.release();
-            } catch (Throwable ignored) {
+            } catch (Throwable error) {
+                Log.w(TAG, "Wake-word release failed", error);
             }
             detector = null;
         }
