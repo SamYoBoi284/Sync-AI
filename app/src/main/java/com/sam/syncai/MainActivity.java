@@ -1007,6 +1007,8 @@ public final class MainActivity extends Activity {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
 
+        final long routingStart = System.nanoTime();
+
         // Deterministic common actions do not require a loaded model.
         String normalizedMessage = message.toLowerCase(Locale.US).replaceAll("[^a-z0-9 ]", "").trim();
         if (normalizedMessage.equals("hi") || normalizedMessage.equals("hello") ||
@@ -1017,9 +1019,11 @@ public final class MainActivity extends Activity {
                 normalizedMessage.matches("how you doing( today)?") ||
                 normalizedMessage.matches("hows it going( today)?") ||
                 normalizedMessage.equals("how is it going")) {
+            beginDiagnostics("SMALL_TALK");
+            activeDiagnostics.addRouting(System.nanoTime() - routingStart);
             input.setText("");
             hideKeyboard();
-            conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
+            rememberMessage(new ChatMessage(ChatMessage.Role.USER, message));
             addMessageView(ChatMessage.Role.USER, message);
             String reply = normalizedMessage.equals("hi") || normalizedMessage.equals("hello") ||
                     normalizedMessage.equals("hey") || normalizedMessage.equals("yo") ||
@@ -1027,7 +1031,8 @@ public final class MainActivity extends Activity {
                     ? "Hey bro 👋"
                     : "I’m good bro 😎 just here and ready. What we building?";
             addMessageView(ChatMessage.Role.ASSISTANT, reply);
-            conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, reply));
+            String diagnostics = finishDiagnostics(activeDiagnostics);
+            rememberMessage(new ChatMessage(ChatMessage.Role.ASSISTANT, reply, diagnostics));
             if (voiceModeActive) {
                 finishVoiceResponse(reply);
             }
@@ -1036,9 +1041,11 @@ public final class MainActivity extends Activity {
 
         List<ToolCall> fastTools = ToolIntentRouter.parseAll(message);
         if (!fastTools.isEmpty()) {
+            beginDiagnostics("DETERMINISTIC_TOOL");
+            activeDiagnostics.addRouting(System.nanoTime() - routingStart);
             input.setText("");
             hideKeyboard();
-            conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
+            rememberMessage(new ChatMessage(ChatMessage.Role.USER, message));
             addMessageView(ChatMessage.Role.USER, message);
             activeAssistantBubble = addMessageView(ChatMessage.Role.ASSISTANT, "");
             activeAssistantBubble.setText("Working…");
@@ -1053,12 +1060,15 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        beginDiagnostics("LLM");
+        activeDiagnostics.addRouting(System.nanoTime() - routingStart);
+
         input.setText("");
         hideKeyboard();
         List<FileAttachment> attachmentsForMessage = new ArrayList<>(pendingAttachments);
         pendingAttachments.clear();
         if (attachButton != null) attachButton.setText("FILE");
-        conversation.add(new ChatMessage(ChatMessage.Role.USER, message));
+        rememberMessage(new ChatMessage(ChatMessage.Role.USER, message));
         addMessageView(ChatMessage.Role.USER, message);
 
         activeAssistantBubble = addMessageView(ChatMessage.Role.ASSISTANT, "");
@@ -1083,10 +1093,6 @@ public final class MainActivity extends Activity {
                 attachmentContext.append("\n---\n").append(attachment.promptBlock()).append("\n");
             }
             working.add(new ChatMessage(ChatMessage.Role.SYSTEM, attachmentContext.toString()));
-        }
-
-        if (activeDiagnostics != null) {
-            activeDiagnostics.addRouting(0);
         }
 
         // Keep the native prompt small on a 4 GB phone. The latest turns carry
@@ -1130,6 +1136,9 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        final RequestDiagnostics diagnostics = activeDiagnostics;
+        final long toolStart = System.nanoTime();
+
         ioExecutor.execute(() -> {
             StringBuilder results = new StringBuilder();
             boolean anyError = false;
@@ -1157,9 +1166,17 @@ public final class MainActivity extends Activity {
             final String finalResult = results.toString();
             final boolean finalError = anyError;
             runOnUiThread(() -> {
+                String diagnosticsText = "";
+                if (diagnostics != null) {
+                    diagnostics.addTool(System.nanoTime() - toolStart);
+                    if (finalError) diagnostics.setError("One or more deterministic tools returned an error.");
+                    diagnosticsText = finishDiagnostics(diagnostics);
+                }
+
                 bubble.setText(finalResult);
                 bubble.setTextColor(finalError ? Color.rgb(255, 130, 145) : TEXT);
-                conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, finalResult));
+                rememberMessage(new ChatMessage(
+                        ChatMessage.Role.ASSISTANT, finalResult, diagnosticsText));
                 sendButton.setEnabled(true);
                 if (voiceModeActive && !finalError) {
                     finishVoiceResponse(finalResult);
