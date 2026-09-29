@@ -34,7 +34,8 @@ public final class VoiceController {
     public VoiceController(Context context, Listener listener) {
         this.context = context.getApplicationContext();
         this.listener = listener;
-        // SpeechRecognizer is created lazily only when Voice Mode starts.\n        tts = new TextToSpeech(this.context, status -> {
+        // SpeechRecognizer is created lazily only when Voice Mode starts.
+        tts = new TextToSpeech(this.context, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
