@@ -15,7 +15,7 @@ public final class OpenCanvasTool implements SyncTool {
     @Override public String getName() { return "open_canvas"; }
 
     @Override public String getDescription() {
-        return "Open Sync//AI's local drawing canvas.";
+        return "Open Sync//AI's editable AI canvas for planning, drafting, outlining, and revising.";
     }
 
     @Override public String getInputSchema() {
