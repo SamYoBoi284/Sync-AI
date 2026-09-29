@@ -44,3 +44,18 @@ android {
         }
     }
 }
+
+
+def syncAiIconDir = file("$buildDir/generated/res/syncAiIcon")
+def decodeSyncAiIcon = tasks.register("decodeSyncAiIcon") {
+    outputs.file(new File(syncAiIconDir, "drawable/sync_ai_icon.png"))
+    doLast {
+        def out = new File(syncAiIconDir, "drawable")
+        out.mkdirs()
+        def encoded = file("src/main/assets/sync_ai_icon.png.b64").getText("UTF-8").trim()
+        def bytes = java.util.Base64.decoder.decode(encoded)
+        new File(out, "sync_ai_icon.png").bytes = bytes
+    }
+}
+android.sourceSets.main.res.srcDir(syncAiIconDir)
+tasks.named("preBuild").configure { dependsOn(decodeSyncAiIcon) }
