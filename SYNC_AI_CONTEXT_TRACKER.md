@@ -16,8 +16,13 @@ Sync AI is a local Android assistant targeting the Samsung Galaxy A16 4G (4 GB R
 - Native tuning for a 4 GB phone: compact context/history, capped generation, CPU threading, backend loading, and diagnostics.
 
 ### Tool system
+- Deterministic intent parsing now supports compound actions instead of only one tool call.
+- Calculator accepts natural operator wording (`times`, `multiplied by`, `divided by`, `over`, `plus`, `minus`, `mod`) and arbitrary arithmetic chains/parentheses.
+- Alarm parsing supports natural times plus multiple alarms in one utterance and labels such as `titled work`, `called gym`, or `named school`.
+- Added deterministic `call_contact` for phrases such as `call Mama`, `phone Abdulqader`, and `ring my mom`, with contact lookup + direct calling.
+- Fast-tool execution now supports a queue of deterministic actions and requests only the permissions required by those actions.
 - `SyncTool` + `ToolRegistry` architecture.
-- Existing independent tools include calculator, flashlight, alarm, timer, app/settings opening, workspace files, and Canvas.
+- Existing independent tools include calculator, flashlight, alarm, timer, contact calling, app/settings opening, workspace files, and Canvas.
 - `ToolIntentRouter` runs before model inference for deterministic commands.
 - Recent successful tool/action context supports contextual commands such as “turn it off” → previous flashlight.
 - App launching supports aliases/fuzzy matching and confirmation when a match is uncertain.
@@ -65,11 +70,12 @@ The model is the brain; Sync AI's tool registry is the deterministic hands.
 ## What's next
 
 ### 1. Finish Tier 1
-Expand deterministic parsing and execution for:
+Continue expanding deterministic parsing and execution for:
 - flashlight
-- calculator
-- alarm
-- timer
+- calculator (more natural unit/percent/voice phrasing)
+- alarm (repeat days, dismiss/snooze/show alarms)
+- timer (more natural duration phrasing)
+- contact calls
 - app launch
 - Android settings
 - files/ZArchiver
@@ -81,6 +87,10 @@ Expand deterministic parsing and execution for:
 Add regression coverage for natural wording, aliases, punctuation, and command lead-ins.
 
 ### 2. Finish Tier 2
+- Preserve the last successful tool target for each deterministic domain where pronoun resolution is safe.
+- Support contextual variants like `turn that off`, `set another one for 9`, `call him again`, and `open that again` only when the referent is unambiguous.
+
+### 2b. Tool coverage
 - Generalize recent-action state beyond flashlight/open-app.
 - Store only the small target context needed for resolution.
 - Resolve pronouns only when unambiguous.
@@ -128,3 +138,11 @@ Volume, media controls, clipboard, camera, notification/settings navigation, and
 
 ## Baseline
 The last known successful CI state before this fix pass was Actions build #199 on this branch. Rebuild and device-test after the current commits; a passing compile alone does not prove runtime behavior.
+
+
+## Latest fix-pass changes
+- Generalized deterministic routing to `parseAll()` so compound requests can produce multiple ToolCalls.
+- Added `CallContactTool` with `READ_CONTACTS` + `CALL_PHONE` runtime permissions.
+- Alarm execution now requests `EXTRA_SKIP_UI` and returns the actual alarm label/time result.
+- MainActivity now executes deterministic tool queues sequentially and aggregates their results.
+- Current GitHub Actions build was triggered after these changes; verify the latest run before installing.
