@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <queries>
         <package android:name="ru.zdevs.zarchiver" />
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -15,10 +18,7 @@
         android:label="Sync AI"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
-        <activity
-            android:name=".CanvasActivity"
-            android:screenOrientation="portrait"
-            android:exported="false" />
+        <activity android:name=".CanvasActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait"
@@ -50,11 +50,22 @@
                 android:name="android.voice_interaction"
                 android:resource="@xml/voice_interaction_service" />
         </service>
+        <service
+            android:name=".SyncRecognitionService"
+            android:label="Sync AI"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
         <activity
             android:name=".SyncAssistantSettingsActivity"
             android:label="Sync AI Assistant"
             android:exported="true" />
-
         <service
             android:name=".SyncVoiceInteractionSessionService"
             android:label="Sync AI Voice Session"
