@@ -218,6 +218,12 @@ public final class ToolIntentRouter {
             query = "network";
         } else if (lower.matches(".*\\b(?:flashlight state|is the flashlight on|is my flashlight on|torch state)\\b.*")) {
             query = "flashlight";
+        } else if (lower.matches(".*\\b(?:current app|what app am i in|which app is open|what's open|whats open)\\b.*")) {
+            query = "current_app";
+        } else if (lower.matches(".*\\b(?:alarms|scheduled alarms|my alarms)\\b.*")) {
+            query = "alarms";
+        } else if (lower.matches(".*\\b(?:timers|active timers|my timers)\\b.*")) {
+            query = "timers";
         }
 
         if (query == null) return null;
