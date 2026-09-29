@@ -177,7 +177,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
     const uint32_t contextSize = static_cast<uint32_t>(
-        std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx))
+        std::min<int32_t>(1024, std::max<int32_t>(768, trainedCtx))
     );
 
     // The prompt is submitted as one batch. Keep n_batch large enough for
@@ -188,7 +188,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     ctxParams.n_ubatch = contextSize;
 
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
-    const int threads = std::max(2, std::min(6, cpuCount - 1));
+    const int threads = std::max(2, std::min(4, cpuCount));
     ctxParams.n_threads = threads;
     ctxParams.n_threads_batch = threads;
 
@@ -233,7 +233,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
         nullptr, 0, true, true);
 
-    const int generationLimit = std::max(1, std::min(256, static_cast<int>(maxTokens)));
+    const int generationLimit = std::max(1, std::min(64, static_cast<int>(maxTokens)));
     if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize) ||
         promptCount + generationLimit >= static_cast<int>(contextSize)) {
         llama_free(ctx);
