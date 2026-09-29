@@ -151,9 +151,10 @@ public final class ToolEngine {
 
     private Result handleSingle(String command) throws Exception {
         if (command.contains("current time")
-                || command.matches(".*\\b(?:what(?:'s| is)?|tell me|give me)\\b.*\\btime\\b.*")
-                || command.matches(".*\\btime\\s+is\\s+it\\b.*")
-                || command.matches(".*\\btime\\b.*\\bnow\\b.*")) {
+                || command.matches(".*\\bwhat(?:'s| is)?(?: the)? time(?: now| right now)?\\b.*")
+                || command.matches(".*\\btell me(?: the)? time\\b.*")
+                || command.matches(".*\\btime (?:is it|now|right now)\\b.*")
+                || command.contains("do you know the time")) {
             return result("system_time", currentTime());
         }
 
@@ -161,8 +162,9 @@ public final class ToolEngine {
             return result("system_time", "Your timezone is " + TimeZone.getDefault().getID() + ".");
         }
 
-        if (command.contains("date") || command.matches(".*\\bwhat day is it\\b.*")
-                || command.contains("day today") || command.contains("today")) {
+        if (command.matches(".*\\b(?:current date|today'?s date|date today|what date is it|what is the date|what's the date)\\b.*")
+                || command.matches(".*\\bwhat day is it\\b.*")
+                || command.matches(".*\\bwhat day are we on\\b.*")) {
             Date now = new Date();
             DateFormat format = new SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault());
             return result("system_date", "Today is " + format.format(now) + ".");
@@ -254,7 +256,7 @@ public final class ToolEngine {
                     Math.round(brightness * 100f / 255f) + "%.");
         }
 
-        if (command.contains("ram") || command.contains("memory")) {
+        if (command.matches(".*\\b(?:ram|ram usage|ram usage right now|memory usage|how much ram|how much memory is being used)\\b.*")) {
             android.app.ActivityManager am = (android.app.ActivityManager)
                     context.getSystemService(Context.ACTIVITY_SERVICE);
             android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
@@ -495,6 +497,7 @@ public final class ToolEngine {
 
     private static boolean looksLikeCalculator(String command) {
         if (command.matches(".*\\d\\s*[+\\-*/%]\\s*\\d.*")) return true;
+        if (!command.matches(".*\\d.*")) return false;
         return command.startsWith("calculate ")
                 || command.startsWith("what is ")
                 || command.startsWith("what's ")
