@@ -430,7 +430,7 @@ public final class MainActivity extends Activity {
 
     private void enterVoiceModePage(boolean autoListen) {
         if (voiceModeOverlay == null) return;
-        if (wakeWordController != null) wakeWordController.stop();
+        SyncVoiceInteractionService.stopWakeWord();
         voiceModeActive = true;
         voiceModeOverlay.setVisibility(View.VISIBLE);
         voiceModeTranscript.setText("Tap the orb and speak.");
@@ -456,7 +456,7 @@ public final class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
-        SyncVoiceInteractionService.stopWakeWord();
+        SyncVoiceInteractionService.startWakeWord();
     }
 
     private void updateVoiceTranscript(String text) {
