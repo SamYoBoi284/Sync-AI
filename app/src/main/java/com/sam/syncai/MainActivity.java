@@ -79,6 +79,7 @@ public final class MainActivity extends Activity {
     private Button voiceButton;
     private Button importButton;
     private VoiceController voiceController;
+    private WakeWordController foregroundWakeWordController;
     private boolean voicePermissionRequestedForVoiceMode;
     private SideDashboard sideDashboard;
     private ProgressBar progress;
@@ -473,6 +474,7 @@ public final class MainActivity extends Activity {
 
     private void enterVoiceModePage(boolean autoListen) {
         if (voiceModeOverlay == null) return;
+        stopForegroundWakeWord();
         SyncVoiceInteractionService.stopWakeWord();
         cancelVoiceTimers();
         voiceModeActive = true;
@@ -502,7 +504,7 @@ public final class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
-        SyncVoiceInteractionService.startWakeWord();
+        startWakeWordIfAvailable();
     }
 
     private void updateVoiceTranscript(String text) {
@@ -592,7 +594,52 @@ public final class MainActivity extends Activity {
             voicePermissionRequestedForVoiceMode = false;
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
         } else {
+            startWakeWordIfAvailable();
+        }
+    }
+
+    private void startWakeWordIfAvailable() {
+        if (voiceModeActive) return;
+
+        boolean systemAssistant =
+                SyncVoiceInteractionService.hasLiveInstance() ||
+                SyncVoiceInteractionService.isActiveVoiceInteractionService(this);
+
+        if (systemAssistant) {
+            stopForegroundWakeWord();
             SyncVoiceInteractionService.startWakeWord();
+            return;
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        if (foregroundWakeWordController == null) {
+            foregroundWakeWordController = new WakeWordController(this, new WakeWordController.Listener() {
+                @Override public void onWakeWordDetected(float score) {
+                    stopForegroundWakeWord();
+                    Log.d("SyncAI", "Foreground wake word detected. score=" + score);
+                    runOnUiThread(() -> enterVoiceModePage(true));
+                }
+
+                @Override public void onWakeWordError(String message) {
+                    Log.e("SyncAI", "Foreground wake word error: " + message);
+                }
+            });
+        }
+
+        if (!foregroundWakeWordController.isRunning() &&
+                !foregroundWakeWordController.isStopping()) {
+            foregroundWakeWordController.start();
+        }
+    }
+
+    private void stopForegroundWakeWord() {
+        if (foregroundWakeWordController != null) {
+            foregroundWakeWordController.stop();
         }
     }
 
@@ -1206,7 +1253,7 @@ public final class MainActivity extends Activity {
                     voicePermissionRequestedForVoiceMode = false;
                     startVoiceListening();
                 } else {
-                    SyncVoiceInteractionService.startWakeWord();
+                    startWakeWordIfAvailable();
                 }
             } else {
                 voicePermissionRequestedForVoiceMode = false;
@@ -1473,7 +1520,26 @@ public final class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!voiceModeActive) {
+            startWakeWordIfAvailable();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        stopForegroundWakeWord();
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
+        stopForegroundWakeWord();
+        if (foregroundWakeWordController != null) {
+            foregroundWakeWordController.release();
+            foregroundWakeWordController = null;
+        }
         cancelVoiceTimers();
         ioExecutor.shutdownNow();
         if (voiceController != null) voiceController.shutdown();
