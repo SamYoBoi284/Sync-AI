@@ -1363,8 +1363,7 @@ public final class MainActivity extends Activity {
         if (intent == null) return false;
         String action = intent.getAction();
         return Intent.ACTION_ASSIST.equals(action) ||
-                Intent.ACTION_VOICE_COMMAND.equals(action) ||
-                Intent.ACTION_VOICE_ASSIST.equals(action);
+                Intent.ACTION_VOICE_COMMAND.equals(action);
     }
 
     @Override
