@@ -8,15 +8,17 @@ import java.util.regex.Pattern;
 
 public final class ToolIntentRouter {
     private static final Pattern FLASHLIGHT = Pattern.compile(
-            "(?i)\\b(?:turn\\s+)?(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\b");
+            "(?i)\\b(?:(?:turn|switch|toggle)\\s+)?(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\b|\\b(?:turn|switch|toggle)\\s+(on|off)\\s+(?:(?:the|my|phone)\\s+)?(?:flashlight|torch)\\b");
+    private static final Pattern CALL_CONTACT = Pattern.compile(
+            "(?i)\\b(?:call|phone|ring|dial)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|[.!?,;]|$)");
     private static final Pattern OPEN_APP = Pattern.compile(
             "(?i)\\b(?:open|launch|start|run)\\s+(?:the\\s+)?(.+?)(?=\\s+(?:please|now|for me)\\b|[.!?,;]|$)");
     private static final Pattern CALCULATE = Pattern.compile(
-            "(?i)\\b(?:calculate|compute|work\\s+out|what\\s+is|what's|whats)\\s+(.+?)(?=\\s+(?:please|now)\\b|[?!;]|$)");
-    private static final Pattern ALARM = Pattern.compile(
-            "(?i)\\b(?:set|create|schedule)\\s+(?:an?\\s+)?alarm\\s+(?:for|at)\\s+(\\d{1,2})(?:\\s*:\\s*|\\s+)?(\\d{2})?\\s*(am|pm)?\\b");
+            "(?i)\\b(?:calculate|compute|work\\s+out|solve|what\\s+is|what's|whats|how\\s+much\\s+is|how\\s+many)\\s+(.+?)(?=\\s+(?:please|now|for me)\\b|[?!;]|$)");
+    private static final Pattern ALARM_TIME = Pattern.compile(
+            "(?i)(?:(?:set|create|schedule|add)\\s+(?:an?\\s+)?alarm\\s+(?:for|at)|(?:and\\s+)?(?:another\\s+(?:alarm|one)|one\\s+more)\\s+(?:for|at))\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b");
     private static final Pattern TIMER = Pattern.compile(
-            "(?i)\\b(?:set|start)\\s+(?:a\\s+)?timer(?:\\s+for)?\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+            "(?i)\\b(?:set|start|create|make)\\s+(?:a\\s+)?timer(?:\\s+(?:for|of|at))?\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
     private static final Pattern STANDALONE_MATH = Pattern.compile(
             "^[0-9.\\s()+*/%^-]+$");
     private static final Pattern CREATE_FILE = Pattern.compile(
@@ -57,46 +59,51 @@ public final class ToolIntentRouter {
      * Conversational/ambiguous text falls through to the normal LLM path.
      */
     public static ToolCall parse(String userText) {
-        if (userText == null) return null;
+        java.util.List<ToolCall> calls = parseAll(userText);
+        return calls.isEmpty() ? null : calls.get(0);
+    }
+
+    /**
+     * Parse all deterministic actions in one user utterance.
+     * The common one-action path still returns one call, while compound
+     * requests such as two alarms can execute without invoking the LLM.
+     */
+    public static java.util.List<ToolCall> parseAll(String userText) {
+        java.util.List<ToolCall> calls = new java.util.ArrayList<>();
+        if (userText == null) return calls;
         String text = userText.trim();
-        if (text.isEmpty()) return null;
+        if (text.isEmpty()) return calls;
 
         ToolCall contextual = resolveContextualCommand(text);
-        if (contextual != null) return contextual;
+        if (contextual != null) {
+            calls.add(contextual);
+            return calls;
+        }
 
         Matcher m = FLASHLIGHT.matcher(text);
         while (m.find()) {
             if (!isCommandContext(text, m.start())) continue;
+            String state = m.group(1);
             Map<String, String> args = new LinkedHashMap<>();
-            args.put("enabled", Boolean.toString("on".equalsIgnoreCase(m.group(1))));
-            return new ToolCall("flashlight", args);
+            args.put("enabled", Boolean.toString("on".equalsIgnoreCase(state)));
+            calls.add(new ToolCall("flashlight", args));
+            break;
         }
 
-        m = CREATE_FILE.matcher(text);
-        if (m.find() && isCommandContext(text, m.start())) {
-            String name = m.group(1).trim();
-            String body = m.group(2);
-            if (!name.isEmpty()) {
-                Map<String, String> args = new LinkedHashMap<>();
-                args.put("name", name);
-                args.put("content", body);
-                return new ToolCall("write_workspace_file", args);
-            }
-        }
-
-        m = ALARM.matcher(text);
+        m = CALL_CONTACT.matcher(text);
         while (m.find()) {
             if (!isCommandContext(text, m.start())) continue;
-            int hour = parseClockHour(m.group(1), m.group(3));
-            int minute = m.group(2) == null || m.group(2).isEmpty() ? 0 : Integer.parseInt(m.group(2));
-            if (hour >= 0 && minute >= 0 && minute <= 59) {
+            String contact = cleanTrailingWords(m.group(1));
+            if (!contact.isEmpty() && !looksLikeConversationObject(contact)) {
                 Map<String, String> args = new LinkedHashMap<>();
-                args.put("hour", Integer.toString(hour));
-                args.put("minute", Integer.toString(minute));
-                args.put("message", "Wake up");
-                return new ToolCall("set_alarm", args);
+                args.put("contact", contact);
+                calls.add(new ToolCall("call_contact", args));
             }
+            break;
         }
+
+        java.util.List<ToolCall> alarms = parseAlarms(text);
+        calls.addAll(alarms);
 
         m = TIMER.matcher(text);
         while (m.find()) {
@@ -114,9 +121,10 @@ public final class ToolIntentRouter {
             if (seconds >= 1 && seconds <= 86400) {
                 Map<String, String> args = new LinkedHashMap<>();
                 args.put("seconds", Integer.toString(seconds));
-                args.put("message", "Timer");
-                return new ToolCall("set_timer", args);
+                args.put("message", extractLabelNear(text, m.end(), "Timer"));
+                calls.add(new ToolCall("set_timer", args));
             }
+            break;
         }
 
         m = OPEN_APP.matcher(text);
@@ -126,29 +134,112 @@ public final class ToolIntentRouter {
             if (!app.isEmpty() && !looksLikeConversationObject(app)) {
                 Map<String, String> args = new LinkedHashMap<>();
                 args.put("app", app);
-                return new ToolCall("open_app", args);
+                calls.add(new ToolCall("open_app", args));
             }
+            break;
         }
 
         m = CALCULATE.matcher(text);
         while (m.find()) {
             if (!isCommandContext(text, m.start())) continue;
-            String expression = m.group(1).trim();
+            String expression = normalizeMathWords(m.group(1).trim());
             if (looksLikeMath(expression)) {
                 Map<String, String> args = new LinkedHashMap<>();
                 args.put("expression", expression);
-                return new ToolCall("calculator", args);
+                calls.add(new ToolCall("calculator", args));
+            }
+            break;
+        }
+
+        if (calls.isEmpty()) {
+            String mathCandidate = normalizeMathWords(
+                    stripCommandLeadIns(text).replaceAll("(?i)\\?$", "").trim());
+            if (STANDALONE_MATH.matcher(mathCandidate).matches() && looksLikeMath(mathCandidate)) {
+                Map<String, String> args = new LinkedHashMap<>();
+                args.put("expression", mathCandidate);
+                calls.add(new ToolCall("calculator", args));
             }
         }
 
-        String mathCandidate = stripCommandLeadIns(text).replaceAll("(?i)\\?$", "").trim();
-        if (STANDALONE_MATH.matcher(mathCandidate).matches() && looksLikeMath(mathCandidate)) {
-            Map<String, String> args = new LinkedHashMap<>();
-            args.put("expression", mathCandidate);
-            return new ToolCall("calculator", args);
+        return calls;
+    }
+
+    private static java.util.List<ToolCall> parseAlarms(String text) {
+        java.util.List<ToolCall> calls = new java.util.ArrayList<>();
+        Matcher matcher = ALARM_TIME.matcher(text);
+        java.util.List<MatcherData> matches = new java.util.ArrayList<>();
+
+        while (matcher.find()) {
+            if (!isCommandContext(text, matcher.start())) continue;
+            matches.add(new MatcherData(
+                    matcher.start(), matcher.end(),
+                    matcher.group(1), matcher.group(2), matcher.group(3)));
         }
 
-        return null;
+        for (int i = 0; i < matches.size(); i++) {
+            MatcherData data = matches.get(i);
+            int hour = parseClockHour(data.hour, data.ampm);
+            int minute = data.minute == null ? 0 : Integer.parseInt(data.minute);
+            if (hour < 0 || minute < 0 || minute > 59) continue;
+
+            int segmentEnd = i + 1 < matches.size() ? matches.get(i + 1).start : text.length();
+            String segment = text.substring(data.end, segmentEnd);
+            String label = extractLabel(segment, "Wake up");
+            Map<String, String> args = new LinkedHashMap<>();
+            args.put("hour", Integer.toString(hour));
+            args.put("minute", Integer.toString(minute));
+            args.put("message", label);
+            calls.add(new ToolCall("set_alarm", args));
+        }
+        return calls;
+    }
+
+    private static String extractLabel(String text, String fallback) {
+        Matcher m = Pattern.compile(
+                "(?is)\\b(?:titled|called|named|label(?:ed)?(?:\\s+as)?)\\s+(.+?)(?=\\s+(?:and|then)\\s+(?:another|one\\s+more|set|create|schedule)|[.!?;]|$)")
+                .matcher(text == null ? "" : text);
+        if (!m.find()) return fallback;
+        String label = m.group(1).trim();
+        return label.isEmpty() ? fallback : label;
+    }
+
+    private static String extractLabelNear(String text, int end, String fallback) {
+        if (text == null || end >= text.length()) return fallback;
+        return extractLabel(text.substring(end), fallback);
+    }
+
+    private static String normalizeMathWords(String value) {
+        return value.toLowerCase(Locale.US)
+                .replaceAll("\\bmultiplied\\s+by\\b", "*")
+                .replaceAll("\\btimes\\b", "*")
+                .replaceAll("\bdivided\\s+by\\b", "/")
+                .replaceAll("\bover\\b", "/")
+                .replaceAll("\bplus\\b", "+")
+                .replaceAll("\bminus\\b", "-")
+                .replaceAll("\bmod(?:ulo)?\\b", "%")
+                .replaceAll("\bto\\s+the\\s+power\\s+of\\b", "^")
+                .replaceAll("\\bwhat\\s+is\\b", "")
+                .replaceAll("\\bwhat's\\b", "")
+                .replaceAll("\\bwhats\\b", "")
+                .replaceAll("\\bhow\\s+much\\s+is\\b", "")
+                .replaceAll("\\bhow\\s+many\\b", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private static final class MatcherData {
+        final int start;
+        final int end;
+        final String hour;
+        final String minute;
+        final String ampm;
+        MatcherData(int start, int end, String hour, String minute, String ampm) {
+            this.start = start;
+            this.end = end;
+            this.hour = hour;
+            this.minute = minute;
+            this.ampm = ampm;
+        }
     }
 
     private static synchronized ToolCall resolveContextualCommand(String text) {
@@ -223,17 +314,8 @@ public final class ToolIntentRouter {
     }
 
     private static boolean looksLikeMath(String value) {
-        String normalized = value.toLowerCase(Locale.US)
-                .replace("plus", "+")
-                .replace("minus", "-")
-                .replace("times", "*")
-                .replace("multiplied by", "*")
-                .replace("divided by", "/")
-                .replace("over", "/")
-                .replaceAll("\\bwhat\\s+is\\b", "")
-                .replaceAll("\\bwhat's\\b", "")
-                .replaceAll("\\bwhats\\b", "")
-                .trim();
+        if (value == null || value.trim().isEmpty()) return false;
+        String normalized = normalizeMathWords(value);
         return normalized.matches("[0-9.\\s()+*/%^-]+");
     }
 
