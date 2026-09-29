@@ -25,7 +25,6 @@ public final class SyncVoiceInteractionSessionService extends VoiceInteractionSe
 
         @Override public void onShow(Bundle args, int showFlags) {
             super.onShow(args, showFlags);
-            SyncVoiceInteractionService.stopWakeWord();
 
             Intent intent = new Intent(getContext(), MainActivity.class);
             intent.setAction(Intent.ACTION_ASSIST);
