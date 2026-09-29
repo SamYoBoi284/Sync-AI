@@ -136,15 +136,17 @@ public final class ToolEngine {
 
         StringBuilder response = new StringBuilder();
         StringBuilder tools = new StringBuilder();
+        String permission = null;
         boolean ok = true;
         for (Result r : results) {
             if (!r.success) ok = false;
+            if (permission == null && r.permission != null) permission = r.permission;
             if (response.length() > 0) response.append("\n");
             response.append(r.response);
             if (tools.length() > 0) tools.append(", ");
             tools.append(r.toolName);
         }
-        return new Result(true, ok, response.toString(), tools.toString(), 0);
+        return new Result(true, ok, response.toString(), tools.toString(), 0, permission);
     }
 
     private Result handleSingle(String command) throws Exception {
