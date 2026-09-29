@@ -165,15 +165,6 @@ public final class MainActivity extends Activity {
         restoreLoadedModel();
     }
 
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        if (isVoiceLaunchIntent(intent)) {
-            runOnUiThread(() -> enterVoiceModePage(true));
-        }
-    }
-
     private void buildUi() {
         LinearLayout contentRoot = new LinearLayout(this);
         contentRoot.setOrientation(LinearLayout.VERTICAL);
