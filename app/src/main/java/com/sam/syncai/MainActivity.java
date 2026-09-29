@@ -1219,6 +1219,8 @@ public final class MainActivity extends Activity {
     private void runGeneration(List<ChatMessage> working, int toolDepth, TextView bubble) {
         StringBuilder response = new StringBuilder();
         GenerationConfig config = new GenerationConfig();
+        final RequestDiagnostics diagnostics = activeDiagnostics;
+        final long llmStart = System.nanoTime();
 
         backend.generate(working, config, new LocalModelBackend.GenerateCallback() {
             @Override public void onToken(String token) {
@@ -1241,6 +1243,10 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onComplete() {
+                if (diagnostics != null) {
+                    diagnostics.addLlm(System.nanoTime() - llmStart);
+                    if (backend.isLoaded()) diagnostics.setNativeInfo(backend.diagnostics());
+                }
                 String text = response.toString().trim();
                 ToolCall toolCall = ToolCallParser.parse(text);
 
@@ -1305,6 +1311,12 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onError(Exception error) {
+                if (diagnostics != null) {
+                    diagnostics.addLlm(System.nanoTime() - llmStart);
+                    if (backend.isLoaded()) diagnostics.setNativeInfo(backend.diagnostics());
+                    diagnostics.setError(error == null ? "Unknown model-generation error." :
+                            (error.getMessage() == null ? error.toString() : error.getMessage()));
+                }
                 finishGenerationWithError(bubble, "Generation failed.", error);
             }
         });
@@ -1429,11 +1441,21 @@ public final class MainActivity extends Activity {
     }
 
     private void finishGenerationWithError(TextView bubble, String message, Exception error) {
+        final RequestDiagnostics diagnostics = activeDiagnostics;
+        if (diagnostics != null && error != null && diagnostics != null) {
+            diagnostics.setError(error.getMessage() == null ? error.toString() : error.getMessage());
+        }
+        final String diagnosticsText = finishDiagnostics(diagnostics);
+
         runOnUiThread(() -> {
-            bubble.setText(message);
+            String display = message;
+            if (!diagnosticsText.isEmpty()) {
+                display += "\n\nDIAGNOSTICS\n" + diagnosticsText;
+            }
+            bubble.setText(display);
             bubble.setTextColor(Color.rgb(255, 130, 145));
+            rememberMessage(new ChatMessage(ChatMessage.Role.ASSISTANT, message, diagnosticsText));
             sendButton.setEnabled(true);
-            // Model import remains available from the side dashboard.
             if (error != null) showError("Generation failed", error);
             if (voiceModeActive) {
                 finishVoiceResponse(message);
