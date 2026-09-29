@@ -93,70 +93,91 @@ public final class MainActivity extends Activity {
     private void buildUi() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(14), dp(12), dp(14), dp(8));
+        root.setPadding(dp(8), dp(8), dp(8), dp(8));
         root.setBackgroundColor(BG);
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.HORIZONTAL);
+        root.addView(shell, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        LinearLayout dashboard = card();
+        dashboard.setPadding(dp(6), dp(8), dp(6), dp(8));
+        LinearLayout.LayoutParams dashLp = new LinearLayout.LayoutParams(dp(92), -1);
+        dashLp.rightMargin = dp(8);
+        shell.addView(dashboard, dashLp);
+
+        TextView dashTitle = text("SYNC\n//AI", 17, TEXT, true);
+        dashTitle.setGravity(Gravity.CENTER);
+        dashboard.addView(dashTitle, new LinearLayout.LayoutParams(-1, dp(60)));
+
+        Button chats = dashboardButton("CHATS");
+        chats.setOnClickListener(v -> showChatsDialog());
+        dashboard.addView(chats);
+
+        Button newChatButton = dashboardButton("+ NEW CHAT");
+        newChatButton.setOnClickListener(v -> newChat());
+        dashboard.addView(newChatButton);
+
+        Button voiceButton = dashboardButton("VOICE");
+        voiceButton.setOnClickListener(v -> launchVoiceMode());
+        dashboard.addView(voiceButton);
+
+        View spacer = new View(this);
+        dashboard.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button settings = dashboardButton("SETTINGS");
+        settings.setOnClickListener(v -> showSettings());
+        dashboard.addView(settings);
+
+        LinearLayout mainColumn = new LinearLayout(this);
+        mainColumn.setOrientation(LinearLayout.VERTICAL);
+        shell.addView(mainColumn, new LinearLayout.LayoutParams(0, -1, 1));
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView title = text("SYNC//AI", 27, TEXT, true);
+        TextView title = text("SYNC//AI", 25, TEXT, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
-
-        Button chats = actionButton("CHATS");
-        chats.setOnClickListener(v -> showChatsDialog());
-        header.addView(chats, new LinearLayout.LayoutParams(dp(82), dp(44)));
-
-        Button settings = actionButton("SETTINGS");
-        settings.setOnClickListener(v -> showSettings());
-        LinearLayout.LayoutParams settingsLp = new LinearLayout.LayoutParams(dp(92), dp(44));
-        settingsLp.leftMargin = dp(6);
-        header.addView(settings, settingsLp);
-        root.addView(header);
+        mainColumn.addView(header);
 
         LinearLayout statusCard = card();
         LinearLayout statusInner = new LinearLayout(this);
         statusInner.setOrientation(LinearLayout.VERTICAL);
         statusInner.setPadding(dp(14), dp(10), dp(14), dp(10));
-
         modelText = text("NO MODEL", 13, TEXT, true);
         statusText = text("LOCAL RUNTIME • IMPORT A GGUF MODEL", 11, MUTED, false);
         statusInner.addView(modelText);
         statusInner.addView(statusText, new LinearLayout.LayoutParams(-1, dp(24)));
         statusCard.addView(statusInner);
-        root.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(72)));
+        mainColumn.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(72)));
 
         LinearLayout controls = new LinearLayout(this);
         controls.setPadding(0, dp(8), 0, dp(7));
-
         importButton = actionButton("IMPORT MODEL");
         importButton.setOnClickListener(v -> openModelPicker());
         controls.addView(importButton, new LinearLayout.LayoutParams(0, dp(44), 1));
-
         Button runtimeButton = actionButton("RUNTIME");
         runtimeButton.setOnClickListener(v -> showRuntimeInfo());
         LinearLayout.LayoutParams runtimeLp = new LinearLayout.LayoutParams(0, dp(44), 1);
         runtimeLp.leftMargin = dp(7);
         controls.addView(runtimeButton, runtimeLp);
-        root.addView(controls);
+        mainColumn.addView(controls);
 
         progress = new ProgressBar(this);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
-        root.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
+        mainColumn.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
         chatScroll = new ScrollView(this);
         chatScroll.setFillViewport(true);
         chatScroll.setClipToPadding(false);
-
         messageContainer = new LinearLayout(this);
         messageContainer.setOrientation(LinearLayout.VERTICAL);
         messageContainer.setPadding(dp(2), dp(12), dp(2), dp(12));
         chatScroll.addView(messageContainer);
-        root.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        mainColumn.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout composerCard = card();
         composerCard.setPadding(dp(7), dp(7), dp(7), dp(7));
-
         LinearLayout composer = new LinearLayout(this);
         composer.setGravity(Gravity.BOTTOM);
 
@@ -172,14 +193,20 @@ public final class MainActivity extends Activity {
         input.setBackground(round(SURFACE_2, dp(15)));
         composer.addView(input, new LinearLayout.LayoutParams(0, dp(56), 1));
 
+        Button composerVoice = actionButton("VOICE");
+        composerVoice.setOnClickListener(v -> launchVoiceMode());
+        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(dp(68), dp(56));
+        voiceLp.leftMargin = dp(7);
+        composer.addView(composerVoice, voiceLp);
+
         sendButton = actionButton("SEND");
         sendButton.setOnClickListener(v -> sendMessage());
-        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(dp(82), dp(56));
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(dp(76), dp(56));
         sendLp.leftMargin = dp(7);
         composer.addView(sendButton, sendLp);
 
         composerCard.addView(composer);
-        root.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(70)));
+        mainColumn.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(70)));
 
         setContentView(root);
         applyAccent();
@@ -190,6 +217,15 @@ public final class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setBackground(round(SURFACE, dp(16)));
         return layout;
+    }
+
+    private Button dashboardButton(String label) {
+        Button b = actionButton(label);
+        b.setTextSize(9.5f);
+        b.setMinHeight(dp(44));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(44));
+        lp.topMargin = dp(5);
+        return b;
     }
 
     private Button actionButton(String label) {
@@ -722,6 +758,16 @@ public final class MainActivity extends Activity {
                         })
                 .setNegativeButton("CLOSE", null)
                 .show();
+    }
+
+    private void launchVoiceMode() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_ASSIST);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) {
+            showError("Voice mode unavailable", e);
+        }
     }
 
     private void showVoiceSettings() {
