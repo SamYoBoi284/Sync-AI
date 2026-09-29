@@ -449,7 +449,7 @@ public final class MainActivity extends Activity {
 
     private void rememberMessage(ChatMessage message) {
         if (message == null) return;
-        rememberMessage(message);
+        conversation.add(message);
         if (chatHistoryStore != null) {
             chatHistoryStore.saveActive(conversation);
         }
