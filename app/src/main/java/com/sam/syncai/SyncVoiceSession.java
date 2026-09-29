@@ -62,7 +62,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(22), dp(18), dp(22), dp(18));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xB20B0D16);
+        bg.setColor(0x660B0D16);
         bg.setCornerRadius(dp(28));
         bg.setStroke(dp(1), (accent & 0x00FFFFFF) | 0xAA000000);
         panel.setBackground(bg);
