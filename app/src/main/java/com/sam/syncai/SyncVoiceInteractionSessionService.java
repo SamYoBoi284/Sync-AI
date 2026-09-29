@@ -18,7 +18,10 @@ public final class SyncVoiceInteractionSessionService extends VoiceInteractionSe
         @Override public void onShow(Bundle args, int showFlags) {
             super.onShow(args, showFlags);
             Intent intent = new Intent(getContext(), MainActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            intent.setAction(Intent.ACTION_ASSIST);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startAssistantActivity(intent);
             setUiEnabled(false);
             finish();
