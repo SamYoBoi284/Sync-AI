@@ -1,6 +1,5 @@
 package com.sam.syncai;
 
-import android.Manifest;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -12,10 +11,7 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
     private static final String TAG = "SyncVoiceService";
 
     private static SyncVoiceInteractionService instance;
-    private WakeWordController wakeWordController;
-    private boolean wakeWordPaused;
-
-    @Override
+@Override
     public void onCreate() {
         super.onCreate();
         instance = this;
