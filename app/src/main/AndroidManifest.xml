@@ -16,7 +16,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Sync//AI"
+        android:label="Sync AI"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.Material.NoActionBar"
@@ -39,7 +39,7 @@
 
         <service
             android:name=".SyncVoiceInteractionService"
-            android:label="Sync//AI"
+            android:label="Sync AI"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true">
             <intent-filter>
@@ -52,7 +52,7 @@
 
         <service
             android:name=".SyncVoiceSessionService"
-            android:label="Sync//AI Voice"
+            android:label="Sync AI Voice"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true" />
 
