@@ -22,6 +22,9 @@ public final class ToolRegistry {
         register(new OpenAppTool(context));
         register(new WorkspaceReadTool(workspace));
         register(new WorkspaceWriteTool(workspace));
+        register(new CanvasReadTool(context));
+        register(new CanvasWriteTool(context));
+        register(new CanvasReplaceTool(context));
         register(new OpenCanvasTool(context));
     }
 
@@ -53,7 +56,7 @@ public final class ToolRegistry {
         out.append("Use open_app for Bluetooth and Wi-Fi settings. Use open_app for ALL file-related requests such as Downloads, files, folders, storage, APKs, archives, and documents; these must open ZArchiver, never the system Files app. ");
         out.append("If open_app cannot find the exact requested app, it will return a candidate that requires user confirmation; never pretend the candidate was opened until the confirmation result is provided. ");
         out.append("You can read and write only inside Sync AI's private workspace using read_workspace_file and write_workspace_file. ");
-        out.append("Use open_canvas when the user asks for a drawing canvas or wants to sketch.\n\nTOOLS:\n");
+        out.append("Use read_canvas to inspect the current AI canvas, write_canvas to create or replace a plan/draft, and replace_canvas_text for targeted edits. Use open_canvas to show the editable canvas to the user. The canvas is a document workspace for planning, drafting, outlining, and revising—not a drawing surface.\n\nTOOLS:\n");
         for (SyncTool tool : tools.values()) {
             String description = tool.getDescription();
             if (description.length() > 180) description = description.substring(0, 180);
