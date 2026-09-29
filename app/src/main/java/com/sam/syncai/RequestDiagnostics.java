@@ -14,6 +14,9 @@ public final class RequestDiagnostics {
     private long routingNanos;
     private String nativeInfo = "";
     private String error = "";
+    private String errorStage = "";
+    private String stage = "routing";
+    private String model = "none";
     private boolean finished;
 
     public RequestDiagnostics(String route) {
@@ -24,7 +27,16 @@ public final class RequestDiagnostics {
     public void addTool(long nanos) { toolNanos += Math.max(0L, nanos); }
     public void addLlm(long nanos) { llmNanos += Math.max(0L, nanos); }
     public void setNativeInfo(String value) { nativeInfo = value == null ? "" : value; }
-    public void setError(String value) { error = value == null ? "" : value; }
+    public void setStage(String value) { stage = value == null || value.trim().isEmpty() ? "unknown" : value; }
+    public void setModel(String value) { model = value == null || value.trim().isEmpty() ? "none" : value; }
+    public void setError(String value) {
+        error = value == null ? "" : value;
+        if (errorStage.isEmpty()) errorStage = stage;
+    }
+    public void setError(String stageValue, String value) {
+        errorStage = stageValue == null ? "" : stageValue;
+        error = value == null ? "" : value;
+    }
 
     public void finish() { finished = true; }
 
@@ -41,12 +53,17 @@ public final class RequestDiagnostics {
         StringBuilder out = new StringBuilder();
         out.append("request=").append(requestId).append("\n");
         out.append("route=").append(route).append("\n");
+        out.append("stage=").append(stage).append("\n");
+        out.append("model=").append(model).append("\n");
         out.append(String.format(Locale.US, "total=%.1f ms\n", totalMs));
         out.append(String.format(Locale.US, "routing=%.1f ms\n", routingMs));
         out.append(String.format(Locale.US, "tools=%.1f ms\n", toolMs));
         out.append(String.format(Locale.US, "llm=%.1f ms\n", llmMs));
         if (!nativeInfo.isEmpty()) out.append(nativeInfo).append("\n");
-        if (!error.isEmpty()) out.append("error=").append(error).append("\n");
+        if (!error.isEmpty()) {
+            if (!errorStage.isEmpty()) out.append("error_stage=").append(errorStage).append("\n");
+            out.append("error=").append(error).append("\n");
+        }
         return out.toString().trim();
     }
 
