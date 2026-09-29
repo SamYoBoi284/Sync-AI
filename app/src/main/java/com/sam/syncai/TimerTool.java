@@ -38,6 +38,10 @@ public final class TimerTool implements SyncTool {
         if (message != null && !message.trim().isEmpty()) {
             intent.putExtra(AlarmClock.EXTRA_MESSAGE, message);
         }
+        new ScheduledActionStore(context).record(
+                "timer",
+                message == null || message.trim().isEmpty() ? "Timer" : message.trim(),
+                System.currentTimeMillis() + (seconds * 1000L));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (intent.resolveActivity(context.getPackageManager()) == null) {
             throw new IllegalStateException("No timer application can handle this request.");
