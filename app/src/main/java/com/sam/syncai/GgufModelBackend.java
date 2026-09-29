@@ -20,9 +20,10 @@ public final class GgufModelBackend implements LocalModelBackend {
                 }
                 int result = GgufNative.nativeLoad(model.path);
                 if (result != 0) {
+                    String details = GgufNative.nativeDiagnostics();
                     throw new IllegalStateException(
-                            "The GGUF model could not be loaded. It may be unsupported, damaged, " +
-                            "or too large for this device."
+                            "The GGUF model could not be loaded.\\n\\n" +
+                            details
                     );
                 }
                 loaded = model;
