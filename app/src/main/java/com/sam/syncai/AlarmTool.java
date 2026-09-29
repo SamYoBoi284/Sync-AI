@@ -75,6 +75,8 @@ public final class AlarmTool implements SyncTool {
             alarmManager.set(AlarmManager.RTC_WAKEUP, when.getTimeInMillis(), operation);
         }
 
+        new ScheduledActionStore(context).record("alarm", label, when.getTimeInMillis());
+
         String time = new SimpleDateFormat("EEE, MMM d 'at' h:mm a", Locale.getDefault())
                 .format(new Date(when.getTimeInMillis()));
         return "Alarm set for " + time + " — " + label + ".";
