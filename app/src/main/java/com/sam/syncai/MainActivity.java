@@ -9,6 +9,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.WindowInsets;
@@ -88,6 +90,10 @@ public final class MainActivity extends Activity {
     private TextView voiceModeStatus;
     private TextView voiceModeTranscript;
     private TextView voiceModeResponse;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable voiceSilenceExitRunnable;
+    private Runnable voiceRestartRunnable;
+    private boolean voiceOutputEnabled = true;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -98,6 +104,12 @@ public final class MainActivity extends Activity {
         memoryManager = new MemoryManager(this);
         voiceController = new VoiceController(this, new VoiceController.Listener() {
             @Override public void onListeningChanged(boolean listening) { runOnUiThread(() -> { if (voiceButton != null) voiceButton.setText(listening ? "STOP" : "MIC"); }); }
+            @Override public void onSpeechStarted() {
+                cancelVoiceIdleExit();
+                runOnUiThread(() -> {
+                    if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
+                });
+            }
             @Override public void onPartialText(String text) {
                 runOnUiThread(() -> {
                     if (input != null) input.setText(text);
@@ -105,12 +117,17 @@ public final class MainActivity extends Activity {
                 });
             }
             @Override public void onFinalText(String text) {
+                cancelVoiceIdleExit();
                 runOnUiThread(() -> {
                     if (input != null) {
                         input.setText(text);
                         input.setSelection(input.length());
                     }
                     updateVoiceTranscript(text);
+                    if (isVoiceFarewell(text)) {
+                        exitVoiceModePage();
+                        return;
+                    }
                     if (voiceModeStatus != null) voiceModeStatus.setText("THINKING…");
                     if (voiceButton != null) voiceButton.setText("MIC");
                     sendMessage();
@@ -118,19 +135,22 @@ public final class MainActivity extends Activity {
             }
             @Override public void onError(String message) {
                 runOnUiThread(() -> {
+                    if (!voiceModeActive) {
+                        showToast(message);
+                        return;
+                    }
                     if (voiceModeStatus != null) voiceModeStatus.setText("READY");
                     if (voiceButton != null) voiceButton.setText("MIC");
-                    showToast(message);
+                    if (!isVoiceFarewell(message)) {
+                        scheduleVoiceRestartAfterResponse(250L);
+                    }
                 });
             }
         });
         buildUi();
-        if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            voicePermissionRequestedForVoiceMode = false;
-            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
-        } else {
-            SyncVoiceInteractionService.startWakeWord();
+        boolean launchedAsVoiceAssistant = isVoiceLaunchIntent(getIntent());
+        if (!launchedAsVoiceAssistant) {
+            ensureWakeWordPermissionAndStart();
         }
 
         addMessageView(ChatMessage.Role.ASSISTANT,
@@ -276,8 +296,9 @@ public final class MainActivity extends Activity {
             @Override public void canvas() { openCanvas(); }
             @Override public void toggleVoiceOutput() {
                 if (voiceController == null) return;
-                voiceController.setSpeakingEnabled(!voiceController.isSpeakingEnabled());
-                showToast(voiceController.isSpeakingEnabled() ? "Voice output enabled." : "Voice output disabled.");
+                voiceOutputEnabled = !voiceOutputEnabled;
+                voiceController.setSpeakingEnabled(voiceOutputEnabled);
+                showToast(voiceOutputEnabled ? "Voice output enabled." : "Voice output disabled.");
             }
         });
 
@@ -361,10 +382,11 @@ public final class MainActivity extends Activity {
             return;
         }
         voiceModeActive = true;
-        voiceController.setSpeakingEnabled(true);
+        cancelVoiceIdleExit();
         if (voiceModeStatus != null) voiceModeStatus.setText("LISTENING…");
         if (voiceButton != null) voiceButton.setText("STOP");
         voiceController.startListening();
+        scheduleVoiceIdleExit();
     }
 
     private void buildVoiceModeOverlay(FrameLayout host) {
@@ -431,6 +453,7 @@ public final class MainActivity extends Activity {
     private void enterVoiceModePage(boolean autoListen) {
         if (voiceModeOverlay == null) return;
         SyncVoiceInteractionService.stopWakeWord();
+        cancelVoiceTimers();
         voiceModeActive = true;
         voiceModeOverlay.setVisibility(View.VISIBLE);
         voiceModeTranscript.setText("Tap the orb and speak.");
@@ -446,6 +469,7 @@ public final class MainActivity extends Activity {
     }
 
     private void exitVoiceModePage() {
+        cancelVoiceTimers();
         if (voiceController != null) voiceController.stopListening();
         voiceModeActive = false;
         if (voiceModeOverlay != null) voiceModeOverlay.setVisibility(View.GONE);
@@ -463,6 +487,86 @@ public final class MainActivity extends Activity {
         if (voiceModeOverlay != null && voiceModeOverlay.getVisibility() == View.VISIBLE &&
                 voiceModeTranscript != null && text != null) {
             voiceModeTranscript.setText(text);
+        }
+    }
+
+    private void cancelVoiceIdleExit() {
+        if (voiceSilenceExitRunnable != null) {
+            mainHandler.removeCallbacks(voiceSilenceExitRunnable);
+            voiceSilenceExitRunnable = null;
+        }
+    }
+
+    private void cancelVoiceTimers() {
+        cancelVoiceIdleExit();
+        if (voiceRestartRunnable != null) {
+            mainHandler.removeCallbacks(voiceRestartRunnable);
+            voiceRestartRunnable = null;
+        }
+    }
+
+    private void scheduleVoiceIdleExit() {
+        cancelVoiceIdleExit();
+        if (!voiceModeActive) return;
+        voiceSilenceExitRunnable = () -> {
+            voiceSilenceExitRunnable = null;
+            if (voiceModeActive) exitVoiceModePage();
+        };
+        mainHandler.postDelayed(voiceSilenceExitRunnable, 7000L);
+    }
+
+    private void scheduleVoiceRestartAfterResponse(long delayMs) {
+        if (!voiceModeActive) return;
+        if (voiceRestartRunnable != null) {
+            mainHandler.removeCallbacks(voiceRestartRunnable);
+        }
+        voiceRestartRunnable = () -> {
+            voiceRestartRunnable = null;
+            if (voiceModeActive) startVoiceListening();
+        };
+        mainHandler.postDelayed(voiceRestartRunnable, delayMs);
+    }
+
+    private void finishVoiceResponse(String text) {
+        updateVoiceResponse(text);
+        if (!voiceModeActive) return;
+        if (voiceController == null || !voiceOutputEnabled) {
+            scheduleVoiceRestartAfterResponse(250L);
+            return;
+        }
+        voiceController.speak(text, () -> scheduleVoiceRestartAfterResponse(150L));
+    }
+
+    private boolean isVoiceFarewell(String text) {
+        if (text == null) return false;
+        String normalized = text.toLowerCase(Locale.US)
+                .replaceAll("[^a-z0-9']+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return normalized.equals("bye") ||
+                normalized.equals("goodbye") ||
+                normalized.equals("good bye") ||
+                normalized.equals("see ya") ||
+                normalized.equals("see you") ||
+                normalized.equals("that's all") ||
+                normalized.equals("thats all") ||
+                normalized.equals("that's it") ||
+                normalized.equals("thats it") ||
+                normalized.equals("i'm done") ||
+                normalized.equals("im done") ||
+                normalized.equals("we're done") ||
+                normalized.equals("were done") ||
+                normalized.equals("stop listening") ||
+                normalized.equals("exit voice mode");
+    }
+
+    private void ensureWakeWordPermissionAndStart() {
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            voicePermissionRequestedForVoiceMode = false;
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_RECORD_AUDIO);
+        } else {
+            SyncVoiceInteractionService.startWakeWord();
         }
     }
 
@@ -683,9 +787,8 @@ public final class MainActivity extends Activity {
             addMessageView(ChatMessage.Role.USER, message);
             TextView greetingBubble = addMessageView(ChatMessage.Role.ASSISTANT, "Hey bro 👋");
             conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, "Hey bro 👋"));
-            if (voiceModeActive && voiceController != null) {
-                voiceController.speak("Hey bro.");
-                voiceModeActive = false;
+            if (voiceModeActive) {
+                finishVoiceResponse("Hey bro.");
             }
             return;
         }
@@ -813,9 +916,8 @@ public final class MainActivity extends Activity {
                 bubble.setTextColor(finalError ? Color.rgb(255, 130, 145) : TEXT);
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, finalResult));
                 sendButton.setEnabled(true);
-                if (voiceModeActive && voiceController != null && !finalError) {
-                    updateVoiceResponse(finalResult);
-                    voiceController.speak(finalResult);
+                if (voiceModeActive && !finalError) {
+                    finishVoiceResponse(finalResult);
                 }
                 scrollToBottom();
             });
@@ -919,9 +1021,8 @@ public final class MainActivity extends Activity {
 
                 conversation.add(new ChatMessage(ChatMessage.Role.ASSISTANT, text));
                 final boolean shouldSpeak = voiceModeActive;
-                if (shouldSpeak && voiceController != null) {
-                    updateVoiceResponse(text);
-                    voiceController.speak(text);
+                if (shouldSpeak) {
+                    finishVoiceResponse(text);
                 }
                 runOnUiThread(() -> {
                     sendButton.setEnabled(true);
@@ -1061,6 +1162,9 @@ public final class MainActivity extends Activity {
             sendButton.setEnabled(true);
             // Model import remains available from the side dashboard.
             if (error != null) showError("Generation failed", error);
+            if (voiceModeActive) {
+                finishVoiceResponse(message);
+            }
             scrollToBottom();
         });
     }
@@ -1072,7 +1176,7 @@ public final class MainActivity extends Activity {
             boolean granted = grantResults.length > 0 &&
                     grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
             if (granted) {
-                if (voicePermissionRequestedForVoiceMode) {
+                if (voicePermissionRequestedForVoiceMode || voiceModeActive) {
                     voicePermissionRequestedForVoiceMode = false;
                     startVoiceListening();
                 } else {
@@ -1340,6 +1444,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        cancelVoiceTimers();
         ioExecutor.shutdownNow();
         if (voiceController != null) voiceController.shutdown();
         backend.unload();
