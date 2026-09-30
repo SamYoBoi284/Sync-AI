@@ -117,11 +117,6 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         finish();
     }
 
-    @Override public void onHide() {
-        super.onHide();
-        android.util.Log.d("SyncAI", "VoiceInteractionSession.onHide");
-    }
-
     private void configureWindow() {
         Dialog dialog = getWindow();
         if (dialog == null) return;
