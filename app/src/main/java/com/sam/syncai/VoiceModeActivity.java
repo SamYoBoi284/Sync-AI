@@ -53,6 +53,7 @@ public final class VoiceModeActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        AppLog.log("VOICE_ACTIVITY", "onCreate", "savedState=" + (state != null) + " taskId=" + getTaskId() + " intent=" + getIntent());
         android.util.Log.d("SyncAI", "VoiceModeActivity.onCreate savedState="
                 + (state != null) + " taskId=" + getTaskId()
                 + " intent=" + getIntent());
@@ -577,6 +578,7 @@ public final class VoiceModeActivity extends Activity {
         android.util.Log.d("SyncAI", "VoiceModeActivity.onDestroy finishing="
                 + isFinishing() + " changingConfigurations=" + isChangingConfigurations()
                 + " taskId=" + getTaskId());
+        AppLog.log("VOICE_ACTIVITY", "onDestroy", "finishing=" + isFinishing());
         destroyed = true;
         cleanup();
         super.onDestroy();
