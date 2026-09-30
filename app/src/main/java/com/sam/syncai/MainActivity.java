@@ -89,6 +89,7 @@ public final class MainActivity extends Activity {
     private VelocityTracker edgeVelocity;
 
     @Override protected void onCreate(Bundle state) {
+        SyncEventLogger.install(this);
         super.onCreate(state);
         SyncEventLogger.record(this, "MainActivity", "onCreate", "INFO",
                 "savedState=" + (state != null) + " taskId=" + getTaskId());
