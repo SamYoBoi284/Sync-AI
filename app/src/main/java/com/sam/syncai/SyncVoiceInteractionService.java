@@ -38,14 +38,8 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
     }
 
     @Override public void onLaunchVoiceAssistFromKeyguard() {
-        Log.d(TAG, "VoiceInteractionService.onLaunchVoiceAssistFromKeyguard task=" + getTaskIdSafe());
+        Log.d(TAG, "VoiceInteractionService.onLaunchVoiceAssistFromKeyguard");
         launchVoiceMode("keyguard");
-    }
-
-    private int getTaskIdSafe() {
-        // VoiceInteractionService itself is not an Activity; keep this helper only
-        // as a stable log marker without assuming an Activity task exists.
-        return -1;
     }
 
     private void launchVoiceMode(String source) {
