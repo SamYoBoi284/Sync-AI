@@ -69,7 +69,7 @@ public final class VoiceModeActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.TRANSPARENT);
 
-        LinearLayout panel = new LinearLayout(getContext());
+        LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(22), dp(18), dp(22), dp(18));
         GradientDrawable bg = new GradientDrawable();
@@ -79,7 +79,7 @@ public final class VoiceModeActivity extends Activity {
         panel.setBackground(bg);
         panel.setElevation(dp(14));
 
-        LinearLayout top = new LinearLayout(getContext());
+        LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = text("SYNC // AI", 18, Color.WHITE, true);
@@ -95,7 +95,7 @@ public final class VoiceModeActivity extends Activity {
         stateView.setGravity(Gravity.CENTER_HORIZONTAL);
         panel.addView(stateView, new LinearLayout.LayoutParams(-1, dp(26)));
 
-        micButton = new Button(getContext());
+        micButton = new Button(this);
         ((Button) micButton).setText("◉");
         ((Button) micButton).setTextSize(28);
         ((Button) micButton).setTextColor(Color.WHITE);
@@ -117,7 +117,7 @@ public final class VoiceModeActivity extends Activity {
         transcriptView.setPadding(dp(6), dp(4), dp(6), dp(10));
         panel.addView(transcriptView);
 
-        ScrollView responseScroll = new ScrollView(getContext());
+        ScrollView responseScroll = new ScrollView(this);
         responseView = text("", 14, Color.rgb(215, 219, 232), false);
         responseView.setPadding(dp(4), dp(8), dp(4), dp(4));
         responseScroll.addView(responseView);
@@ -127,7 +127,7 @@ public final class VoiceModeActivity extends Activity {
                 dp(330), dp(355), Gravity.CENTER);
         root.addView(panel, panelLp);
         panelView = panel;
-        if (!Motion.reduced(getContext())) {
+        if (!Motion.reduced(this)) {
             panel.setAlpha(0f); panel.setTranslationY(dp(28)); panel.setScaleX(0.94f); panel.setScaleY(0.94f);
             panel.post(() -> panel.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
                     .setDuration(Motion.SLOW).setInterpolator(Motion.EASE_OUT).start());
@@ -137,11 +137,11 @@ public final class VoiceModeActivity extends Activity {
 
     private void initSpeech() {
         if (recognizer != null) return;
-        if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             updateState("SPEECH UNAVAILABLE");
             return;
         }
-        recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+        recognizer = SpeechRecognizer.createSpeechRecognizer(this);
         recognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onReadyForSpeech(Bundle params) {
                 updateState("LISTENING");
@@ -182,7 +182,7 @@ public final class VoiceModeActivity extends Activity {
 
     private void initTts() {
         if (tts != null) return;
-        tts = new TextToSpeech(getContext(), status -> {
+        tts = new TextToSpeech(this, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
@@ -222,17 +222,17 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private void startListeningOrRequestPermission() {
-        if (getContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+        if (this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             updateState("MIC PERMISSION");
             transcriptView.setText("Sync needs microphone access only while Voice Mode is active.");
             try {
-                startAssistantActivity(new Intent(getContext(), MicPermissionActivity.class));
+                startActivity(new Intent(this, MicPermissionActivity.class));
             } catch (Exception e) {
                 responseView.setText("Open Sync//AI once and enable microphone permission in Android Settings.");
             }
             main.postDelayed(() -> {
-                if (!destroyed && getContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                if (!destroyed && this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                         == PackageManager.PERMISSION_GRANTED) startListening();
             }, 900);
             return;
@@ -242,7 +242,7 @@ public final class VoiceModeActivity extends Activity {
 
     private void startListening() {
         if (destroyed || recognizer == null ||
-                getContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                         != PackageManager.PERMISSION_GRANTED) {
             return;
         }
@@ -438,7 +438,7 @@ public final class VoiceModeActivity extends Activity {
         stopMicPulse();
         if (exiting) return;
         exiting = true;
-        if (panelView == null || destroyed || Motion.reduced(getContext())) {
+        if (panelView == null || destroyed || Motion.reduced(this)) {
             finish(); return;
         }
         panelView.animate().alpha(0f).translationY(dp(20)).scaleX(0.96f).scaleY(0.96f)
@@ -469,7 +469,7 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private void startMicPulse() {
-        if (micPulse != null || Motion.reduced(getContext())) return;
+        if (micPulse != null || Motion.reduced(this)) return;
         micPulse = android.animation.ValueAnimator.ofFloat(1f, 1.07f);
         micPulse.setDuration(1100);
         micPulse.setInterpolator(Motion.EASE_IN_OUT);
@@ -489,7 +489,7 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private TextView text(String value, float size, int color, boolean bold) {
-        TextView t = new TextView(getContext());
+        TextView t = new TextView(this);
         t.setText(value);
         t.setTextSize(size);
         t.setTextColor(color);
@@ -498,7 +498,7 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private Button smallButton(String value) {
-        Button b = new Button(getContext());
+        Button b = new Button(this);
         b.setText(value);
         b.setTextColor(Color.WHITE);
         b.setTextSize(22);
@@ -516,7 +516,7 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private int dp(int value) {
-        return Math.round(value * getContext().getResources().getDisplayMetrics().density);
+        return Math.round(value * this.getResources().getDisplayMetrics().density);
     }
 
     @Override public void onDestroy() {
