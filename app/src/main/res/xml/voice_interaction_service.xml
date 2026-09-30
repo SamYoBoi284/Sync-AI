@@ -2,6 +2,7 @@
 <voice-interaction-service
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:sessionService="com.sam.syncai.SyncVoiceSessionService"
+    android:recognitionService="com.sam.syncai.SyncRecognitionService"
     android:supportsAssist="true"
     android:supportsLaunchVoiceAssistFromKeyguard="true"
     android:supportsLocalInteraction="true" />
