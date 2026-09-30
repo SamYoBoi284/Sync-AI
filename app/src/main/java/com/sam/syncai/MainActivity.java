@@ -260,6 +260,12 @@ public final class MainActivity extends Activity {
         rootFrame.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
             int imeBottom = ime.bottom;
+            int topInset = Build.VERSION.SDK_INT >= 30
+                    ? insets.getInsets(android.view.WindowInsets.Type.statusBars()
+                            | android.view.WindowInsets.Type.displayCutout()).top
+                    : insets.getSystemWindowInsetTop();
+            contentRoot.setPadding(dp(16), dp(14) + topInset + dp(8), dp(16), dp(10));
+            if (sideDashboard != null) sideDashboard.setTopInset(topInset);
             composerCard.setTranslationY(-imeBottom);
             chatScroll.setPadding(
                     chatScroll.getPaddingLeft(),
@@ -272,6 +278,17 @@ public final class MainActivity extends Activity {
         });
         rootFrame.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         applyAccent();
+        playStartupMotion(contentRoot);
+    }
+
+    private void playStartupMotion(LinearLayout contentRoot) {
+        if (Motion.reduced(this)) return;
+        float dy = dp(12);
+        Motion.enter(contentRoot.getChildAt(0), 0, dy);
+        Motion.enter(contentRoot.getChildAt(1), 45, dy);
+        Motion.enter(contentRoot.getChildAt(2), 90, dy);
+        Motion.enter(chatScroll, 135, 0);
+        Motion.enter(composerCard, 180, 0);
     }
 
     private LinearLayout card() {
@@ -300,6 +317,7 @@ public final class MainActivity extends Activity {
         b.setAllCaps(false);
         b.setPadding(dp(7), 0, dp(7), 0);
         b.setBackground(round(Color.rgb(28, 33, 49), dp(13)));
+        Motion.pressable(b);
         return b;
     }
 
@@ -635,6 +653,9 @@ public final class MainActivity extends Activity {
                 -2);
         row.addView(bubble, bubbleLp);
         messageContainer.addView(row);
+        if (!Motion.reduced(this)) {
+            row.post(() -> Motion.messageIn(row, user));
+        }
         scrollToBottom();
         return body;
     }
@@ -1134,21 +1155,21 @@ public final class MainActivity extends Activity {
     private void refreshStatus() {
         ModelInfo loaded = runtime.modelManager().getLoadedModel();
         if (loaded != null && runtime.backend().isLoaded()) {
-            modelText.setText(loaded.name);
-            statusText.setText("READY • GGUF • LOCAL CPU INFERENCE");
+            Motion.swapText(modelText, loaded.name);
+            Motion.swapText(statusText, "READY • GGUF • LOCAL CPU INFERENCE");
         } else if (loaded != null) {
-            modelText.setText(loaded.name);
-            statusText.setText("SELECTED • READY TO LOAD");
+            Motion.swapText(modelText, loaded.name);
+            Motion.swapText(statusText, "SELECTED • READY TO LOAD");
         } else {
-            modelText.setText("NO MODEL");
-            statusText.setText("LOCAL RUNTIME • TOOLS AVAILABLE WITHOUT MODEL");
+            Motion.swapText(modelText, "NO MODEL");
+            Motion.swapText(statusText, "LOCAL RUNTIME • TOOLS AVAILABLE WITHOUT MODEL");
         }
     }
 
     private void setBusy(boolean busy) {
         modelBusy = busy;
-        sendButton.setEnabled(!busy);
-        importButton.setEnabled(!busy && activeGenerations == 0);
+        Motion.setEnabledAnimated(sendButton, !busy);
+        Motion.setEnabledAnimated(importButton, !busy && activeGenerations == 0);
     }
 
     private void scrollToBottom() {
