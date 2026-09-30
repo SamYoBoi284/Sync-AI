@@ -1,0 +1,77 @@
+SYNC AI CHAT EXPORT
+===================
+
+Title: yo
+Chat ID: 23494859-7629-4978-90ce-94bf73a0ebb2
+Created: Sep 30, 2026 4:36:36 AM
+Updated: Sep 30, 2026 4:47:39 AM
+
+------------------------------------------------------------
+Message 1 | USER | Sep 30, 2026 4:37:24 AM
+
+yo
+------------------------------------------------------------
+Message 2 | ASSISTANT | Sep 30, 2026 4:37:30 AM
+
+*listening*
+
+[AI MESSAGE DIAGNOSTICS]
+REQUEST 0045c340
+Route: LOCAL LLM
+Total: 6622 ms
+Model: Llama-3.2-1B-Instruct-Q5_K_M.gguf
+
+Prompt tokens: 67
+Context: 2048
+Threads: 6
+Prompt eval: 5700 ms
+Generation: 753 ms
+Generated tokens: 3
+Tokens/sec: 3.98
+Total inference: 6615 ms
+------------------------------------------------------------
+Message 3 | USER | Sep 30, 2026 4:37:39 AM
+
+how ya doin?
+------------------------------------------------------------
+Message 4 | ASSISTANT | Sep 30, 2026 4:37:48 AM
+
+idk lol just chillin *makes a generic android gesture*
+
+[AI MESSAGE DIAGNOSTICS]
+REQUEST c8f17212
+Route: LOCAL LLM
+Total: 8913 ms
+Model: Llama-3.2-1B-Instruct-Q5_K_M.gguf
+
+Prompt tokens: 85
+Context: 2048
+Threads: 6
+Prompt eval: 6759 ms
+Generation: 2050 ms
+Generated tokens: 13
+Tokens/sec: 6.34
+Total inference: 8907 ms
+------------------------------------------------------------
+Message 5 | USER | Sep 30, 2026 4:47:29 AM
+
+what do you think of Rocket league?
+------------------------------------------------------------
+Message 6 | ASSISTANT | Sep 30, 2026 4:47:39 AM
+
+lol lol ur team is trash
+
+[AI MESSAGE DIAGNOSTICS]
+REQUEST ad7f281f
+Route: LOCAL LLM
+Total: 10682 ms
+Model: Llama-3.2-1B-Instruct-Q5_K_M.gguf
+
+Prompt tokens: 116
+Context: 2048
+Threads: 6
+Prompt eval: 9116 ms
+Generation: 1395 ms
+Generated tokens: 6
+Tokens/sec: 4.30
+Total inference: 10673 ms
