@@ -49,6 +49,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_MEMORY = 1202;
     private static final int REQ_PERMISSIONS = 1203;
     private static final int REQ_EXPORT_CHAT = 1204;
+    private static final int REQ_EXPORT_LOGS = 1205;
 
     private String pendingChatExport;
 
@@ -88,6 +89,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        AppLog.log("MAIN", "onCreate", "state=" + (state == null ? "null" : "restored"));
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         runtime = SyncRuntime.get(this);
         accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
@@ -99,6 +101,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        AppLog.log("MAIN", "onResume", "activeChat=" + (activeChat == null ? "" : activeChat.id));
         if (runtime != null) refreshStatus();
     }
 
@@ -409,6 +412,11 @@ public final class MainActivity extends Activity {
         if (requestCode == REQ_IMPORT_MEMORY && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri != null) importMemory(uri);
+            return;
+        }
+        if (requestCode == REQ_EXPORT_LOGS && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) writeChatExport(uri, formatDiagnosticExport());
             return;
         }
         if (requestCode == REQ_EXPORT_CHAT && resultCode == RESULT_OK && data != null) {
@@ -787,6 +795,39 @@ public final class MainActivity extends Activity {
         startActivityForResult(intent, REQ_EXPORT_CHAT);
     }
 
+    private void exportLogs() {
+        AppLog.log("EXPORT", "logs_requested", "chats=" + runtime.chatStore().all().size());
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, "sync-ai-logs.txt");
+        startActivityForResult(intent, REQ_EXPORT_LOGS);
+    }
+
+    private String formatDiagnosticExport() {
+        StringBuilder out = new StringBuilder();
+        out.append("SYNC AI — COMPLETE DIAGNOSTIC EXPORT\n");
+        out.append("===================================\n\n");
+        out.append("Generated: ").append(formatTimestamp(System.currentTimeMillis())).append("\n");
+        out.append("Package: ").append(getPackageName()).append("\n");
+        out.append("Android: ").append(android.os.Build.VERSION.RELEASE).append(" (API ").append(android.os.Build.VERSION.SDK_INT).append(")\n");
+        out.append("Device: ").append(android.os.Build.MANUFACTURER).append(" ").append(android.os.Build.MODEL).append("\n");
+        out.append("App version: ").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE).append(")\n");
+        ModelInfo loaded = runtime.modelManager().getLoadedModel();
+        out.append("Loaded model: ").append(loaded == null ? "none" : loaded.name).append("\n");
+        out.append("Native backend loaded: ").append(runtime.backend().isLoaded()).append("\n");
+        out.append("Runtime diagnostics: ").append(runtime.backend().diagnostics()).append("\n");
+        if (runtime.backend() instanceof GgufModelBackend) {
+            out.append("Last native diagnostics: ").append(((GgufModelBackend) runtime.backend()).lastGenerationDiagnostics()).append("\n");
+        }
+        out.append("\n===== PERSISTENT RUNTIME / CRASH LOG =====\n\n");
+        out.append(AppLog.readAll());
+        out.append("\n\n===== ALL CHATS + MESSAGE DIAGNOSTICS =====\n\n");
+        out.append(formatAllChatsExport(runtime.chatStore().all()));
+        out.append("\n\n===== END DIAGNOSTIC EXPORT =====\n");
+        return out.toString();
+    }
+
     private void exportAllChats() {
         pendingChatExport = formatAllChatsExport(runtime.chatStore().all());
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
@@ -903,6 +944,11 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    @Override protected void onPause() {
+        AppLog.log("MAIN", "onPause", "modelBusy=" + modelBusy + " activeGenerations=" + activeGenerations);
+        super.onPause();
+    }
+
     private void showSettings() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -915,6 +961,10 @@ public final class MainActivity extends Activity {
         Button about = sectionButton("ABOUT & DIAGNOSTICS", "Version, creators, runtime evidence");
         about.setOnClickListener(v -> showAbout());
         content.addView(about);
+
+        Button exportLogs = sectionButton("EXPORT LOGS", "All chats, AI diagnostics, lifecycle events + crash evidence");
+        exportLogs.setOnClickListener(v -> exportLogs());
+        content.addView(exportLogs);
 
         Button models = sectionButton("LOCAL MODELS", "Import, load, inspect, remove");
         models.setOnClickListener(v -> showModelsDialog());
@@ -1266,6 +1316,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showError(String title, Exception e) {
+        AppLog.logException("ERROR", title, e);
         new SyncDialog.Builder(this, accent)
                 .setTitle(title)
                 .setMessage(e.getMessage() == null ? e.toString() : e.getMessage())
@@ -1278,6 +1329,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        AppLog.log("MAIN", "onDestroy", "finishing=" + isFinishing());
         ioExecutor.shutdownNow();
         super.onDestroy();
     }
