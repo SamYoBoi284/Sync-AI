@@ -14,8 +14,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply source patch
         run: |
-          cat > /tmp/patch.b64 <<'PATCH'
-          U29tZSBub3QtcmVhbCBwYXRjaCBjb250ZW50IGlzIG5vdCB1c2VkLg==
-          PATCH
-          echo 'The patch workflow is intentionally replaced by the next commit.'
+          echo 'KioqIEJlZ2luIFBhdGNoCioqKiBVcGRhdGUgRmlsZTogYXBwL3NyYy9tYWluL2phdmEvY29tL3NhbS9zeW5jYWkvTWFpbkFjdGl2aXR5LmphdmEKQEAKLSAgICBwcml2YXRlIHN0YXRpYyBmaW5hbCBpbnQgUkVRX0VYUE9SVF9DSEFUID0gMTIwNDsKKyAgICBwcml2YXRlIHN0YXRpYyBmaW5hbCBpbnQgUkVRX0VYUE9SVF9DSEFUID0gMTIwNDsKKyAgICBwcml2YXRlIHN0YXRpYyBmaW5hbCBpbnQgUkVRX0VYFBPUlRfTE9HUyA9IDEyMDU7' > /tmp/nope
+          echo 'placeholder'
           exit 1
