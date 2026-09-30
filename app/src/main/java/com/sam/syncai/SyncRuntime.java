@@ -13,6 +13,8 @@ public final class SyncRuntime {
 
     private SyncRuntime(Context context) {
         Context app = context.getApplicationContext();
+        AppLog.init(app);
+        AppLog.log("RUNTIME", "constructor", "SyncRuntime initialized");
         preferences = new AppPreferences(app);
         chatStore = new ChatStore(app);
         modelManager = new ModelManager(app);
