@@ -293,7 +293,7 @@ The current visual language is:
 - futuristic/local-agent aesthetic
 - restrained UI rather than excessive decoration
 
-(note from user: if you can add a fade out from nothing animation to both messages sent by user or ai when sent, that would be good, kinda like how the WhatsApp typing "..." appears and dots jump one by one)
+(note from user: if you can add a fade out from nothing animation to both messages sent by user or ai when sent, that would be good, kinda like how the WhatsApp typing "..." appears and dots jump one by one, and i mean the appearance animation itself, not the dots jumping)
 
 The goal is **premium, fluid, futuristic motion**, not flashy motion for its own sake.
 
