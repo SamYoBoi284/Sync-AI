@@ -501,7 +501,9 @@ public final class MainActivity extends Activity {
                 String answer = response.toString().trim();
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
-                        currentModelName(), "Inference completed.", "", "");
+                        currentModelName(), runtime.backend() instanceof GgufModelBackend
+                                ? ((GgufModelBackend) runtime.backend()).lastGenerationDiagnostics()
+                                : "Inference completed.", "", "");
                 if (answer.isEmpty()) answer = "I got no response from the local model.";
                 ChatMessage assistant = new ChatMessage(
                         ChatMessage.Role.ASSISTANT, answer,
