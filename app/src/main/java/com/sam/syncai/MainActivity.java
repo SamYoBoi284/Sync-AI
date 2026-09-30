@@ -67,6 +67,8 @@ public final class MainActivity extends Activity {
     private SideDashboard sideDashboard;
     private FrameLayout rootFrame;
     private View composerCard;
+    private int activeGenerations;
+    private boolean modelBusy;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -437,7 +439,8 @@ public final class MainActivity extends Activity {
         runtime.chatStore().add(activeChat, user);
         addMessageView(user);
 
-        sendButton.setEnabled(false);
+        // Keep SEND usable while native inference runs. GgufModelBackend serializes
+        // generations on its single executor, so follow-up messages are queued.
         importButton.setEnabled(false);
 
         long started = System.currentTimeMillis();
@@ -471,9 +474,10 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        activeAssistantBubble = addMessageView(
+        final TextView streamingBubble = addMessageView(
                 new ChatMessage(ChatMessage.Role.ASSISTANT, "Thinking…"));
-        activeAssistantBubble.setTextColor(MUTED);
+        streamingBubble.setTextColor(MUTED);
+        activeGenerations++;
 
         List<ChatMessage> context = buildModelContext(message);
         GenerationConfig config = new GenerationConfig();
@@ -483,10 +487,8 @@ public final class MainActivity extends Activity {
             @Override public void onToken(String token) {
                 response.append(token);
                 runOnUiThread(() -> {
-                    if (activeAssistantBubble != null) {
-                        activeAssistantBubble.setText(response.toString());
-                        activeAssistantBubble.setTextColor(TEXT);
-                    }
+                    streamingBubble.setText(response.toString());
+                    streamingBubble.setTextColor(TEXT);
                     scrollToBottom();
                 });
             }
@@ -503,9 +505,10 @@ public final class MainActivity extends Activity {
                         System.currentTimeMillis(), diag.format());
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
-                    replaceStreamingBubble(assistant);
-                    activeAssistantBubble = null;
-                    setBusy(false);
+                    replaceStreamingBubble(streamingBubble, assistant);
+                    activeGenerations = Math.max(0, activeGenerations - 1);
+                    importButton.setEnabled(!modelBusy && activeGenerations == 0);
+                    sendButton.setEnabled(!modelBusy);
                 });
             }
 
@@ -522,8 +525,10 @@ public final class MainActivity extends Activity {
                         System.currentTimeMillis(), diag.format());
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
-                    replaceStreamingBubble(assistant);
-                    setBusy(false);
+                    replaceStreamingBubble(streamingBubble, assistant);
+                    activeGenerations = Math.max(0, activeGenerations - 1);
+                    importButton.setEnabled(!modelBusy && activeGenerations == 0);
+                    sendButton.setEnabled(!modelBusy);
                 });
             }
         });
@@ -572,11 +577,11 @@ public final class MainActivity extends Activity {
         return model == null ? "" : model.name;
     }
 
-    private void replaceStreamingBubble(ChatMessage message) {
-        if (activeAssistantBubble != null) {
-            View row = (View) activeAssistantBubble.getParent().getParent();
+    private void replaceStreamingBubble(TextView streamingBubble, ChatMessage message) {
+        if (streamingBubble != null && streamingBubble.getParent() != null
+                && streamingBubble.getParent().getParent() != null) {
+            View row = (View) streamingBubble.getParent().getParent();
             messageContainer.removeView(row);
-            activeAssistantBubble = null;
         }
         addMessageView(message);
         scrollToBottom();
@@ -1035,8 +1040,9 @@ public final class MainActivity extends Activity {
     }
 
     private void setBusy(boolean busy) {
+        modelBusy = busy;
         sendButton.setEnabled(!busy);
-        importButton.setEnabled(!busy);
+        importButton.setEnabled(!busy && activeGenerations == 0);
     }
 
     private void scrollToBottom() {
