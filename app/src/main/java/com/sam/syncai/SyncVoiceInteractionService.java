@@ -10,21 +10,25 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
 
     @Override public void onCreate() {
         super.onCreate();
+        AppLog.log("VOICE_SERVICE", "onCreate", "component=" + getClass().getName());
         Log.d(TAG, "VoiceInteractionService.onCreate");
     }
 
     @Override public void onReady() {
         super.onReady();
+        AppLog.log("VOICE_SERVICE", "onReady", "ready");
         Log.d(TAG, "VoiceInteractionService.onReady");
     }
 
     @Override public void onShutdown() {
         Log.d(TAG, "VoiceInteractionService.onShutdown");
+        AppLog.log("VOICE_SERVICE", "onShutdown", "shutdown");
         super.onShutdown();
     }
 
     @Override public void onPrepareToShowSession(Bundle args, int flags) {
         super.onPrepareToShowSession(args, flags);
+        AppLog.log("VOICE_SERVICE", "onPrepareToShowSession", "flags=" + flags + " args=" + args);
         Log.d(TAG, "VoiceInteractionService.onPrepareToShowSession flags=" + flags
                 + " args=" + args + " thread=" + Thread.currentThread().getName());
     }
@@ -32,6 +36,7 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
     @Override public void onShowSessionFailed(Bundle args) {
         super.onShowSessionFailed(args);
         Log.e(TAG, "VoiceInteractionService.onShowSessionFailed args=" + args);
+        AppLog.log("VOICE_SERVICE", "onShowSessionFailed", "args=" + args);
         // Fall back to the exact same Voice Mode Activity rather than leaving the
         // hardware assistant button with no visible result.
         launchVoiceMode("session-failed");
@@ -39,6 +44,7 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
 
     @Override public void onLaunchVoiceAssistFromKeyguard() {
         Log.d(TAG, "VoiceInteractionService.onLaunchVoiceAssistFromKeyguard");
+        AppLog.log("VOICE_SERVICE", "onLaunchVoiceAssistFromKeyguard", "keyguard launch requested");
         launchVoiceMode("keyguard");
     }
 
