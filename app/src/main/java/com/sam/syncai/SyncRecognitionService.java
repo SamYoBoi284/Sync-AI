@@ -16,7 +16,16 @@ import android.speech.SpeechRecognizer;
  */
 public final class SyncRecognitionService extends RecognitionService {
     @Override
+    public void onCreate() {
+        SyncEventLogger.install(this);
+        super.onCreate();
+        SyncEventLogger.record(this, "SyncRecognitionService", "onCreate", "INFO", "");
+    }
+
+    @Override
     protected void onStartListening(Intent recognizerIntent, Callback callback) {
+        SyncEventLogger.recordIntent(this, "SyncRecognitionService",
+                "onStartListening", recognizerIntent);
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             sendError(callback, SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS);
@@ -27,12 +36,20 @@ public final class SyncRecognitionService extends RecognitionService {
 
     @Override
     protected void onStopListening(Callback callback) {
+        SyncEventLogger.record(this, "SyncRecognitionService", "onStopListening", "INFO", "");
         sendError(callback, SpeechRecognizer.ERROR_CLIENT);
     }
 
     @Override
     protected void onCancel(Callback callback) {
+        SyncEventLogger.record(this, "SyncRecognitionService", "onCancel", "INFO", "");
         // Nothing to cancel: Sync's Voice Mode owns its recognizer directly.
+    }
+
+    @Override
+    public void onDestroy() {
+        SyncEventLogger.record(this, "SyncRecognitionService", "onDestroy", "INFO", "");
+        super.onDestroy();
     }
 
     private void sendError(Callback callback, int error) {
