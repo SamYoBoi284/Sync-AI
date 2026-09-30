@@ -207,7 +207,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     // Keep a modest cap for mobile RAM while allowing models trained for larger
     // contexts to retain more conversation than the old hard 2048-token ceiling.
     const uint32_t contextSize = static_cast<uint32_t>(
-            std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx)));
+            std::min<int32_t>(8192, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
     ctxParams.n_batch = 256;
     ctxParams.n_ubatch = 256;
@@ -252,8 +252,8 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         return size;
     };
 
-    const int requestedGeneration = std::max(1, std::min(128, static_cast<int>(maxTokens)));
-    const int reservedGeneration = std::min(requestedGeneration, 128);
+    const int requestedGeneration = std::max(1, std::min(256, static_cast<int>(maxTokens)));
+    const int reservedGeneration = std::min(requestedGeneration, 256);
     const int promptBudget = std::max(
             1, static_cast<int>(contextSize) - reservedGeneration - 4);
 
@@ -358,7 +358,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const int generationLimit = std::max(
             1,
             std::min(
-                    128,
+                    256,
                     std::min(
                             static_cast<int>(maxTokens),
                             static_cast<int>(contextSize) - promptCount - 1)));
