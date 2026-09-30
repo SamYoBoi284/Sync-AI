@@ -495,10 +495,13 @@ public final class MainActivity extends Activity {
 
             @Override public void onComplete() {
                 long total = System.currentTimeMillis() - started;
+                // Do not call backend().diagnostics() from this callback.
+                // llama.cpp invokes the callback while its native generation mutex is held;
+                // synchronously requesting diagnostics here would deadlock the executor.
+                String answer = response.toString().trim();
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
-                        currentModelName(), runtime.backend().diagnostics(), "", "");
-                String answer = response.toString().trim();
+                        currentModelName(), "Inference completed.", "", "");
                 if (answer.isEmpty()) answer = "I got no response from the local model.";
                 ChatMessage assistant = new ChatMessage(
                         ChatMessage.Role.ASSISTANT, answer,
@@ -514,10 +517,11 @@ public final class MainActivity extends Activity {
 
             @Override public void onError(Exception error) {
                 long total = System.currentTimeMillis() - started;
-                String nativeDetails = runtime.backend().diagnostics();
+                // Same deadlock rule as onComplete(): diagnostics must not be queried
+                // synchronously from the native callback.
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
-                        currentModelName(), nativeDetails,
+                        currentModelName(), "Inference error callback.", 
                         "generation", error.getMessage());
                 String failure = "I couldn't generate that response, bro. Runtime: " + total + " ms.";
                 ChatMessage assistant = new ChatMessage(
