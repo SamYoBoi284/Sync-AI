@@ -10,10 +10,12 @@ public final class SyncVoiceSessionService extends VoiceInteractionSessionServic
     @Override public void onCreate() {
         super.onCreate();
         android.util.Log.d(TAG, "VoiceInteractionSessionService.onCreate");
+        AppLog.log("VOICE_SESSION_SERVICE", "onCreate", "created");
     }
 
     @Override public VoiceInteractionSession onNewSession(Bundle args) {
         android.util.Log.d(TAG, "VoiceInteractionSessionService.onNewSession args=" + args);
+        AppLog.log("VOICE_SESSION_SERVICE", "onNewSession", "args=" + args);
         SyncVoiceSession session = new SyncVoiceSession(this);
         android.util.Log.d(TAG, "VoiceInteractionSessionService created session=" + session);
         return session;
@@ -21,6 +23,7 @@ public final class SyncVoiceSessionService extends VoiceInteractionSessionServic
 
     @Override public void onDestroy() {
         android.util.Log.d(TAG, "VoiceInteractionSessionService.onDestroy");
+        AppLog.log("VOICE_SESSION_SERVICE", "onDestroy", "destroyed");
         super.onDestroy();
     }
 }
