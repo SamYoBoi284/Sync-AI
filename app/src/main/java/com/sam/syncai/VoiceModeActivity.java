@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -40,6 +41,7 @@ public final class VoiceModeActivity extends Activity {
     private TextView stateView;
     private TextView transcriptView;
     private TextView responseView;
+    private ScrollView responseScroll;
     private View micButton;
     private View panelView;
     private android.animation.ValueAnimator micPulse;
@@ -51,6 +53,13 @@ public final class VoiceModeActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        } else {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                    | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        }
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
@@ -117,7 +126,7 @@ public final class VoiceModeActivity extends Activity {
         transcriptView.setPadding(dp(6), dp(4), dp(6), dp(10));
         panel.addView(transcriptView);
 
-        ScrollView responseScroll = new ScrollView(this);
+        responseScroll = new ScrollView(this);
         responseView = text("", 14, Color.rgb(215, 219, 232), false);
         responseView.setPadding(dp(4), dp(8), dp(4), dp(4));
         responseScroll.addView(responseView);
@@ -295,6 +304,7 @@ public final class VoiceModeActivity extends Activity {
             ).format());
             processing.set(false);
             updateState("RESPONDING");
+            showResponse(tool.response);
             speakAndMaybeListen(tool.response, false);
             return;
         }
@@ -304,6 +314,7 @@ public final class VoiceModeActivity extends Activity {
             appendVoiceChat(clean, fallback, null);
             processing.set(false);
             updateState("RESPONDING");
+            showResponse(fallback);
             speakAndMaybeListen(fallback, false);
             return;
         }
@@ -407,8 +418,16 @@ public final class VoiceModeActivity extends Activity {
         return model == null ? "" : model.name;
     }
 
+    private void showResponse(String text) {
+        main.post(() -> {
+            if (destroyed || responseView == null) return;
+            responseView.setText(text == null ? "" : text);
+            if (responseScroll != null) responseScroll.post(() -> responseScroll.fullScroll(View.FOCUS_DOWN));
+        });
+    }
+
     private void speakAndMaybeListen(String text, boolean exitAfter) {
-        if (exitAfter || !runtime.preferences().isVoiceOutputEnabled()) {
+        if (exitAfter) {
             if (exitAfter) {
                 main.postDelayed(this::exit, 450);
             } else {
