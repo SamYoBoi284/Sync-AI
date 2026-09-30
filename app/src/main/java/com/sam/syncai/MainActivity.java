@@ -42,6 +42,9 @@ public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_MODEL = 1201;
     private static final int REQ_IMPORT_MEMORY = 1202;
     private static final int REQ_PERMISSIONS = 1203;
+    private static final int REQ_EXPORT_CHAT = 1204;
+
+    private String pendingChatExport;
 
     private static final int BG = Color.rgb(7, 8, 14);
     private static final int SURFACE = Color.rgb(15, 18, 28);
@@ -341,6 +344,12 @@ public final class MainActivity extends Activity {
         if (requestCode == REQ_IMPORT_MEMORY && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri != null) importMemory(uri);
+            return;
+        }
+        if (requestCode == REQ_EXPORT_CHAT && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null && pendingChatExport != null) writeChatExport(uri, pendingChatExport);
+            pendingChatExport = null;
         }
     }
 
@@ -659,12 +668,13 @@ public final class MainActivity extends Activity {
                         showChatActions(chats.get(which - 1));
                     }
                 })
+                .setPositiveButton("EXPORT ALL", (d, w) -> exportAllChats())
                 .setNegativeButton("CLOSE", null)
                 .show();
     }
 
     private void showChatActions(ChatRecord chat) {
-        String[] actions = {"Open", "Rename", "Delete"};
+        String[] actions = {"Open", "Rename", "Export", "Delete"};
         new AlertDialog.Builder(this)
                 .setTitle(chat.title)
                 .setItems(actions, (d, which) -> {
@@ -675,12 +685,102 @@ public final class MainActivity extends Activity {
                         renderChat();
                     } else if (which == 1) {
                         renameChat(chat);
+                    } else if (which == 2) {
+                        exportChat(chat);
                     } else {
                         deleteChat(chat);
                     }
                 })
                 .setNegativeButton("CLOSE", null)
                 .show();
+    }
+
+    private void exportChat(ChatRecord chat) {
+        if (chat == null) return;
+        pendingChatExport = formatChatExport(chat);
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, exportFileName(chat.title));
+        startActivityForResult(intent, REQ_EXPORT_CHAT);
+    }
+
+    private void exportAllChats() {
+        pendingChatExport = formatAllChatsExport(runtime.chatStore().all());
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, "sync-ai-chats.txt");
+        startActivityForResult(intent, REQ_EXPORT_CHAT);
+    }
+
+    private String formatChatExport(ChatRecord chat) {
+        StringBuilder out = new StringBuilder();
+        out.append("SYNC AI CHAT EXPORT\\n");
+        out.append("===================\\n\\n");
+        out.append("Title: ").append(chat.title).append('\\n');
+        out.append("Chat ID: ").append(chat.id).append('\\n');
+        out.append("Created: ").append(formatTimestamp(chat.createdAt)).append('\\n');
+        out.append("Updated: ").append(formatTimestamp(chat.updatedAt)).append("\\n\\n");
+        appendMessages(out, chat);
+        return out.toString();
+    }
+
+    private String formatAllChatsExport(List<ChatRecord> chats) {
+        StringBuilder out = new StringBuilder();
+        out.append("SYNC AI — ALL CHAT EXPORT\\n");
+        out.append("=========================\\n\\n");
+        out.append("Chats: ").append(chats.size()).append("\\n");
+        for (ChatRecord chat : chats) {
+            out.append("\\n\\n############################################################\\n\\n");
+            out.append(formatChatExport(chat));
+        }
+        return out.toString();
+    }
+
+    private void appendMessages(StringBuilder out, ChatRecord chat) {
+        if (chat.messages.isEmpty()) {
+            out.append("[No saved messages]\\n");
+            return;
+        }
+        for (int i = 0; i < chat.messages.size(); i++) {
+            ChatMessage message = chat.messages.get(i);
+            out.append("------------------------------------------------------------\\n");
+            out.append("Message ").append(i + 1).append(" | ")
+                    .append(message.role.name()).append(" | ")
+                    .append(formatTimestamp(message.timestamp)).append("\\n\\n");
+            out.append(message.text).append("\\n");
+            if (message.role == ChatMessage.Role.ASSISTANT) {
+                out.append("\\n[AI MESSAGE DIAGNOSTICS]\\n");
+                out.append(message.hasDiagnostics()
+                        ? message.diagnostics
+                        : "No diagnostics recorded for this AI message.");
+                out.append("\\n");
+            }
+        }
+    }
+
+    private String formatTimestamp(long timestamp) {
+        return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM, Locale.US)
+                .format(new Date(timestamp));
+    }
+
+    private String exportFileName(String title) {
+        String clean = title == null ? "chat" : title.trim().replaceAll("[^a-zA-Z0-9._-]+", "_");
+        if (clean.isEmpty()) clean = "chat";
+        return "sync-ai-" + clean + ".txt";
+    }
+
+    private void writeChatExport(Uri uri, String content) {
+        ioExecutor.execute(() -> {
+            try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+                if (out == null) throw new IllegalStateException("Could not create the export file.");
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+                runOnUiThread(() -> showToast("Chat export saved."));
+            } catch (Exception e) {
+                runOnUiThread(() -> showError("Export failed", e));
+            }
+        });
     }
 
     private void newChat() {
