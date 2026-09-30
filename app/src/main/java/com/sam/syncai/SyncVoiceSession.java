@@ -71,13 +71,28 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
+        Intent intent = new Intent(getContext(), VoiceModeActivity.class);
         try {
-            Intent intent = new Intent(getContext(), VoiceModeActivity.class);
-            // startAssistantActivity supplies NEW_TASK itself and gives the Activity
-            // the proper assistant activity layer, including background/keyguard launch.
+            // Primary path: the documented assistant-activity layer.
             startAssistantActivity(intent);
-        } catch (Exception ignored) {
-            finish();
+        } catch (Exception primary) {
+            // Some vendor SystemUI builds can reject the assistant-activity launch
+            // even though the VoiceInteractionSession itself was accepted. Keep a
+            // voice-activity fallback, then a direct Activity fallback, and log the
+            // actual failure instead of silently swallowing it.
+            android.util.Log.e("SyncAI", "startAssistantActivity failed", primary);
+            try {
+                startVoiceActivity(intent);
+            } catch (Exception secondary) {
+                android.util.Log.e("SyncAI", "startVoiceActivity failed", secondary);
+                try {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(intent);
+                } catch (Exception tertiary) {
+                    android.util.Log.e("SyncAI", "Direct VoiceModeActivity launch failed", tertiary);
+                    finish();
+                }
+            }
         }
     }
 
