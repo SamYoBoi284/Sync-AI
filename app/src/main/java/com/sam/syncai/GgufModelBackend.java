@@ -23,7 +23,7 @@ public final class GgufModelBackend implements LocalModelBackend {
                 if (result != 0) {
                     String details = GgufNative.nativeDiagnostics();
                     throw new IllegalStateException(
-                            "The GGUF model could not be loaded.\\n\\n" +
+                            "The GGUF model could not be loaded.\n\n" +
                             details
                     );
                 }
