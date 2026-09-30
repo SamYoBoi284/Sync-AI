@@ -52,12 +52,14 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     public SyncVoiceSession(Context context) {
         super(context);
+        android.util.Log.d("SyncAI", "VoiceInteractionSession constructed");
         runtime = SyncRuntime.get(context);
         accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
         setKeepAwake(true);
     }
 
     @Override public View onCreateContentView() {
+        android.util.Log.d("SyncAI", "VoiceInteractionSession.onCreateContentView");
         // Global assistant UI is handled by the standalone VoiceModeActivity.
         View bridge = new View(getContext());
         bridge.setBackgroundColor(Color.TRANSPARENT);
@@ -66,15 +68,20 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onPrepareShow(Bundle args, int showFlags) {
         super.onPrepareShow(args, showFlags);
+        android.util.Log.d("SyncAI", "VoiceInteractionSession.onPrepareShow flags="
+                + showFlags + " args=" + args);
         setUiEnabled(false);
     }
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
+        android.util.Log.d("SyncAI", "VoiceInteractionSession.onShow flags=" + flags
+                + " args=" + args);
         Intent intent = new Intent(getContext(), VoiceModeActivity.class);
         try {
             // Primary path: the documented assistant-activity layer.
             startAssistantActivity(intent);
+            android.util.Log.d("SyncAI", "VoiceInteractionSession.startAssistantActivity returned successfully");
         } catch (Exception primary) {
             // Some vendor SystemUI builds can reject the assistant-activity launch
             // even though the VoiceInteractionSession itself was accepted. Keep a
@@ -83,6 +90,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
             android.util.Log.e("SyncAI", "startAssistantActivity failed", primary);
             try {
                 startVoiceActivity(intent);
+                android.util.Log.d("SyncAI", "VoiceInteractionSession.startVoiceActivity returned successfully");
             } catch (Exception secondary) {
                 android.util.Log.e("SyncAI", "startVoiceActivity failed", secondary);
                 try {
@@ -96,9 +104,22 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         }
     }
 
+    @Override public void onTaskStarted(Intent intent, int taskId) {
+        super.onTaskStarted(intent, taskId);
+        android.util.Log.d("SyncAI", "VoiceInteractionSession.onTaskStarted taskId="
+                + taskId + " intent=" + intent);
+    }
+
     @Override public void onTaskFinished(Intent intent, int taskId) {
         super.onTaskFinished(intent, taskId);
+        android.util.Log.d("SyncAI", "VoiceInteractionSession.onTaskFinished taskId="
+                + taskId + " intent=" + intent);
         finish();
+    }
+
+    @Override public void onHide() {
+        super.onHide();
+        android.util.Log.d("SyncAI", "VoiceInteractionSession.onHide");
     }
 
     private void configureWindow() {
