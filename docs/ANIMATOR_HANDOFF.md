@@ -540,3 +540,4 @@ Before changing architecture, understand the existing code and preserve the real
 
 
 so long story short it should be a good visual revamp, not touching any code UNLESS its for the visual fix.
+also one more thing cuz i cant find its specific section: the status bar of my phone blocks some stuff at the top, can u lower em down a liiiiittle bit?
