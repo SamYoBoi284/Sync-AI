@@ -227,16 +227,6 @@ public final class VoiceModeActivity extends Activity {
                     return;
                 }
                 handleVoiceText(values.get(0));
-                return;
-                
-                // unreachable legacy body intentionally removed
-
-                        SpeechRecognizer.RESULTS_RECOGNITION);
-                if (values == null || values.isEmpty()) {
-                    startListening();
-                    return;
-                }
-                handleVoiceText(values.get(0));
             }
             @Override public void onPartialResults(Bundle partialResults) {
                 ArrayList<String> values = partialResults.getStringArrayList(
@@ -558,6 +548,8 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private void exit() {
+        SyncEventLogger.record(this, "VoiceModeActivity", "EXIT_REQUEST", "INFO",
+                "exiting=" + exiting);
         android.util.Log.d("SyncAI", "VoiceModeActivity.exit requested");
         processing.set(false);
         if (recognizer != null) {
@@ -651,6 +643,9 @@ public final class VoiceModeActivity extends Activity {
     }
 
     @Override public void onDestroy() {
+        SyncEventLogger.record(this, "VoiceModeActivity", "onDestroy", "INFO",
+                "finishing=" + isFinishing() + " changingConfigurations="
+                        + isChangingConfigurations() + " taskId=" + getTaskId());
         android.util.Log.d("SyncAI", "VoiceModeActivity.onDestroy finishing="
                 + isFinishing() + " changingConfigurations=" + isChangingConfigurations()
                 + " taskId=" + getTaskId());
