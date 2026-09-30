@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.ComponentName;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -17,6 +18,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.graphics.Rect;
 import android.view.Gravity;
+import android.service.voice.VoiceInteractionService;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
@@ -1008,9 +1010,20 @@ public final class MainActivity extends Activity {
 
     private void launchVoiceMode() {
         try {
-            Intent intent = new Intent(Intent.ACTION_ASSIST);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
+            ComponentName voiceService = new ComponentName(
+                    this, SyncVoiceInteractionService.class);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                    && VoiceInteractionService.isActiveService(this, voiceService)
+                    && isLocalVoiceInteractionSupported()) {
+                startLocalVoiceInteraction(new Bundle());
+                return;
+            }
+
+            // Sync must be the selected Android voice assistant before its
+            // VoiceInteractionSession can be started directly. ACTION_ASSIST
+            // would show the system "Complete action using" chooser instead.
+            showVoiceSettings();
         } catch (Exception e) {
             showError("Voice mode unavailable", e);
         }
