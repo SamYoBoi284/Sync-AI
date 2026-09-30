@@ -9,7 +9,10 @@ import android.view.Window;
 
 public final class MicPermissionActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
+        SyncEventLogger.install(this);
         super.onCreate(state);
+        SyncEventLogger.record(this, "MicPermissionActivity", "onCreate", "INFO",
+                "savedState=" + (state != null));
         Window window = getWindow();
         window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
