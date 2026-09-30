@@ -13,6 +13,7 @@ public final class GgufModelBackend implements LocalModelBackend {
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
         executor.execute(() -> {
+            AppLog.log("GGUF", "load_start", "model=" + (model == null ? "" : model.name));
             try {
                 if (!"gguf".equalsIgnoreCase(model.format)) {
                     throw new IllegalArgumentException(
@@ -30,11 +31,13 @@ public final class GgufModelBackend implements LocalModelBackend {
                 loaded = model;
                 lastGenerationDiagnostics = "";
                 runtimeDiagnostics = GgufNative.nativeDiagnostics();
+                AppLog.log("GGUF", "load_complete", "model=" + model.name + " diagnostics=" + runtimeDiagnostics);
                 callback.onLoaded();
             } catch (Exception e) {
                 loaded = null;
                 runtimeDiagnostics = "No model loaded.\n\n" +
                         (e.getMessage() == null ? e.toString() : e.getMessage());
+                AppLog.logException("GGUF", "load_error", e);
                 callback.onError(e);
             }
         });
@@ -62,6 +65,7 @@ public final class GgufModelBackend implements LocalModelBackend {
     public void generate(List<ChatMessage> messages, GenerationConfig config, GenerateCallback callback) {
         ModelInfo model = loaded;
         if (model == null) {
+            AppLog.log("GGUF", "generate_rejected", "no model loaded");
             callback.onError(new IllegalStateException("No model is loaded."));
             return;
         }
@@ -78,11 +82,13 @@ public final class GgufModelBackend implements LocalModelBackend {
                     }
                     @Override public void onError(String message) {
                         runtimeDiagnostics = message == null ? "Inference error." : message;
+                        AppLog.log("GGUF", "native_error", runtimeDiagnostics);
                         callback.onError(new IllegalStateException(runtimeDiagnostics));
                     }
                 });
             } catch (Throwable t) {
                 runtimeDiagnostics = t.getMessage() == null ? t.toString() : t.getMessage();
+                AppLog.logException("GGUF", "generate_exception", t);
                 callback.onError(new IllegalStateException(runtimeDiagnostics, t));
             }
         });
