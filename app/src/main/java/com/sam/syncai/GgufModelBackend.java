@@ -8,6 +8,7 @@ public final class GgufModelBackend implements LocalModelBackend {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile ModelInfo loaded;
     private volatile String lastGenerationDiagnostics = "";
+    private volatile String runtimeDiagnostics = "No model loaded.";
 
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
@@ -15,7 +16,7 @@ public final class GgufModelBackend implements LocalModelBackend {
             try {
                 if (!"gguf".equalsIgnoreCase(model.format)) {
                     throw new IllegalArgumentException(
-                            "Sync//AI's native runtime currently supports GGUF models.\n\n" +
+                            "Sync AI's native runtime currently supports GGUF models.\n\n" +
                             "The model you selected is " + model.format.toUpperCase() + "."
                     );
                 }
@@ -23,14 +24,17 @@ public final class GgufModelBackend implements LocalModelBackend {
                 if (result != 0) {
                     String details = GgufNative.nativeDiagnostics();
                     throw new IllegalStateException(
-                            "The GGUF model could not be loaded.\n\n" +
-                            details
+                            "The GGUF model could not be loaded.\n\n" + details
                     );
                 }
                 loaded = model;
+                lastGenerationDiagnostics = "";
+                runtimeDiagnostics = GgufNative.nativeDiagnostics();
                 callback.onLoaded();
             } catch (Exception e) {
                 loaded = null;
+                runtimeDiagnostics = "No model loaded.\n\n" +
+                        (e.getMessage() == null ? e.toString() : e.getMessage());
                 callback.onError(e);
             }
         });
@@ -43,6 +47,8 @@ public final class GgufModelBackend implements LocalModelBackend {
                 GgufNative.nativeUnload();
             } finally {
                 loaded = null;
+                lastGenerationDiagnostics = "";
+                runtimeDiagnostics = "No model loaded.";
             }
         });
     }
@@ -66,15 +72,18 @@ public final class GgufModelBackend implements LocalModelBackend {
                     @Override public void onToken(String token) { callback.onToken(token); }
                     @Override public void onComplete(String diagnostics) {
                         lastGenerationDiagnostics = diagnostics == null ? "" : diagnostics;
+                        runtimeDiagnostics = diagnostics == null || diagnostics.isEmpty()
+                                ? runtimeDiagnostics : diagnostics;
                         callback.onComplete();
                     }
                     @Override public void onError(String message) {
-                        callback.onError(new IllegalStateException(message));
+                        runtimeDiagnostics = message == null ? "Inference error." : message;
+                        callback.onError(new IllegalStateException(runtimeDiagnostics));
                     }
                 });
             } catch (Throwable t) {
-                callback.onError(new IllegalStateException(
-                        t.getMessage() == null ? t.toString() : t.getMessage(), t));
+                runtimeDiagnostics = t.getMessage() == null ? t.toString() : t.getMessage();
+                callback.onError(new IllegalStateException(runtimeDiagnostics, t));
             }
         });
     }
@@ -83,8 +92,12 @@ public final class GgufModelBackend implements LocalModelBackend {
         return lastGenerationDiagnostics;
     }
 
+    /**
+     * This method is intentionally non-blocking with respect to llama.cpp.
+     * Native diagnostics takes the same mutex used by generation; calling it
+     * from a native generation callback can deadlock the UI/voice flow.
+     */
     public String diagnostics() {
-        if (!isLoaded()) return "No model loaded.";
-        return GgufNative.nativeDiagnostics();
+        return runtimeDiagnostics;
     }
 }
