@@ -42,6 +42,9 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     private TextView transcriptView;
     private TextView responseView;
     private View micButton;
+    private View panelView;
+    private android.animation.ValueAnimator micPulse;
+    private boolean exiting;
     private int accent;
     private boolean ttsReady;
     private boolean destroyed;
@@ -76,6 +79,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
         Button close = smallButton("×");
         close.setOnClickListener(v -> exit());
+        Motion.pressable(close);
         top.addView(close, new LinearLayout.LayoutParams(dp(48), dp(42)));
         panel.addView(top);
 
@@ -114,7 +118,12 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
                 dp(330), dp(355), Gravity.CENTER);
         root.addView(panel, panelLp);
-
+        panelView = panel;
+        if (!Motion.reduced(getContext())) {
+            panel.setAlpha(0f); panel.setTranslationY(dp(28)); panel.setScaleX(0.94f); panel.setScaleY(0.94f);
+            panel.post(() -> panel.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                    .setDuration(Motion.SLOW).setInterpolator(Motion.EASE_OUT).start());
+        }
         return root;
     }
 
@@ -440,14 +449,57 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         if (tts != null) {
             try { tts.stop(); } catch (Exception ignored) {}
         }
-        hide();
-        finish();
+        stopMicPulse();
+        if (exiting) return;
+        exiting = true;
+        if (panelView == null || destroyed || Motion.reduced(getContext())) {
+            hide(); finish(); return;
+        }
+        panelView.animate().alpha(0f).translationY(dp(20)).scaleX(0.96f).scaleY(0.96f)
+                .setDuration(Motion.FAST + 40).setInterpolator(Motion.EASE_IN)
+                .withEndAction(() -> { if (!destroyed) { hide(); finish(); } }).start();
     }
 
     private void updateState(String text) {
         main.post(() -> {
-            if (!destroyed && stateView != null) stateView.setText(text);
+            if (destroyed || stateView == null) return;
+            Motion.swapText(stateView, text);
+            applyStateMotion(text);
         });
+    }
+
+    private void applyStateMotion(String state) {
+        if (micButton == null) return;
+        if (state.startsWith("LISTENING")) {
+            micButton.animate().alpha(1f).setDuration(Motion.FAST).start();
+            startMicPulse();
+        } else if (state.equals("THINKING") || state.equals("RESPONDING") || state.equals("LOADING MODEL")) {
+            stopMicPulse();
+            micButton.animate().alpha(0.55f).setDuration(Motion.NORMAL).start();
+        } else {
+            stopMicPulse();
+            micButton.animate().alpha(1f).setDuration(Motion.FAST).start();
+        }
+    }
+
+    private void startMicPulse() {
+        if (micPulse != null || Motion.reduced(getContext())) return;
+        micPulse = android.animation.ValueAnimator.ofFloat(1f, 1.07f);
+        micPulse.setDuration(1100);
+        micPulse.setInterpolator(Motion.EASE_IN_OUT);
+        micPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+        micPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        micPulse.addUpdateListener(a -> {
+            if (micButton == null) return;
+            float s = (float) a.getAnimatedValue();
+            micButton.setScaleX(s); micButton.setScaleY(s);
+        });
+        micPulse.start();
+    }
+
+    private void stopMicPulse() {
+        if (micPulse != null) { micPulse.cancel(); micPulse = null; }
+        if (micButton != null) micButton.animate().scaleX(1f).scaleY(1f).setDuration(Motion.FAST).start();
     }
 
     private TextView text(String value, float size, int color, boolean bold) {
@@ -466,6 +518,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         b.setTextSize(22);
         b.setAllCaps(false);
         b.setBackground(round(0x40262A3A, 40));
+        Motion.pressable(b);
         return b;
     }
 
@@ -492,6 +545,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     }
 
     private void cleanup() {
+        stopMicPulse();
         if (recognizer != null) {
             try { recognizer.cancel(); } catch (Exception ignored) {}
             try { recognizer.destroy(); } catch (Exception ignored) {}
