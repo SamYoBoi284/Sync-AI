@@ -287,7 +287,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
         String lower = clean.toLowerCase(Locale.US);
         if (lower.matches(".*\\b(?:stop listening|goodbye|exit|cancel|close sync|that's all|thats all)\\b.*")) {
-            speakAndMaybeListen("Alright bro.", true);
+            appendVoiceChat(clean, "Alright bro.", null);\n            speakAndMaybeListen("Alright bro.", true);
             return;
         }
 
