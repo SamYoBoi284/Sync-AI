@@ -26,6 +26,15 @@ public final class MicPermissionActivity extends Activity {
     @Override public void onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        SyncEventLogger.record(this, "MicPermissionActivity", "PERMISSION_RESULT", "INFO",
+                "requestCode=" + requestCode + " granted="
+                        + (grantResults != null && grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED));
         finish();
+    }
+
+    @Override protected void onDestroy() {
+        SyncEventLogger.record(this, "MicPermissionActivity", "onDestroy", "INFO", "");
+        super.onDestroy();
     }
 }
