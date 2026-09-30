@@ -11,7 +11,7 @@ public final class GgufNative {
 
     public interface Callback {
         void onToken(String token);
-        void onComplete();
+        void onComplete(String diagnostics);
         void onError(String message);
     }
 
