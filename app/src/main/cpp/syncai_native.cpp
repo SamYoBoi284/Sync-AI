@@ -171,7 +171,8 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
 
     jclass callbackClass = env->GetObjectClass(callback);
     jmethodID tokenMethod = env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V");
-    jmethodID completeMethod = env->GetMethodID(callbackClass, "onComplete", "()V");
+    jmethodID completeMethod = env->GetMethodID(
+            callbackClass, "onComplete", "(Ljava/lang/String;)V");
     jmethodID errorMethod = env->GetMethodID(callbackClass, "onError", "(Ljava/lang/String;)V");
 
     if (!g_model) {
@@ -387,5 +388,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
              generated, tokensPerSecond, totalMs);
     g_last_diagnostics = diagnostics;
 
-    env->CallVoidMethod(callback, completeMethod);
+    jstring diagnosticsValue = env->NewStringUTF(g_last_diagnostics.c_str());
+    env->CallVoidMethod(callback, completeMethod, diagnosticsValue);
+    env->DeleteLocalRef(diagnosticsValue);
 }
