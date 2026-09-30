@@ -14,7 +14,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.graphics.Rect;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.VelocityTracker;
+import android.view.ViewConfiguration;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -71,6 +75,13 @@ public final class MainActivity extends Activity {
     private View composerCard;
     private int activeGenerations;
     private boolean modelBusy;
+    private LinearLayout contentRootView;
+    private int statusInset;
+    private boolean edgeTracking;
+    private boolean edgeDragging;
+    private float edgeStartX;
+    private float edgeStartY;
+    private VelocityTracker edgeVelocity;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -103,6 +114,7 @@ public final class MainActivity extends Activity {
         contentRoot.setOrientation(LinearLayout.VERTICAL);
         contentRoot.setPadding(dp(16), dp(14), dp(16), dp(10));
         contentRoot.setBackgroundColor(BG);
+        contentRootView = contentRoot;
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -144,7 +156,7 @@ public final class MainActivity extends Activity {
 
         progress = new ProgressBar(this);
         progress.setIndeterminate(true);
-        progress.setVisibility(View.GONE);
+        showProgress(false);
         contentRoot.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
         chatScroll = new ScrollView(this);
@@ -202,37 +214,6 @@ public final class MainActivity extends Activity {
         frame.setBackgroundColor(BG);
         frame.addView(contentRoot, new FrameLayout.LayoutParams(-1, -1));
 
-        FrameLayout edgeSwipeZone = new FrameLayout(this);
-        edgeSwipeZone.setBackgroundColor(Color.TRANSPARENT);
-        final float[] swipeStart = new float[2];
-        final boolean[] tracking = new boolean[1];
-        edgeSwipeZone.setOnTouchListener((v, event) -> {
-            switch (event.getActionMasked()) {
-                case android.view.MotionEvent.ACTION_DOWN:
-                    tracking[0] = event.getX() <= dp(32);
-                    if (!tracking[0]) return false;
-                    swipeStart[0] = event.getX();
-                    swipeStart[1] = event.getY();
-                    return true;
-                case android.view.MotionEvent.ACTION_MOVE:
-                    if (!tracking[0]) return false;
-                    float dx = event.getX() - swipeStart[0];
-                    float dy = Math.abs(event.getY() - swipeStart[1]);
-                    if (dx > dp(56) && dx > dy * 1.35f) {
-                        if (sideDashboard != null && !sideDashboard.isOpen()) sideDashboard.open();
-                        tracking[0] = false;
-                    }
-                    return true;
-                case android.view.MotionEvent.ACTION_UP:
-                case android.view.MotionEvent.ACTION_CANCEL:
-                    tracking[0] = false;
-                    return true;
-                default:
-                    return tracking[0];
-            }
-        });
-        frame.addView(edgeSwipeZone, new FrameLayout.LayoutParams(-1, -1));
-
         sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
             @Override public void newChat() { MainActivity.this.newChat(); }
             @Override public void chats() { showChatsDialog(); }
@@ -259,6 +240,11 @@ public final class MainActivity extends Activity {
         rootFrame.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
             int imeBottom = ime.bottom;
+            int topNow = Build.VERSION.SDK_INT >= 30
+                    ? insets.getInsets(android.view.WindowInsets.Type.statusBars()
+                            | android.view.WindowInsets.Type.displayCutout()).top
+                    : insets.getSystemWindowInsetTop();
+            applyTopInset(topNow);
             composerCard.setTranslationY(-imeBottom);
             chatScroll.setPadding(
                     chatScroll.getPaddingLeft(),
@@ -271,6 +257,82 @@ public final class MainActivity extends Activity {
         });
         rootFrame.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         applyAccent();
+        installEdgeGestureExclusion();
+        playStartupMotion(contentRoot);
+    }
+
+    private void applyTopInset(int top) {
+        if (top == statusInset || contentRootView == null) return;
+        statusInset = top;
+        contentRootView.setPadding(dp(16), dp(14) + top + dp(8), dp(16), dp(10));
+        if (sideDashboard != null) sideDashboard.setTopInset(top);
+    }
+
+    private void playStartupMotion(LinearLayout contentRoot) {
+        if (Motion.reduced(this)) return;
+        float dy = dp(12);
+        Motion.enter(contentRoot.getChildAt(0), 0, dy);
+        Motion.enter(contentRoot.getChildAt(1), 50, dy);
+        Motion.enter(contentRoot.getChildAt(2), 100, dy);
+        Motion.enter(chatScroll, 150, 0);
+        Motion.enter(composerCard, 200, 0);
+    }
+
+    private void installEdgeGestureExclusion() {
+        if (Build.VERSION.SDK_INT < 29) return;
+        rootFrame.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int h = b - t;
+            int top = (int) (h * 0.30f);
+            Rect edge = new Rect(0, top, dp(40), top + dp(200));
+            rootFrame.setSystemGestureExclusionRects(java.util.Collections.singletonList(edge));
+        });
+    }
+
+    @Override public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (sideDashboard != null && handleEdgeSwipe(ev)) return true;
+        return super.dispatchTouchEvent(ev);
+    }
+
+    private boolean handleEdgeSwipe(MotionEvent ev) {
+        int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                edgeTracking = !sideDashboard.isOpen() && ev.getRawX() <= dp(40);
+                edgeDragging = false;
+                if (edgeTracking) {
+                    edgeStartX = ev.getRawX(); edgeStartY = ev.getRawY();
+                    if (edgeVelocity != null) edgeVelocity.recycle();
+                    edgeVelocity = VelocityTracker.obtain(); edgeVelocity.addMovement(ev);
+                }
+                return false;
+            case MotionEvent.ACTION_MOVE: {
+                if (!edgeTracking) return false;
+                edgeVelocity.addMovement(ev);
+                float dx = ev.getRawX() - edgeStartX;
+                float dy = Math.abs(ev.getRawY() - edgeStartY);
+                if (!edgeDragging) {
+                    if (dx > slop && dx > dy * 1.35f) {
+                        edgeDragging = true;
+                        MotionEvent cancel = MotionEvent.obtain(ev); cancel.setAction(MotionEvent.ACTION_CANCEL);
+                        super.dispatchTouchEvent(cancel); cancel.recycle();
+                        hideKeyboard(); sideDashboard.beginDrag();
+                    } else if (dy > slop * 2 && dy > dx) { edgeTracking = false; return false; }
+                    else return false;
+                }
+                sideDashboard.dragTo(dx); return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                boolean wasDragging = edgeDragging;
+                if (edgeTracking && edgeVelocity != null) {
+                    edgeVelocity.addMovement(ev); edgeVelocity.computeCurrentVelocity(1000);
+                    if (wasDragging) sideDashboard.endDrag(edgeVelocity.getXVelocity());
+                    edgeVelocity.recycle(); edgeVelocity = null;
+                }
+                edgeTracking = false; edgeDragging = false; return wasDragging;
+            }
+            default: return edgeDragging;
+        }
     }
 
     private LinearLayout card() {
@@ -299,6 +361,7 @@ public final class MainActivity extends Activity {
         b.setAllCaps(false);
         b.setPadding(dp(7), 0, dp(7), 0);
         b.setBackground(round(Color.rgb(28, 33, 49), dp(13)));
+        Motion.pressable(b);
         return b;
     }
 
@@ -354,20 +417,20 @@ public final class MainActivity extends Activity {
 
     private void importModel(Uri uri) {
         setBusy(true);
-        progress.setVisibility(View.VISIBLE);
+        showProgress(true);
         ioExecutor.execute(() -> {
             try {
                 String id = runtime.modelManager().importModel(uri);
                 runOnUiThread(() -> {
                     setBusy(false);
-                    progress.setVisibility(View.GONE);
+                    showProgress(false);
                     ModelInfo model = findModel(id);
                     if (model != null) loadModel(model);
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     setBusy(false);
-                    progress.setVisibility(View.GONE);
+                    showProgress(false);
                     showError("Import failed", e);
                 });
             }
@@ -409,7 +472,7 @@ public final class MainActivity extends Activity {
 
     private void loadModel(ModelInfo model) {
         setBusy(true);
-        progress.setVisibility(View.VISIBLE);
+        showProgress(true);
         modelText.setText("LOADING • " + model.name);
         statusText.setText("GGUF • INITIALIZING LOCAL CPU RUNTIME…");
 
@@ -417,7 +480,7 @@ public final class MainActivity extends Activity {
             @Override public void onLoaded() {
                 runtime.modelManager().markLoaded(model.id);
                 runOnUiThread(() -> {
-                    progress.setVisibility(View.GONE);
+                    showProgress(false);
                     setBusy(false);
                     refreshStatus();
                     showToast("Loaded " + model.name);
@@ -427,7 +490,7 @@ public final class MainActivity extends Activity {
             @Override public void onError(Exception error) {
                 runtime.modelManager().clearLoaded();
                 runOnUiThread(() -> {
-                    progress.setVisibility(View.GONE);
+                    showProgress(false);
                     setBusy(false);
                     refreshStatus();
                     showError("Model load failed", error);
@@ -445,11 +508,11 @@ public final class MainActivity extends Activity {
         runtime.chatStore().maybeTitle(activeChat, message);
         ChatMessage user = new ChatMessage(ChatMessage.Role.USER, message);
         runtime.chatStore().add(activeChat, user);
-        addMessageView(user);
+        addMessageView(user, true);
 
         // Keep SEND usable while native inference runs. GgufModelBackend serializes
         // generations on its single executor, so follow-up messages are queued.
-        importButton.setEnabled(false);
+        Motion.setEnabledAnimated(importButton, false);
 
         long started = System.currentTimeMillis();
         ToolEngine.Result tool = runtime.tools().handle(message);
@@ -462,7 +525,7 @@ public final class MainActivity extends Activity {
                     ChatMessage.Role.ASSISTANT, tool.response,
                     System.currentTimeMillis(), diag.format());
             runtime.chatStore().add(activeChat, assistant);
-            addMessageView(assistant);
+            addMessageView(assistant, true);
             setBusy(false);
             requestToolPermissionIfNeeded(tool);
             return;
@@ -477,13 +540,13 @@ public final class MainActivity extends Activity {
                     ChatMessage.Role.ASSISTANT, fallback,
                     System.currentTimeMillis(), diag.format());
             runtime.chatStore().add(activeChat, assistant);
-            addMessageView(assistant);
+            addMessageView(assistant, true);
             setBusy(false);
             return;
         }
 
         final TextView streamingBubble = addMessageView(
-                new ChatMessage(ChatMessage.Role.ASSISTANT, "Thinking…"));
+                new ChatMessage(ChatMessage.Role.ASSISTANT, "Thinking…"), true);
         streamingBubble.setTextColor(MUTED);
         activeGenerations++;
 
@@ -520,8 +583,8 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     replaceStreamingBubble(streamingBubble, assistant);
                     activeGenerations = Math.max(0, activeGenerations - 1);
-                    importButton.setEnabled(!modelBusy && activeGenerations == 0);
-                    sendButton.setEnabled(!modelBusy);
+                    Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
+                    Motion.setEnabledAnimated(sendButton, !modelBusy);
                 });
             }
 
@@ -541,8 +604,8 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     replaceStreamingBubble(streamingBubble, assistant);
                     activeGenerations = Math.max(0, activeGenerations - 1);
-                    importButton.setEnabled(!modelBusy && activeGenerations == 0);
-                    sendButton.setEnabled(!modelBusy);
+                    Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
+                    Motion.setEnabledAnimated(sendButton, !modelBusy);
                 });
             }
         });
@@ -611,6 +674,10 @@ public final class MainActivity extends Activity {
     }
 
     private TextView addMessageView(ChatMessage message) {
+        return addMessageView(message, false);
+    }
+
+    private TextView addMessageView(ChatMessage message, boolean animate) {
         boolean user = message.role == ChatMessage.Role.USER;
 
         LinearLayout row = new LinearLayout(this);
@@ -643,6 +710,10 @@ public final class MainActivity extends Activity {
                 -2);
         row.addView(bubble, bubbleLp);
         messageContainer.addView(row);
+        if (animate && !Motion.reduced(this)) {
+            bubble.setAlpha(0f);
+            bubble.post(() -> Motion.messageIn(bubble, user));
+        }
         scrollToBottom();
         return body;
     }
@@ -808,7 +879,7 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("CANCEL", null)
                 .setPositiveButton("SAVE", null)
                 .create();
-        dialog.setOnShowListener(v -> dialog.getButton(SyncDialog.BUTTON_POSITIVE).setOnClickListener(x -> {
+        dialog.setOnShowListener(v -> dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(x -> {
             runtime.chatStore().rename(chat.id, name.getText().toString());
             if (chat.id.equals(activeChat.id)) activeChat = runtime.chatStore().get(chat.id);
             dialog.dismiss();
@@ -1142,21 +1213,35 @@ public final class MainActivity extends Activity {
     private void refreshStatus() {
         ModelInfo loaded = runtime.modelManager().getLoadedModel();
         if (loaded != null && runtime.backend().isLoaded()) {
-            modelText.setText(loaded.name);
-            statusText.setText("READY • GGUF • LOCAL CPU INFERENCE");
+            Motion.swapText(modelText, loaded.name);
+            Motion.swapText(statusText, "READY • GGUF • LOCAL CPU INFERENCE");
         } else if (loaded != null) {
             modelText.setText(loaded.name);
-            statusText.setText("SELECTED • READY TO LOAD");
+            Motion.swapText(statusText, "SELECTED • READY TO LOAD");
         } else {
-            modelText.setText("NO MODEL");
-            statusText.setText("LOCAL RUNTIME • TOOLS AVAILABLE WITHOUT MODEL");
+            Motion.swapText(modelText, "NO MODEL");
+            Motion.swapText(statusText, "LOCAL RUNTIME • TOOLS AVAILABLE WITHOUT MODEL");
+        }
+    }
+
+    private void showProgress(boolean show) {
+        if (progress == null) return;
+        if (Motion.reduced(this)) { progress.setVisibility(show ? View.VISIBLE : View.GONE); return; }
+        progress.animate().cancel();
+        if (show) {
+            if (progress.getVisibility() != View.VISIBLE) progress.setAlpha(0f);
+            progress.setVisibility(View.VISIBLE);
+            progress.animate().alpha(1f).setDuration(Motion.NORMAL).setInterpolator(Motion.EASE_OUT).start();
+        } else {
+            progress.animate().alpha(0f).setDuration(Motion.FAST)
+                    .withEndAction(() -> progress.setVisibility(View.GONE)).start();
         }
     }
 
     private void setBusy(boolean busy) {
         modelBusy = busy;
-        sendButton.setEnabled(!busy);
-        importButton.setEnabled(!busy && activeGenerations == 0);
+        Motion.setEnabledAnimated(sendButton, !busy);
+        Motion.setEnabledAnimated(importButton, !busy && activeGenerations == 0);
     }
 
     private void scrollToBottom() {
