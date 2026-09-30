@@ -15,7 +15,7 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
 
     @Override public void onReady() {
         super.onReady();
-        Log.d(TAG, "VoiceInteractionService.onReady component=" + new android.content.ComponentName(this, getClass()));
+        Log.d(TAG, "VoiceInteractionService.onReady");
     }
 
     @Override public void onShutdown() {
