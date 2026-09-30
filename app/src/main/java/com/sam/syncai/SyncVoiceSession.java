@@ -58,82 +58,22 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     }
 
     @Override public View onCreateContentView() {
-        FrameLayout root = new FrameLayout(getContext());
-        root.setBackgroundColor(Color.TRANSPARENT);
-
-        LinearLayout panel = new LinearLayout(getContext());
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(22), dp(18), dp(22), dp(18));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x660B0D16);
-        bg.setCornerRadius(dp(28));
-        bg.setStroke(dp(1), (accent & 0x00FFFFFF) | 0xAA000000);
-        panel.setBackground(bg);
-        panel.setElevation(dp(14));
-
-        LinearLayout top = new LinearLayout(getContext());
-        top.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView title = text("SYNC // AI", 18, Color.WHITE, true);
-        top.addView(title, new LinearLayout.LayoutParams(0, dp(35), 1));
-
-        Button close = smallButton("×");
-        close.setOnClickListener(v -> exit());
-        Motion.pressable(close);
-        top.addView(close, new LinearLayout.LayoutParams(dp(48), dp(42)));
-        panel.addView(top);
-
-        stateView = text("LISTENING", 11, accent, true);
-        stateView.setGravity(Gravity.CENTER_HORIZONTAL);
-        panel.addView(stateView, new LinearLayout.LayoutParams(-1, dp(26)));
-
-        micButton = new Button(getContext());
-        ((Button) micButton).setText("◉");
-        ((Button) micButton).setTextSize(28);
-        ((Button) micButton).setTextColor(Color.WHITE);
-        ((Button) micButton).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        ((Button) micButton).setAllCaps(false);
-        ((Button) micButton).setBackground(round(accent, 90));
-        micButton.setOnClickListener(v -> {
-            if (processing.get()) return;
-            startListening();
-        });
-        LinearLayout.LayoutParams micLp = new LinearLayout.LayoutParams(dp(92), dp(92));
-        micLp.gravity = Gravity.CENTER_HORIZONTAL;
-        micLp.topMargin = dp(8);
-        micLp.bottomMargin = dp(10);
-        panel.addView(micButton, micLp);
-
-        transcriptView = text("Say something…", 15, Color.WHITE, false);
-        transcriptView.setGravity(Gravity.CENTER);
-        transcriptView.setPadding(dp(6), dp(4), dp(6), dp(10));
-        panel.addView(transcriptView);
-
-        ScrollView responseScroll = new ScrollView(getContext());
-        responseView = text("", 14, Color.rgb(215, 219, 232), false);
-        responseView.setPadding(dp(4), dp(8), dp(4), dp(4));
-        responseScroll.addView(responseView);
-        panel.addView(responseScroll, new LinearLayout.LayoutParams(-1, dp(105)));
-
-        FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
-                dp(330), dp(355), Gravity.CENTER);
-        root.addView(panel, panelLp);
-        panelView = panel;
-        if (!Motion.reduced(getContext())) {
-            panel.setAlpha(0f); panel.setTranslationY(dp(28)); panel.setScaleX(0.94f); panel.setScaleY(0.94f);
-            panel.post(() -> panel.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-                    .setDuration(Motion.SLOW).setInterpolator(Motion.EASE_OUT).start());
-        }
-        return root;
+        // Global assistant UI is handled by the standalone VoiceModeActivity.
+        View bridge = new View(getContext());
+        bridge.setBackgroundColor(Color.TRANSPARENT);
+        return bridge;
     }
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
-        configureWindow();
-        initSpeech();
-        initTts();
-        restoreSelectedModel();
-        startListeningOrRequestPermission();
+        try {
+            Intent intent = new Intent(getContext(), VoiceModeActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_HISTORY);
+            startAssistantActivity(intent);
+        } catch (Exception ignored) {
+        } finally {
+            hide();
+        }
     }
 
     private void configureWindow() {
