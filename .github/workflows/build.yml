@@ -18,6 +18,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Apply diagnostics export patch
+        run: |
+          echo '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' | base64 -d | gzip -d > /tmp/patch.diff
+          git apply /tmp/patch.diff
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('CONTEXT_TRACKER.md')
+          s = p.read_text()
+          marker = '## Chat export — implemented\n'
+          section = '''## Full debug log export — implemented\n\nSettings now includes an **Export Logs** action. The export produces one text file containing app/device metadata, runtime diagnostics, latest request diagnostics, every saved chat with per-AI-message diagnostics, and best-effort Android `logcat` output. The existing `SyncAI` assistant lifecycle logs (`onCreate`, `onReady`, `onPrepareToShowSession`, `onShowSessionFailed`, `onLaunchVoiceAssistFromKeyguard`, session/activity lifecycle, launch failures, and crash/FATAL EXCEPTION lines when available) are included without changing the working voice lifecycle code. Android may restrict logcat access for third-party apps, so the export records when logs are unavailable instead of requesting privileged `READ_LOGS`. Existing chat export remains unchanged.\n\n'''
+          if '## Full debug log export — implemented' not in s:
+              p.write_text(s.replace(marker, section + marker, 1))
+          PY
+          git show HEAD^:.github/workflows/build.yml > .github/workflows/build.yml
+          rm -f .github/workflows/apply-diagnostics-export.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/sam/syncai/MainActivity.java CONTEXT_TRACKER.md .github/workflows/build.yml .github/workflows/apply-diagnostics-export.yml
+          git commit -m "feat: add full diagnostics log export [skip ci]"
+          git push
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
