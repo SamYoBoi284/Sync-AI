@@ -53,6 +53,9 @@ public final class VoiceModeActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onCreate savedState="
+                + (state != null) + " taskId=" + getTaskId()
+                + " intent=" + getIntent());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
@@ -449,7 +452,24 @@ public final class VoiceModeActivity extends Activity {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
     }
 
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onNewIntent intent=" + intent);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onResume taskId=" + getTaskId());
+    }
+
+    @Override protected void onPause() {
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onPause taskId=" + getTaskId());
+        super.onPause();
+    }
+
     private void exit() {
+        android.util.Log.d("SyncAI", "VoiceModeActivity.exit requested");
         processing.set(false);
         if (recognizer != null) {
             try { recognizer.stopListening(); } catch (Exception ignored) {}
@@ -542,6 +562,9 @@ public final class VoiceModeActivity extends Activity {
     }
 
     @Override public void onDestroy() {
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onDestroy finishing="
+                + isFinishing() + " changingConfigurations=" + isChangingConfigurations()
+                + " taskId=" + getTaskId());
         destroyed = true;
         cleanup();
         super.onDestroy();
