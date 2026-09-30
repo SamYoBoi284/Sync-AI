@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 public final class GgufModelBackend implements LocalModelBackend {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile ModelInfo loaded;
+    private volatile String lastGenerationDiagnostics = "";
 
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
@@ -63,7 +64,10 @@ public final class GgufModelBackend implements LocalModelBackend {
             try {
                 GgufNative.generate(messages, config, new GgufNative.Callback() {
                     @Override public void onToken(String token) { callback.onToken(token); }
-                    @Override public void onComplete() { callback.onComplete(); }
+                    @Override public void onComplete(String diagnostics) {
+                        lastGenerationDiagnostics = diagnostics == null ? "" : diagnostics;
+                        callback.onComplete();
+                    }
                     @Override public void onError(String message) {
                         callback.onError(new IllegalStateException(message));
                     }
@@ -73,6 +77,10 @@ public final class GgufModelBackend implements LocalModelBackend {
                         t.getMessage() == null ? t.toString() : t.getMessage(), t));
             }
         });
+    }
+
+    public String lastGenerationDiagnostics() {
+        return lastGenerationDiagnostics;
     }
 
     public String diagnostics() {
