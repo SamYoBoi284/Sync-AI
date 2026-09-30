@@ -59,6 +59,10 @@ public final class SyncRecognitionService extends RecognitionService {
             @Override public void onPartialResults(Bundle partialResults) {
                 try { callback.partialResults(partialResults); } catch (RemoteException ignored) {}
             }
+            @Override public void onEvent(int eventType, Bundle params) {
+                // RecognitionService.Callback has no event() API on this Android SDK.
+                // Keep the listener complete without forwarding an unsupported callback.
+            }
         });
 
         Intent request = recognizerIntent == null
