@@ -431,6 +431,9 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        SyncEventLogger.record(this, "MainActivity", "onActivityResult", "INFO",
+                "requestCode=" + requestCode + " resultCode=" + resultCode
+                        + " hasData=" + (data != null));
         if (requestCode == REQ_IMPORT_MODEL && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri != null) importModel(uri);
@@ -443,8 +446,22 @@ public final class MainActivity extends Activity {
         }
         if (requestCode == REQ_EXPORT_CHAT && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
-            if (uri != null && pendingChatExport != null) writeChatExport(uri, pendingChatExport);
+            if (uri != null && pendingChatExport != null) {
+                SyncEventLogger.record(this, "MainActivity", "CHAT_EXPORT_WRITE", "INFO",
+                        "uri=" + uri);
+                writeChatExport(uri, pendingChatExport);
+            }
             pendingChatExport = null;
+            return;
+        }
+        if (requestCode == REQ_EXPORT_LOGS && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null && pendingLogExport != null) {
+                SyncEventLogger.record(this, "MainActivity", "LOG_EXPORT_WRITE", "INFO",
+                        "uri=" + uri);
+                writeChatExport(uri, pendingLogExport);
+            }
+            pendingLogExport = null;
         }
     }
 
@@ -1039,6 +1056,8 @@ public final class MainActivity extends Activity {
     }
 
     private void launchVoiceMode() {
+        SyncEventLogger.record(this, "MainActivity", "VOICE_MODE_LAUNCH_REQUEST", "INFO",
+                "source=in-app");
         try {
             // In-app Voice Mode is independent from the system DDA selection.
             // The global side-button/assistant path is handled by
