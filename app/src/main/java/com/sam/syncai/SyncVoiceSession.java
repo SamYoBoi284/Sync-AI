@@ -52,6 +52,9 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     public SyncVoiceSession(Context context) {
         super(context);
+        SyncEventLogger.install(context);
+        SyncEventLogger.record(context, "SyncVoiceSession", "CONSTRUCTOR", "INFO",
+                "session constructed");
         android.util.Log.d("SyncAI", "VoiceInteractionSession constructed");
         runtime = SyncRuntime.get(context);
         accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
@@ -59,6 +62,8 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     }
 
     @Override public View onCreateContentView() {
+        SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                "onCreateContentView", "INFO", "creating transparent bridge view");
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onCreateContentView");
         // Global assistant UI is handled by the standalone VoiceModeActivity.
         View bridge = new View(getContext());
@@ -68,6 +73,8 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onPrepareShow(Bundle args, int showFlags) {
         super.onPrepareShow(args, showFlags);
+        SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                "onPrepareShow", "INFO", "flags=" + showFlags + " args=" + args);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onPrepareShow flags="
                 + showFlags + " args=" + args);
         setUiEnabled(false);
@@ -75,28 +82,48 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
+        SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                "onShow", "INFO", "flags=" + flags + " args=" + args);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onShow flags=" + flags
                 + " args=" + args);
         Intent intent = new Intent(getContext(), VoiceModeActivity.class);
         try {
             // Primary path: the documented assistant-activity layer.
+            SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                    "START_ASSISTANT_ACTIVITY_ATTEMPT", "INFO", "");
             startAssistantActivity(intent);
+            SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                    "START_ASSISTANT_ACTIVITY_SUCCESS", "INFO", "");
             android.util.Log.d("SyncAI", "VoiceInteractionSession.startAssistantActivity returned successfully");
         } catch (Exception primary) {
             // Some vendor SystemUI builds can reject the assistant-activity launch
             // even though the VoiceInteractionSession itself was accepted. Keep a
             // voice-activity fallback, then a direct Activity fallback, and log the
             // actual failure instead of silently swallowing it.
+            SyncEventLogger.recordException(getContext(), "SyncVoiceSession",
+                    "START_ASSISTANT_ACTIVITY_ERROR", primary, "");
             android.util.Log.e("SyncAI", "startAssistantActivity failed", primary);
             try {
+                SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                        "START_VOICE_ACTIVITY_ATTEMPT", "INFO", "");
                 startVoiceActivity(intent);
+                SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                        "START_VOICE_ACTIVITY_SUCCESS", "INFO", "");
                 android.util.Log.d("SyncAI", "VoiceInteractionSession.startVoiceActivity returned successfully");
             } catch (Exception secondary) {
+                SyncEventLogger.recordException(getContext(), "SyncVoiceSession",
+                        "START_VOICE_ACTIVITY_ERROR", secondary, "");
                 android.util.Log.e("SyncAI", "startVoiceActivity failed", secondary);
                 try {
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                            "DIRECT_ACTIVITY_LAUNCH_ATTEMPT", "INFO", "");
                     getContext().startActivity(intent);
+                    SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                            "DIRECT_ACTIVITY_LAUNCH_SUCCESS", "INFO", "");
                 } catch (Exception tertiary) {
+                    SyncEventLogger.recordException(getContext(), "SyncVoiceSession",
+                            "DIRECT_ACTIVITY_LAUNCH_ERROR", tertiary, "");
                     android.util.Log.e("SyncAI", "Direct VoiceModeActivity launch failed", tertiary);
                     finish();
                 }
@@ -106,12 +133,20 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onTaskStarted(Intent intent, int taskId) {
         super.onTaskStarted(intent, taskId);
+        SyncEventLogger.recordIntent(getContext(), "SyncVoiceSession",
+                "onTaskStarted", intent);
+        SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                "TASK_STARTED", "INFO", "taskId=" + taskId);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onTaskStarted taskId="
                 + taskId + " intent=" + intent);
     }
 
     @Override public void onTaskFinished(Intent intent, int taskId) {
         super.onTaskFinished(intent, taskId);
+        SyncEventLogger.recordIntent(getContext(), "SyncVoiceSession",
+                "onTaskFinished", intent);
+        SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                "TASK_FINISHED", "INFO", "taskId=" + taskId);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onTaskFinished taskId="
                 + taskId + " intent=" + intent);
         finish();
@@ -518,11 +553,13 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     }
 
     @Override public void onHide() {
+        SyncEventLogger.record(getContext(), "SyncVoiceSession", "onHide", "INFO", "");
         super.onHide();
         cleanup();
     }
 
     @Override public void onDestroy() {
+        SyncEventLogger.record(getContext(), "SyncVoiceSession", "onDestroy", "INFO", "");
         destroyed = true;
         cleanup();
         super.onDestroy();
