@@ -233,8 +233,37 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     }
 
     std::vector<char> formatted(std::max<size_t>(4096, contextSize * 4));
-    int32_t formattedSize = llama_chat_apply_template(
-            tmpl, messages.data(), messages.size(), true, formatted.data(), formatted.size());
+    std::vector<llama_chat_message> contextMessages;
+
+    auto formatPrompt = [&]() -> int32_t {
+        contextMessages.clear();
+        contextMessages.reserve(roleStrings.size());
+        for (size_t i = 0; i < roleStrings.size(); ++i) {
+            contextMessages.push_back({
+                    roleStrings[i].c_str(),
+                    textStrings[i].c_str()
+            });
+        }
+
+        int32_t size = llama_chat_apply_template(
+                tmpl, contextMessages.data(), contextMessages.size(), true,
+                formatted.data(), formatted.size());
+
+        if (size > static_cast<int32_t>(formatted.size())) {
+            formatted.resize(static_cast<size_t>(size) + 1);
+            size = llama_chat_apply_template(
+                    tmpl, contextMessages.data(), contextMessages.size(), true,
+                    formatted.data(), formatted.size());
+        }
+        return size;
+    };
+
+    const int requestedGeneration = std::max(1, std::min(128, static_cast<int>(maxTokens)));
+    const int reservedGeneration = std::min(requestedGeneration, 128);
+    const int promptBudget = std::max(
+            1, static_cast<int>(contextSize) - reservedGeneration - 4);
+
+    int32_t formattedSize = formatPrompt();
 
     if (formattedSize < 0) {
         llama_free(ctx);
@@ -246,29 +275,36 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         return;
     }
 
-    if (formattedSize > static_cast<int32_t>(formatted.size())) {
-        formatted.resize(formattedSize + 1);
-        formattedSize = llama_chat_apply_template(
-                tmpl, messages.data(), messages.size(), true, formatted.data(), formatted.size());
-    }
-
-    if (formattedSize < 0) {
-        llama_free(ctx);
-        const std::string message = "The formatted prompt exceeded the model context.";
-        set_error_diagnostics(startedMs, "prompt", message);
-        jstring value = env->NewStringUTF(message.c_str());
-        env->CallVoidMethod(callback, errorMethod, value);
-        env->DeleteLocalRef(value);
-        return;
-    }
-
-    std::string prompt(formatted.data(), formattedSize);
     const auto *vocab = llama_model_get_vocab(g_model);
-
-    const int promptCount = -llama_tokenize(
-            vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
+    int promptCount = -llama_tokenize(
+            vocab, formatted.data(), formattedSize,
             nullptr, 0, true, true);
-    if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize)) {
+
+    // Keep enough room for the response. Older versions only checked that the
+    // prompt itself fit, then could decode past the context window during the
+    // 128-token generation loop and terminate the app inside llama.cpp.
+    while (promptCount > promptBudget && roleStrings.size() > 1) {
+        // Preserve the system prompt and discard the oldest conversation turn.
+        roleStrings.erase(roleStrings.begin() + 1);
+        textStrings.erase(textStrings.begin() + 1);
+
+        formattedSize = formatPrompt();
+        if (formattedSize < 0) {
+            llama_free(ctx);
+            const std::string message = "The model's chat template could not be applied.";
+            set_error_diagnostics(startedMs, "prompt", message);
+            jstring value = env->NewStringUTF(message.c_str());
+            env->CallVoidMethod(callback, errorMethod, value);
+            env->DeleteLocalRef(value);
+            return;
+        }
+
+        promptCount = -llama_tokenize(
+                vocab, formatted.data(), formattedSize,
+                nullptr, 0, true, true);
+    }
+
+    if (promptCount <= 0 || promptCount + reservedGeneration >= static_cast<int>(contextSize)) {
         llama_free(ctx);
         const std::string message = "Prompt is too large for the selected context window.";
         set_error_diagnostics(startedMs, "tokenization", message);
@@ -277,6 +313,8 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         env->DeleteLocalRef(value);
         return;
     }
+
+    std::string prompt(formatted.data(), formattedSize);
 
     std::vector<llama_token> tokens(promptCount);
     if (llama_tokenize(
@@ -323,7 +361,13 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
 
     std::string pendingUtf8;
-    const int generationLimit = std::max(1, std::min(128, static_cast<int>(maxTokens)));
+    const int generationLimit = std::max(
+            1,
+            std::min(
+                    128,
+                    std::min(
+                            static_cast<int>(maxTokens),
+                            static_cast<int>(contextSize) - promptCount - 1)));
     int generated = 0;
 
     for (; generated < generationLimit; ++generated) {
