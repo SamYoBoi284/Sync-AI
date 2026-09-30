@@ -12,6 +12,9 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <application
@@ -55,6 +58,19 @@
             android:label="Sync AI Voice"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true" />
+
+        <service
+            android:name=".SyncRecognitionService"
+            android:label="Sync AI Speech Recognition"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
 
         <receiver
             android:name=".SyncNotificationReceiver"
