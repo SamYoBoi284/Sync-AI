@@ -1,0 +1,1721 @@
+From 0cef97d76a40853d6ce87e0f7a53913b49e92c8d Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Wed, 30 Sep 2026 01:42:11 +0000
+Subject: [PATCH] feat(motion): motion system, gesture drawer, message
+ fade-ins, voice motion, status bar inset, themed SyncDialog
+
+---
+ .../java/com/sam/syncai/MainActivity.java     | 256 +++++++---
+ app/src/main/java/com/sam/syncai/Motion.java  | 145 ++++++
+ .../java/com/sam/syncai/SideDashboard.java    | 281 ++++++++++-
+ .../main/java/com/sam/syncai/SyncDialog.java  | 470 ++++++++++++++++++
+ .../java/com/sam/syncai/SyncVoiceSession.java |  79 ++-
+ 5 files changed, 1136 insertions(+), 95 deletions(-)
+ create mode 100644 app/src/main/java/com/sam/syncai/Motion.java
+ create mode 100644 app/src/main/java/com/sam/syncai/SyncDialog.java
+
+diff --git a/app/src/main/java/com/sam/syncai/MainActivity.java b/app/src/main/java/com/sam/syncai/MainActivity.java
+index 2629d76..2ad027f 100644
+--- a/app/src/main/java/com/sam/syncai/MainActivity.java
++++ b/app/src/main/java/com/sam/syncai/MainActivity.java
+@@ -2,10 +2,10 @@ package com.sam.syncai;
+ 
+ import android.Manifest;
+ import android.app.Activity;
+-import android.app.AlertDialog;
+ import android.content.ClipData;
+ import android.content.ClipboardManager;
+ import android.content.Context;
++import android.content.DialogInterface;
+ import android.content.Intent;
+ import android.content.pm.PackageManager;
+ import android.graphics.Color;
+@@ -15,7 +15,11 @@ import android.net.Uri;
+ import android.os.Build;
+ import android.os.Bundle;
+ import android.provider.Settings;
++import android.graphics.Rect;
+ import android.view.Gravity;
++import android.view.MotionEvent;
++import android.view.VelocityTracker;
++import android.view.ViewConfiguration;
+ import android.view.View;
+ import android.view.Window;
+ import android.view.WindowManager;
+@@ -72,6 +76,13 @@ public final class MainActivity extends Activity {
+     private View composerCard;
+     private int activeGenerations;
+     private boolean modelBusy;
++    private LinearLayout contentRootView;
++    private int statusInset;
++    private boolean edgeTracking;
++    private boolean edgeDragging;
++    private float edgeStartX;
++    private float edgeStartY;
++    private VelocityTracker edgeVelocity;
+ 
+     @Override protected void onCreate(Bundle state) {
+         super.onCreate(state);
+@@ -104,6 +115,7 @@ public final class MainActivity extends Activity {
+         contentRoot.setOrientation(LinearLayout.VERTICAL);
+         contentRoot.setPadding(dp(16), dp(14), dp(16), dp(10));
+         contentRoot.setBackgroundColor(BG);
++        contentRootView = contentRoot;
+ 
+         LinearLayout header = new LinearLayout(this);
+         header.setGravity(Gravity.CENTER_VERTICAL);
+@@ -203,37 +215,6 @@ public final class MainActivity extends Activity {
+         frame.setBackgroundColor(BG);
+         frame.addView(contentRoot, new FrameLayout.LayoutParams(-1, -1));
+ 
+-        FrameLayout edgeSwipeZone = new FrameLayout(this);
+-        edgeSwipeZone.setBackgroundColor(Color.TRANSPARENT);
+-        final float[] swipeStart = new float[2];
+-        final boolean[] tracking = new boolean[1];
+-        edgeSwipeZone.setOnTouchListener((v, event) -> {
+-            switch (event.getActionMasked()) {
+-                case android.view.MotionEvent.ACTION_DOWN:
+-                    tracking[0] = event.getX() <= dp(32);
+-                    if (!tracking[0]) return false;
+-                    swipeStart[0] = event.getX();
+-                    swipeStart[1] = event.getY();
+-                    return true;
+-                case android.view.MotionEvent.ACTION_MOVE:
+-                    if (!tracking[0]) return false;
+-                    float dx = event.getX() - swipeStart[0];
+-                    float dy = Math.abs(event.getY() - swipeStart[1]);
+-                    if (dx > dp(56) && dx > dy * 1.35f) {
+-                        if (sideDashboard != null && !sideDashboard.isOpen()) sideDashboard.open();
+-                        tracking[0] = false;
+-                    }
+-                    return true;
+-                case android.view.MotionEvent.ACTION_UP:
+-                case android.view.MotionEvent.ACTION_CANCEL:
+-                    tracking[0] = false;
+-                    return true;
+-                default:
+-                    return tracking[0];
+-            }
+-        });
+-        frame.addView(edgeSwipeZone, new FrameLayout.LayoutParams(-1, -1));
+-
+         sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
+             @Override public void newChat() { MainActivity.this.newChat(); }
+             @Override public void chats() { showChatsDialog(); }
+@@ -260,6 +241,11 @@ public final class MainActivity extends Activity {
+         rootFrame.setOnApplyWindowInsetsListener((v, insets) -> {
+             android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
+             int imeBottom = ime.bottom;
++            int topNow = Build.VERSION.SDK_INT >= 30
++                    ? insets.getInsets(android.view.WindowInsets.Type.statusBars()
++                            | android.view.WindowInsets.Type.displayCutout()).top
++                    : insets.getSystemWindowInsetTop();
++            applyTopInset(topNow);
+             composerCard.setTranslationY(-imeBottom);
+             chatScroll.setPadding(
+                     chatScroll.getPaddingLeft(),
+@@ -272,6 +258,100 @@ public final class MainActivity extends Activity {
+         });
+         rootFrame.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+         applyAccent();
++        installEdgeGestureExclusion();
++        playStartupMotion(contentRoot);
++    }
++
++    /** Lower everything below the phone's status bar, plus a little extra breathing room. */
++    private void applyTopInset(int top) {
++        if (top == statusInset || contentRootView == null) return;
++        statusInset = top;
++        contentRootView.setPadding(dp(16), dp(14) + top + dp(8), dp(16), dp(10));
++        if (sideDashboard != null) sideDashboard.setTopInset(top);
++    }
++
++    private void playStartupMotion(LinearLayout contentRoot) {
++        if (Motion.reduced(this)) return;
++        float dy = dp(12);
++        Motion.enter(contentRoot.getChildAt(0), 0, dy);
++        Motion.enter(contentRoot.getChildAt(1), 50, dy);
++        Motion.enter(contentRoot.getChildAt(2), 100, dy);
++        Motion.enter(chatScroll, 150, 0);
++        Motion.enter(composerCard, 200, 0);
++    }
++
++    /** Stop Android's back-swipe from eating the left-edge drag that opens the drawer. */
++    private void installEdgeGestureExclusion() {
++        if (Build.VERSION.SDK_INT < 29) return;
++        rootFrame.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
++            int h = b - t;
++            int top = (int) (h * 0.30f);
++            Rect edge = new Rect(0, top, dp(40), top + dp(200));
++            rootFrame.setSystemGestureExclusionRects(java.util.Collections.singletonList(edge));
++        });
++    }
++
++    /** Drawer follows the finger from the left edge. Observes touches without stealing taps. */
++    @Override public boolean dispatchTouchEvent(MotionEvent ev) {
++        if (sideDashboard != null && handleEdgeSwipe(ev)) return true;
++        return super.dispatchTouchEvent(ev);
++    }
++
++    private boolean handleEdgeSwipe(MotionEvent ev) {
++        int slop = ViewConfiguration.get(this).getScaledTouchSlop();
++        switch (ev.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                edgeTracking = !sideDashboard.isOpen() && ev.getRawX() <= dp(40);
++                edgeDragging = false;
++                if (edgeTracking) {
++                    edgeStartX = ev.getRawX();
++                    edgeStartY = ev.getRawY();
++                    if (edgeVelocity != null) edgeVelocity.recycle();
++                    edgeVelocity = VelocityTracker.obtain();
++                    edgeVelocity.addMovement(ev);
++                }
++                return false;
++            case MotionEvent.ACTION_MOVE: {
++                if (!edgeTracking) return false;
++                edgeVelocity.addMovement(ev);
++                float dx = ev.getRawX() - edgeStartX;
++                float dy = Math.abs(ev.getRawY() - edgeStartY);
++                if (!edgeDragging) {
++                    if (dx > slop && dx > dy * 1.35f) {
++                        edgeDragging = true;
++                        MotionEvent cancel = MotionEvent.obtain(ev);
++                        cancel.setAction(MotionEvent.ACTION_CANCEL);
++                        super.dispatchTouchEvent(cancel);
++                        cancel.recycle();
++                        hideKeyboard();
++                        sideDashboard.beginDrag();
++                    } else if (dy > slop * 2 && dy > dx) {
++                        edgeTracking = false;
++                        return false;
++                    } else {
++                        return false;
++                    }
++                }
++                sideDashboard.dragTo(dx);
++                return true;
++            }
++            case MotionEvent.ACTION_UP:
++            case MotionEvent.ACTION_CANCEL: {
++                boolean wasDragging = edgeDragging;
++                if (edgeTracking && edgeVelocity != null) {
++                    edgeVelocity.addMovement(ev);
++                    edgeVelocity.computeCurrentVelocity(1000);
++                    if (wasDragging) sideDashboard.endDrag(edgeVelocity.getXVelocity());
++                    edgeVelocity.recycle();
++                    edgeVelocity = null;
++                }
++                edgeTracking = false;
++                edgeDragging = false;
++                return wasDragging;
++            }
++            default:
++                return edgeDragging;
++        }
+     }
+ 
+     private LinearLayout card() {
+@@ -300,6 +380,7 @@ public final class MainActivity extends Activity {
+         b.setAllCaps(false);
+         b.setPadding(dp(7), 0, dp(7), 0);
+         b.setBackground(round(Color.rgb(28, 33, 49), dp(13)));
++        Motion.pressable(b);
+         return b;
+     }
+ 
+@@ -355,20 +436,20 @@ public final class MainActivity extends Activity {
+ 
+     private void importModel(Uri uri) {
+         setBusy(true);
+-        progress.setVisibility(View.VISIBLE);
++        showProgress(true);
+         ioExecutor.execute(() -> {
+             try {
+                 String id = runtime.modelManager().importModel(uri);
+                 runOnUiThread(() -> {
+                     setBusy(false);
+-                    progress.setVisibility(View.GONE);
++                    showProgress(false);
+                     ModelInfo model = findModel(id);
+                     if (model != null) loadModel(model);
+                 });
+             } catch (Exception e) {
+                 runOnUiThread(() -> {
+                     setBusy(false);
+-                    progress.setVisibility(View.GONE);
++                    showProgress(false);
+                     showError("Import failed", e);
+                 });
+             }
+@@ -410,7 +491,7 @@ public final class MainActivity extends Activity {
+ 
+     private void loadModel(ModelInfo model) {
+         setBusy(true);
+-        progress.setVisibility(View.VISIBLE);
++        showProgress(true);
+         modelText.setText("LOADING • " + model.name);
+         statusText.setText("GGUF • INITIALIZING LOCAL CPU RUNTIME…");
+ 
+@@ -418,7 +499,7 @@ public final class MainActivity extends Activity {
+             @Override public void onLoaded() {
+                 runtime.modelManager().markLoaded(model.id);
+                 runOnUiThread(() -> {
+-                    progress.setVisibility(View.GONE);
++                    showProgress(false);
+                     setBusy(false);
+                     refreshStatus();
+                     showToast("Loaded " + model.name);
+@@ -428,7 +509,7 @@ public final class MainActivity extends Activity {
+             @Override public void onError(Exception error) {
+                 runtime.modelManager().clearLoaded();
+                 runOnUiThread(() -> {
+-                    progress.setVisibility(View.GONE);
++                    showProgress(false);
+                     setBusy(false);
+                     refreshStatus();
+                     showError("Model load failed", error);
+@@ -446,11 +527,11 @@ public final class MainActivity extends Activity {
+         runtime.chatStore().maybeTitle(activeChat, message);
+         ChatMessage user = new ChatMessage(ChatMessage.Role.USER, message);
+         runtime.chatStore().add(activeChat, user);
+-        addMessageView(user);
++        addMessageView(user, true);
+ 
+         // Keep SEND usable while native inference runs. GgufModelBackend serializes
+         // generations on its single executor, so follow-up messages are queued.
+-        importButton.setEnabled(false);
++        Motion.setEnabledAnimated(importButton, false);
+ 
+         long started = System.currentTimeMillis();
+         ToolEngine.Result tool = runtime.tools().handle(message);
+@@ -463,7 +544,7 @@ public final class MainActivity extends Activity {
+                     ChatMessage.Role.ASSISTANT, tool.response,
+                     System.currentTimeMillis(), diag.format());
+             runtime.chatStore().add(activeChat, assistant);
+-            addMessageView(assistant);
++            addMessageView(assistant, true);
+             setBusy(false);
+             requestToolPermissionIfNeeded(tool);
+             return;
+@@ -478,13 +559,13 @@ public final class MainActivity extends Activity {
+                     ChatMessage.Role.ASSISTANT, fallback,
+                     System.currentTimeMillis(), diag.format());
+             runtime.chatStore().add(activeChat, assistant);
+-            addMessageView(assistant);
++            addMessageView(assistant, true);
+             setBusy(false);
+             return;
+         }
+ 
+         final TextView streamingBubble = addMessageView(
+-                new ChatMessage(ChatMessage.Role.ASSISTANT, "Thinking…"));
++                new ChatMessage(ChatMessage.Role.ASSISTANT, "Thinking…"), true);
+         streamingBubble.setTextColor(MUTED);
+         activeGenerations++;
+ 
+@@ -521,8 +602,8 @@ public final class MainActivity extends Activity {
+                 runOnUiThread(() -> {
+                     replaceStreamingBubble(streamingBubble, assistant);
+                     activeGenerations = Math.max(0, activeGenerations - 1);
+-                    importButton.setEnabled(!modelBusy && activeGenerations == 0);
+-                    sendButton.setEnabled(!modelBusy);
++                    Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
++                    Motion.setEnabledAnimated(sendButton, !modelBusy);
+                 });
+             }
+ 
+@@ -542,8 +623,8 @@ public final class MainActivity extends Activity {
+                 runOnUiThread(() -> {
+                     replaceStreamingBubble(streamingBubble, assistant);
+                     activeGenerations = Math.max(0, activeGenerations - 1);
+-                    importButton.setEnabled(!modelBusy && activeGenerations == 0);
+-                    sendButton.setEnabled(!modelBusy);
++                    Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
++                    Motion.setEnabledAnimated(sendButton, !modelBusy);
+                 });
+             }
+         });
+@@ -603,6 +684,10 @@ public final class MainActivity extends Activity {
+     }
+ 
+     private TextView addMessageView(ChatMessage message) {
++        return addMessageView(message, false);
++    }
++
++    private TextView addMessageView(ChatMessage message, boolean animate) {
+         boolean user = message.role == ChatMessage.Role.USER;
+ 
+         LinearLayout row = new LinearLayout(this);
+@@ -635,6 +720,10 @@ public final class MainActivity extends Activity {
+                 -2);
+         row.addView(bubble, bubbleLp);
+         messageContainer.addView(row);
++        if (animate && !Motion.reduced(this)) {
++            bubble.setAlpha(0f);
++            bubble.post(() -> Motion.messageIn(bubble, user));
++        }
+         scrollToBottom();
+         return body;
+     }
+@@ -659,7 +748,7 @@ public final class MainActivity extends Activity {
+             items[i + 1] = (chat.id.equals(activeChat.id) ? "● " : "○ ") + chat.title;
+         }
+ 
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("CHATS")
+                 .setItems(items, (d, which) -> {
+                     if (which == 0) {
+@@ -675,7 +764,7 @@ public final class MainActivity extends Activity {
+ 
+     private void showChatActions(ChatRecord chat) {
+         String[] actions = {"Open", "Rename", "Export", "Delete"};
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle(chat.title)
+                 .setItems(actions, (d, which) -> {
+                     if (which == 0) {
+@@ -794,13 +883,13 @@ public final class MainActivity extends Activity {
+         EditText name = new EditText(this);
+         name.setText(chat.title);
+         name.setTextColor(TEXT);
+-        AlertDialog dialog = new AlertDialog.Builder(this)
++        SyncDialog dialog = new SyncDialog.Builder(this, accent)
+                 .setTitle("RENAME CHAT")
+                 .setView(name)
+                 .setNegativeButton("CANCEL", null)
+                 .setPositiveButton("SAVE", null)
+                 .create();
+-        dialog.setOnShowListener(v -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(x -> {
++        dialog.setOnShowListener(v -> dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(x -> {
+             runtime.chatStore().rename(chat.id, name.getText().toString());
+             if (chat.id.equals(activeChat.id)) activeChat = runtime.chatStore().get(chat.id);
+             dialog.dismiss();
+@@ -809,7 +898,7 @@ public final class MainActivity extends Activity {
+     }
+ 
+     private void deleteChat(ChatRecord chat) {
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("DELETE CHAT?")
+                 .setMessage("This permanently removes the saved conversation and attached diagnostics.")
+                 .setNegativeButton("CANCEL", null)
+@@ -838,7 +927,7 @@ public final class MainActivity extends Activity {
+         models.setOnClickListener(v -> showModelsDialog());
+         content.addView(models);
+ 
+-        AlertDialog dialog = new AlertDialog.Builder(this)
++        SyncDialog dialog = new SyncDialog.Builder(this, accent)
+                 .setTitle("SETTINGS")
+                 .setView(content)
+                 .setNegativeButton("CLOSE", null)
+@@ -880,7 +969,7 @@ public final class MainActivity extends Activity {
+         colors.setOnClickListener(v -> showAccentPicker());
+         content.addView(colors);
+ 
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("PERSONALIZATION")
+                 .setView(content)
+                 .setNegativeButton("CLOSE", null)
+@@ -898,7 +987,7 @@ public final class MainActivity extends Activity {
+         editor.setHint("Things Sync should remember…");
+         editor.setPadding(dp(12), dp(12), dp(12), dp(12));
+ 
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("MEMORY")
+                 .setView(editor)
+                 .setNegativeButton("CANCEL", null)
+@@ -914,12 +1003,12 @@ public final class MainActivity extends Activity {
+     }
+ 
+     private void showAccentPicker() {
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("SYNC//AI ACCENT")
+                 .setSingleChoiceItems(AppPreferences.ACCENT_NAMES,
+                         runtime.preferences().getAccent(), (d, which) -> {
+                             runtime.preferences().setAccent(which);
+-                            d.dismiss();
++                            ((SyncDialog) d).dismissNow();
+                             recreate();
+                         })
+                 .setNegativeButton("CLOSE", null)
+@@ -971,7 +1060,7 @@ public final class MainActivity extends Activity {
+         });
+         content.addView(assistant);
+ 
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("VOICE MODE")
+                 .setView(content)
+                 .setNegativeButton("CLOSE", null)
+@@ -994,7 +1083,7 @@ public final class MainActivity extends Activity {
+                 "\n\nLatest request diagnostics:\n" +
+                 (latest.isEmpty() ? "No request recorded yet." : latest);
+ 
+-        AlertDialog dialog = new AlertDialog.Builder(this)
++        SyncDialog dialog = new SyncDialog.Builder(this, accent)
+                 .setTitle("ABOUT & DIAGNOSTICS")
+                 .setMessage(message)
+                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(message))
+@@ -1034,7 +1123,7 @@ public final class MainActivity extends Activity {
+     }
+ 
+     private void showDiagnostic(String diagnostics) {
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("REQUEST DIAGNOSTICS")
+                 .setMessage(diagnostics)
+                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(diagnostics))
+@@ -1050,7 +1139,7 @@ public final class MainActivity extends Activity {
+                 "ABI: arm64-v8a\n" +
+                 "Network required: no\n\n" +
+                 runtime.backend().diagnostics();
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("SYNC//AI RUNTIME")
+                 .setMessage(info)
+                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(info))
+@@ -1061,7 +1150,7 @@ public final class MainActivity extends Activity {
+     private void showModelsDialog() {
+         List<ModelInfo> models = runtime.modelManager().getModels();
+         if (models.isEmpty()) {
+-            new AlertDialog.Builder(this)
++            new SyncDialog.Builder(this, accent)
+                     .setTitle("LOCAL MODELS")
+                     .setMessage("No models imported yet. Model files stay on this phone and are never committed to GitHub.")
+                     .setPositiveButton("IMPORT", (d, w) -> openModelPicker())
+@@ -1080,7 +1169,7 @@ public final class MainActivity extends Activity {
+             items[i] = m.name + " • " + m.sizeLabel() + (loaded ? " ✓" : "");
+         }
+ 
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("LOCAL MODELS")
+                 .setItems(items, (d, which) -> showModelActions(models.get(which)))
+                 .setPositiveButton("IMPORT", (d, w) -> openModelPicker())
+@@ -1089,7 +1178,7 @@ public final class MainActivity extends Activity {
+ 
+     private void showModelActions(ModelInfo model) {
+         String[] actions = {"Load model", "Model diagnostics", "Remove model"};
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle(model.name)
+                 .setItems(actions, (d, which) -> {
+                     if (which == 0) loadModel(model);
+@@ -1106,7 +1195,7 @@ public final class MainActivity extends Activity {
+                 "\nSize: " + model.sizeLabel() +
+                 "\nSHA-256: " + model.sha256 +
+                 (runtime.backend().isLoaded() ? "\n\nRUNTIME\n" + runtime.backend().diagnostics() : "");
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("MODEL DIAGNOSTICS")
+                 .setMessage(info)
+                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(info))
+@@ -1115,7 +1204,7 @@ public final class MainActivity extends Activity {
+     }
+ 
+     private void confirmDelete(ModelInfo model) {
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle("REMOVE MODEL?")
+                 .setMessage("Delete " + model.name + " from this phone?")
+                 .setNegativeButton("CANCEL", null)
+@@ -1134,21 +1223,38 @@ public final class MainActivity extends Activity {
+     private void refreshStatus() {
+         ModelInfo loaded = runtime.modelManager().getLoadedModel();
+         if (loaded != null && runtime.backend().isLoaded()) {
+-            modelText.setText(loaded.name);
+-            statusText.setText("READY • GGUF • LOCAL CPU INFERENCE");
++            Motion.swapText(modelText, loaded.name);
++            Motion.swapText(statusText, "READY • GGUF • LOCAL CPU INFERENCE");
+         } else if (loaded != null) {
+-            modelText.setText(loaded.name);
+-            statusText.setText("SELECTED • READY TO LOAD");
++            Motion.swapText(modelText, loaded.name);
++            Motion.swapText(statusText, "SELECTED • READY TO LOAD");
++        } else {
++            Motion.swapText(modelText, "NO MODEL");
++            Motion.swapText(statusText, "LOCAL RUNTIME • TOOLS AVAILABLE WITHOUT MODEL");
++        }
++    }
++
++    private void showProgress(boolean show) {
++        if (progress == null) return;
++        if (Motion.reduced(this)) {
++            progress.setVisibility(show ? View.VISIBLE : View.GONE);
++            return;
++        }
++        progress.animate().cancel();
++        if (show) {
++            if (progress.getVisibility() != View.VISIBLE) progress.setAlpha(0f);
++            progress.setVisibility(View.VISIBLE);
++            progress.animate().alpha(1f).setDuration(Motion.NORMAL).setInterpolator(Motion.EASE_OUT).start();
+         } else {
+-            modelText.setText("NO MODEL");
+-            statusText.setText("LOCAL RUNTIME • TOOLS AVAILABLE WITHOUT MODEL");
++            progress.animate().alpha(0f).setDuration(Motion.FAST)
++                    .withEndAction(() -> progress.setVisibility(View.GONE)).start();
+         }
+     }
+ 
+     private void setBusy(boolean busy) {
+         modelBusy = busy;
+-        sendButton.setEnabled(!busy);
+-        importButton.setEnabled(!busy && activeGenerations == 0);
++        Motion.setEnabledAnimated(sendButton, !busy);
++        Motion.setEnabledAnimated(importButton, !busy && activeGenerations == 0);
+     }
+ 
+     private void scrollToBottom() {
+@@ -1169,7 +1275,7 @@ public final class MainActivity extends Activity {
+     }
+ 
+     private void showError(String title, Exception e) {
+-        new AlertDialog.Builder(this)
++        new SyncDialog.Builder(this, accent)
+                 .setTitle(title)
+                 .setMessage(e.getMessage() == null ? e.toString() : e.getMessage())
+                 .setPositiveButton("OK", null)
+diff --git a/app/src/main/java/com/sam/syncai/Motion.java b/app/src/main/java/com/sam/syncai/Motion.java
+new file mode 100644
+index 0000000..8a2c289
+--- /dev/null
++++ b/app/src/main/java/com/sam/syncai/Motion.java
+@@ -0,0 +1,145 @@
++package com.sam.syncai;
++
++import android.content.Context;
++import android.provider.Settings;
++import android.view.MotionEvent;
++import android.view.View;
++import android.view.ViewGroup;
++import android.view.animation.DecelerateInterpolator;
++import android.view.animation.Interpolator;
++import android.view.animation.OvershootInterpolator;
++import android.view.animation.PathInterpolator;
++
++/**
++ * Central motion system for Sync AI.
++ * All durations / easing live here so the whole app can be tuned from one place.
++ * Respects Android's "Remove animations" / animator duration scale = 0.
++ */
++public final class Motion {
++    private Motion() {}
++
++    // ---- Durations (ms) ----
++    public static final long FAST = 140;
++    public static final long NORMAL = 240;
++    public static final long SLOW = 320;
++    public static final long DRAWER_OPEN = 300;
++    public static final long DRAWER_CLOSE = 230;
++    public static final long STAGGER = 28;
++
++    // ---- Easing ----
++    /** Smooth ease-out with a strong start, used for most entrances. */
++    public static final Interpolator EASE_OUT = new PathInterpolator(0.16f, 1f, 0.3f, 1f);
++    /** Symmetric ease for state changes. */
++    public static final Interpolator EASE_IN_OUT = new PathInterpolator(0.4f, 0f, 0.2f, 1f);
++    /** Accelerating ease for exits. */
++    public static final Interpolator EASE_IN = new PathInterpolator(0.4f, 0f, 1f, 1f);
++    /** Tiny settle used for the drawer (very subtle overshoot, not bouncy). */
++    public static final Interpolator SETTLE = new OvershootInterpolator(0.55f);
++    public static final Interpolator DECEL = new DecelerateInterpolator(1.6f);
++
++    /** True when the user disabled animations system-wide. */
++    public static boolean reduced(Context c) {
++        try {
++            float scale = Settings.Global.getFloat(
++                    c.getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
++            return scale == 0f;
++        } catch (Exception e) {
++            return false;
++        }
++    }
++
++    /** Fade in from nothing with a small upward translation. */
++    public static void enter(View v, long delay, float dyPx) {
++        if (v == null) return;
++        if (reduced(v.getContext())) {
++            v.setAlpha(1f);
++            v.setTranslationY(0f);
++            return;
++        }
++        v.animate().cancel();
++        v.setAlpha(0f);
++        v.setTranslationY(dyPx);
++        v.animate().alpha(1f).translationY(0f)
++                .setStartDelay(delay).setDuration(NORMAL)
++                .setInterpolator(EASE_OUT)
++                .withEndAction(() -> v.animate().setStartDelay(0)).start();
++    }
++
++    /** Fade in from nothing (used for chat messages). Slight rise + tiny scale. */
++    public static void messageIn(View v, boolean fromUser) {
++        if (v == null) return;
++        if (reduced(v.getContext())) return;
++        float dy = v.getResources().getDisplayMetrics().density * 10f;
++        v.animate().cancel();
++        v.setAlpha(0f);
++        v.setTranslationY(dy);
++        v.setScaleX(0.97f);
++        v.setScaleY(0.97f);
++        v.setPivotX(fromUser ? v.getWidth() : 0f);
++        v.setPivotY(v.getHeight());
++        v.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
++                .setStartDelay(0).setDuration(SLOW).setInterpolator(EASE_OUT).start();
++    }
++
++    /** Stagger the direct children of a group in. */
++    public static void stagger(ViewGroup group, long baseDelay, float dyPx) {
++        if (group == null) return;
++        int n = group.getChildCount();
++        for (int i = 0; i < n; i++) {
++            enter(group.getChildAt(i), baseDelay + i * STAGGER, dyPx);
++        }
++    }
++
++    /** Subtle pressed scale + alpha on touch; does NOT consume the event, so clicks still fire. */
++    public static void pressable(View v) {
++        if (v == null) return;
++        v.setOnTouchListener((view, e) -> {
++            if (reduced(view.getContext())) return false;
++            switch (e.getActionMasked()) {
++                case MotionEvent.ACTION_DOWN:
++                    view.animate().cancel();
++                    view.animate().scaleX(0.96f).scaleY(0.96f)
++                            .alpha(view.isEnabled() ? 0.85f : view.getAlpha())
++                            .setStartDelay(0).setDuration(90).setInterpolator(EASE_OUT).start();
++                    break;
++                case MotionEvent.ACTION_UP:
++                case MotionEvent.ACTION_CANCEL:
++                    view.animate().scaleX(1f).scaleY(1f)
++                            .alpha(view.isEnabled() ? 1f : 0.45f)
++                            .setStartDelay(0).setDuration(180).setInterpolator(EASE_OUT).start();
++                    break;
++                default:
++                    break;
++            }
++            return false;
++        });
++    }
++
++    /** Animated enabled/disabled look (used by SEND / IMPORT). */
++    public static void setEnabledAnimated(View v, boolean enabled) {
++        if (v == null) return;
++        v.setEnabled(enabled);
++        float target = enabled ? 1f : 0.45f;
++        if (reduced(v.getContext())) {
++            v.setAlpha(target);
++            return;
++        }
++        v.animate().cancel();
++        v.animate().alpha(target).setStartDelay(0).setDuration(FAST).setInterpolator(EASE_IN_OUT).start();
++    }
++
++    /** Crossfade a TextView's text (used for voice state + model status). */
++    public static void swapText(android.widget.TextView t, String value) {
++        if (t == null) return;
++        if (value.contentEquals(t.getText())) return;
++        if (reduced(t.getContext())) {
++            t.setText(value);
++            return;
++        }
++        t.animate().cancel();
++        t.animate().alpha(0f).setStartDelay(0).setDuration(80).withEndAction(() -> {
++            t.setText(value);
++            t.animate().alpha(1f).setStartDelay(0).setDuration(FAST).setInterpolator(EASE_OUT).start();
++        }).start();
++    }
++}
+diff --git a/app/src/main/java/com/sam/syncai/SideDashboard.java b/app/src/main/java/com/sam/syncai/SideDashboard.java
+index fe2a233..d49f7d6 100644
+--- a/app/src/main/java/com/sam/syncai/SideDashboard.java
++++ b/app/src/main/java/com/sam/syncai/SideDashboard.java
+@@ -1,12 +1,18 @@
+ package com.sam.syncai;
+ 
++import android.animation.Animator;
++import android.animation.AnimatorListenerAdapter;
++import android.animation.ValueAnimator;
+ import android.app.Activity;
+ import android.graphics.Color;
+ import android.graphics.Typeface;
+ import android.graphics.drawable.GradientDrawable;
+ import android.view.Gravity;
++import android.view.MotionEvent;
++import android.view.VelocityTracker;
+ import android.view.View;
+-import android.view.animation.DecelerateInterpolator;
++import android.view.ViewConfiguration;
++import android.view.animation.Interpolator;
+ import android.widget.FrameLayout;
+ import android.widget.LinearLayout;
+ import android.widget.TextView;
+@@ -31,21 +37,36 @@ public final class SideDashboard extends FrameLayout {
+     private final Activity activity;
+     private final Actions actions;
+     private LinearLayout panel;
++    private FrameLayout pages;
+     private LinearLayout mainContent;
+     private LinearLayout settingsContent;
+     private View scrim;
+     private boolean open;
++    private boolean dragging;
++    private boolean settingsShown;
++    private float progress; // 0 = fully hidden, 1 = fully open
++    private ValueAnimator drawerAnim;
++    private int topInset;
++
++    // touch tracking for drag-to-close
++    private float downX, downY;
++    private boolean closeDrag;
++    private VelocityTracker velocity;
++    private final int touchSlop;
+ 
+     public SideDashboard(Activity activity, FrameLayout host, Actions actions) {
+         super(activity);
+         this.activity = activity;
+         this.actions = actions;
++        this.touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
+         setClickable(true);
+         build();
+         host.addView(this, new FrameLayout.LayoutParams(-1, -1));
+         setVisibility(INVISIBLE);
+     }
+ 
++    private int hiddenOffset() { return dp(340); }
++
+     private void build() {
+         setBackgroundColor(Color.TRANSPARENT);
+ 
+@@ -59,17 +80,30 @@ public final class SideDashboard extends FrameLayout {
+         panel.setOrientation(LinearLayout.VERTICAL);
+         panel.setPadding(dp(18), dp(22), dp(14), dp(18));
+         panel.setBackground(round(Color.rgb(14, 17, 27), dp(24)));
++        panel.setElevation(dp(16));
+ 
+         FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(dp(320), -1, Gravity.START);
+         pp.setMargins(0, dp(8), 0, dp(8));
+         addView(panel, pp);
+ 
++        // Both screens live in the same surface so Settings <-> Main feels like navigation.
++        pages = new FrameLayout(activity);
+         buildMainContent();
+         buildSettingsContent();
+-        panel.addView(mainContent, new LinearLayout.LayoutParams(-1, 0, 1));
+-        panel.addView(settingsContent, new LinearLayout.LayoutParams(-1, 0, 1));
++        pages.addView(mainContent, new FrameLayout.LayoutParams(-1, -1));
++        pages.addView(settingsContent, new FrameLayout.LayoutParams(-1, -1));
+         settingsContent.setVisibility(GONE);
+-        panel.setTranslationX(-dp(340));
++        panel.addView(pages, new LinearLayout.LayoutParams(-1, 0, 1));
++
++        applyProgress(0f);
++    }
++
++    /** Push the drawer below the system status bar (+ a little breathing room). */
++    public void setTopInset(int px) {
++        topInset = px;
++        FrameLayout.LayoutParams pp = (FrameLayout.LayoutParams) panel.getLayoutParams();
++        pp.topMargin = dp(8) + px;
++        panel.setLayoutParams(pp);
+     }
+ 
+     private void buildMainContent() {
+@@ -112,6 +146,7 @@ public final class SideDashboard extends FrameLayout {
+         back.setGravity(Gravity.CENTER);
+         back.setBackground(round(Color.rgb(21,25,38), dp(13)));
+         back.setOnClickListener(v -> showMain());
++        Motion.pressable(back);
+         titleRow.addView(back, new LinearLayout.LayoutParams(dp(48), dp(46)));
+ 
+         TextView title = label("SETTINGS", 18, Color.rgb(240,242,250), true);
+@@ -150,19 +185,69 @@ public final class SideDashboard extends FrameLayout {
+         close.setGravity(Gravity.CENTER);
+         close.setBackground(round(Color.rgb(28,33,49), dp(13)));
+         close.setOnClickListener(v -> close());
++        Motion.pressable(close);
+         target.addView(close, new LinearLayout.LayoutParams(-1, dp(46)));
+     }
+ 
++    // ---------------------------------------------------------------- Settings <-> Main
++
+     private void showSettings() {
+-        mainContent.setVisibility(GONE);
+-        settingsContent.setVisibility(VISIBLE);
++        if (settingsShown) return;
++        settingsShown = true;
++        slidePages(mainContent, settingsContent, -1);
+     }
+ 
+     private void showMain() {
++        if (!settingsShown) return;
++        settingsShown = false;
++        slidePages(settingsContent, mainContent, 1);
++    }
++
++    /** Instantly reset to the main page (used while the drawer is hidden). */
++    private void showMainInstant() {
++        settingsShown = false;
++        for (View v : new View[]{mainContent, settingsContent}) {
++            v.animate().cancel();
++            v.setAlpha(1f);
++            v.setTranslationX(0f);
++        }
+         settingsContent.setVisibility(GONE);
+         mainContent.setVisibility(VISIBLE);
++        resetChildren(mainContent);
++    }
++
++    /** direction: -1 = outgoing slides left / incoming from right; +1 = the reverse. */
++    private void slidePages(View out, View in, int direction) {
++        if (Motion.reduced(activity)) {
++            out.setVisibility(GONE);
++            in.setVisibility(VISIBLE);
++            in.setAlpha(1f);
++            in.setTranslationX(0f);
++            return;
++        }
++        float dist = dp(48);
++        out.animate().cancel();
++        in.animate().cancel();
++
++        in.setVisibility(VISIBLE);
++        in.setAlpha(0f);
++        in.setTranslationX(-direction * dist);
++
++        out.animate().alpha(0f).translationX(direction * dist * 0.6f)
++                .setStartDelay(0).setDuration(Motion.FAST).setInterpolator(Motion.EASE_IN)
++                .withEndAction(() -> {
++                    out.setVisibility(GONE);
++                    out.setAlpha(1f);
++                    out.setTranslationX(0f);
++                }).start();
++        in.animate().alpha(1f).translationX(0f)
++                .setStartDelay(50).setDuration(Motion.NORMAL).setInterpolator(Motion.EASE_OUT)
++                .withEndAction(() -> in.animate().setStartDelay(0)).start();
++        if (in instanceof LinearLayout) staggerChildren((LinearLayout) in, 60);
+     }
+ 
++    // ---------------------------------------------------------------- Layout helpers
++
+     private void section(LinearLayout target, String title) {
+         TextView t = label(title, 9, Color.rgb(145,153,177), true);
+         t.setPadding(0, dp(16), 0, dp(6));
+@@ -178,37 +263,201 @@ public final class SideDashboard extends FrameLayout {
+             listener.onClick(v);
+             if (closeAfter) close();
+         });
++        Motion.pressable(t);
+         target.addView(t, new LinearLayout.LayoutParams(-1, dp(46)));
+         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams)t.getLayoutParams();
+         lp.bottomMargin = dp(5);
+         t.setLayoutParams(lp);
+     }
+ 
++    private void staggerChildren(LinearLayout group, long baseDelay) {
++        Motion.stagger(group, baseDelay, dp(10));
++    }
++
++    private void resetChildren(LinearLayout group) {
++        for (int i = 0; i < group.getChildCount(); i++) {
++            View c = group.getChildAt(i);
++            c.animate().cancel();
++            c.setAlpha(1f);
++            c.setTranslationY(0f);
++        }
++    }
++
++    // ---------------------------------------------------------------- Drawer motion
++
++    /** Single source of truth: panel position and scrim are both derived from progress. */
++    private void applyProgress(float p) {
++        progress = Math.max(0f, Math.min(1f, p));
++        panel.setTranslationX(-hiddenOffset() * (1f - progress));
++        scrim.setAlpha(progress);
++    }
++
++    private void animateTo(float target, long duration, Interpolator interp) {
++        if (drawerAnim != null) drawerAnim.cancel();
++        if (Motion.reduced(activity)) {
++            applyProgress(target);
++            finishIfHidden();
++            return;
++        }
++        float from = progress;
++        // Shorter run if the panel is already most of the way there (keeps velocity feel).
++        long d = Math.max(90, (long) (duration * Math.abs(target - from)));
++        drawerAnim = ValueAnimator.ofFloat(from, target);
++        drawerAnim.setDuration(d);
++        drawerAnim.setInterpolator(interp);
++        drawerAnim.addUpdateListener(a -> applyProgress((float) a.getAnimatedValue()));
++        drawerAnim.addListener(new AnimatorListenerAdapter() {
++            private boolean canceled;
++            @Override public void onAnimationCancel(Animator animation) { canceled = true; }
++            @Override public void onAnimationEnd(Animator animation) {
++                if (canceled) return;
++                applyProgress(target);
++                finishIfHidden();
++            }
++        });
++        drawerAnim.start();
++    }
++
++    private void finishIfHidden() {
++        if (progress <= 0f && !open) {
++            setVisibility(INVISIBLE);
++            showMainInstant();
++        }
++    }
++
++    /** Called by the edge-swipe zone when a drag begins. */
++    public void beginDrag() {
++        if (open) return;
++        if (drawerAnim != null) drawerAnim.cancel();
++        dragging = true;
++        showMainInstant();
++        setVisibility(VISIBLE);
++        applyProgress(progress);
++    }
++
++    /** Called with the finger's horizontal distance (px) from where the drag started. */
++    public void dragTo(float dxPx) {
++        if (!dragging) return;
++        applyProgress(dxPx / hiddenOffset());
++    }
++
++    /** Release: settle open or closed depending on distance + fling velocity (px/s). */
++    public void endDrag(float velocityX) {
++        if (!dragging) return;
++        dragging = false;
++        boolean shouldOpen = velocityX > dp(500) || (progress > 0.4f && velocityX > -dp(500));
++        if (shouldOpen) {
++            open = true;
++            animateTo(1f, Motion.DRAWER_OPEN, Motion.EASE_OUT);
++            staggerChildren(mainContent, 70);
++        } else {
++            open = false;
++            animateTo(0f, Motion.DRAWER_CLOSE, Motion.EASE_IN_OUT);
++        }
++    }
++
+     public void open() {
+         if (open) return;
+-        showMain();
++        if (drawerAnim != null) drawerAnim.cancel();
++        showMainInstant();
+         open = true;
++        dragging = false;
+         setVisibility(VISIBLE);
+-        scrim.animate().alpha(1f).setDuration(180).start();
+-        panel.animate().translationX(0f).setDuration(260)
+-                .setInterpolator(new DecelerateInterpolator()).start();
++        animateTo(1f, Motion.DRAWER_OPEN, Motion.EASE_OUT);
++        if (!Motion.reduced(activity)) {
++            // Items enter just after the panel starts moving.
++            for (int i = 0; i < mainContent.getChildCount(); i++) {
++                mainContent.getChildAt(i).setAlpha(0f);
++            }
++            staggerChildren(mainContent, 70);
++        }
+     }
+ 
+     public void close() {
+-        if (!open) {
++        if (!open && progress <= 0f) {
+             setVisibility(INVISIBLE);
+             return;
+         }
+         open = false;
+-        showMain();
+-        scrim.animate().alpha(0f).setDuration(160).start();
+-        panel.animate().translationX(-dp(340)).setDuration(220)
+-                .setInterpolator(new DecelerateInterpolator())
+-                .withEndAction(() -> setVisibility(INVISIBLE)).start();
++        dragging = false;
++        animateTo(0f, Motion.DRAWER_CLOSE, Motion.EASE_IN_OUT);
+     }
+ 
+     public boolean isOpen() { return open; }
+ 
++    // ---------------------------------------------------------------- Drag-to-close touch handling
++
++    @Override public boolean onInterceptTouchEvent(MotionEvent e) {
++        if (!open) return false;
++        switch (e.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                downX = e.getX();
++                downY = e.getY();
++                closeDrag = false;
++                resetVelocity(e);
++                break;
++            case MotionEvent.ACTION_MOVE:
++                if (velocity != null) velocity.addMovement(e);
++                float dx = e.getX() - downX;
++                float dy = Math.abs(e.getY() - downY);
++                if (!closeDrag && dx < -touchSlop && Math.abs(dx) > dy * 1.3f) {
++                    closeDrag = true;
++                    if (drawerAnim != null) drawerAnim.cancel();
++                    return true;
++                }
++                break;
++            default:
++                break;
++        }
++        return false;
++    }
++
++    @Override public boolean onTouchEvent(MotionEvent e) {
++        if (!open) return super.onTouchEvent(e);
++        if (velocity == null) resetVelocity(e);
++        velocity.addMovement(e);
++        switch (e.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                downX = e.getX();
++                downY = e.getY();
++                return true;
++            case MotionEvent.ACTION_MOVE:
++                if (closeDrag) {
++                    float dx = e.getX() - downX;
++                    applyProgress(1f + Math.min(0f, dx + touchSlop) / hiddenOffset());
++                    return true;
++                }
++                break;
++            case MotionEvent.ACTION_UP:
++            case MotionEvent.ACTION_CANCEL:
++                if (closeDrag) {
++                    velocity.computeCurrentVelocity(1000);
++                    float vx = velocity.getXVelocity();
++                    closeDrag = false;
++                    if (vx < -dp(500) || progress < 0.6f) {
++                        open = false;
++                        animateTo(0f, Motion.DRAWER_CLOSE, Motion.EASE_IN_OUT);
++                    } else {
++                        animateTo(1f, Motion.DRAWER_OPEN, Motion.EASE_OUT);
++                    }
++                }
++                velocity.recycle();
++                velocity = null;
++                return true;
++            default:
++                break;
++        }
++        return super.onTouchEvent(e);
++    }
++
++    private void resetVelocity(MotionEvent e) {
++        if (velocity != null) velocity.recycle();
++        velocity = VelocityTracker.obtain();
++        velocity.addMovement(e);
++    }
++
++    // ---------------------------------------------------------------- Utils
++
+     private TextView label(String value, float size, int color, boolean bold) {
+         TextView t = new TextView(activity);
+         t.setText(value);
+diff --git a/app/src/main/java/com/sam/syncai/SyncDialog.java b/app/src/main/java/com/sam/syncai/SyncDialog.java
+new file mode 100644
+index 0000000..90587ef
+--- /dev/null
++++ b/app/src/main/java/com/sam/syncai/SyncDialog.java
+@@ -0,0 +1,470 @@
++package com.sam.syncai;
++
++import android.animation.ValueAnimator;
++import android.app.Activity;
++import android.app.Dialog;
++import android.content.Context;
++import android.content.DialogInterface;
++import android.graphics.Color;
++import android.graphics.Typeface;
++import android.graphics.drawable.ColorDrawable;
++import android.graphics.drawable.GradientDrawable;
++import android.os.Build;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.view.Window;
++import android.view.WindowInsets;
++import android.view.WindowManager;
++import android.widget.EditText;
++import android.widget.FrameLayout;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.TextView;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * Sync AI's own dialog. Drop-in replacement for the parts of AlertDialog the app uses,
++ * styled to match the drawer/cards (dark surface, rounded, accent buttons) with the
++ * same motion system as the rest of the app instead of the stock Android popup.
++ */
++public final class SyncDialog implements DialogInterface {
++    private static final int SURFACE = Color.rgb(14, 17, 27);
++    private static final int SURFACE_2 = Color.rgb(21, 25, 38);
++    private static final int BUTTON = Color.rgb(28, 33, 49);
++    private static final int BORDER = Color.rgb(34, 40, 60);
++    private static final int TEXT = Color.rgb(240, 242, 250);
++    private static final int BODY = Color.rgb(208, 213, 230);
++    private static final int MUTED = Color.rgb(145, 153, 177);
++    private static final float DIM = 0.62f;
++
++    private final Context ctx;
++    private final int accent;
++    private final Dialog dialog;
++    private final FrameLayout root;
++    private final LinearLayout card;
++    private final TextView[] buttons = new TextView[3]; // positive, negative, neutral
++    private final List<View> rows = new ArrayList<>();
++    private DialogInterface.OnShowListener showListener;
++    private boolean dismissing;
++
++    // ------------------------------------------------------------------ Builder
++
++    public static final class Builder {
++        private final Context ctx;
++        private final int accent;
++        private CharSequence title;
++        private CharSequence message;
++        private CharSequence[] items;
++        private CharSequence[] choiceItems;
++        private int checked = -1;
++        private View view;
++        private OnClickListener itemListener;
++        private OnClickListener choiceListener;
++        private final CharSequence[] buttonText = new CharSequence[3];
++        private final OnClickListener[] buttonListener = new OnClickListener[3];
++
++        public Builder(Context ctx, int accent) {
++            this.ctx = ctx;
++            this.accent = accent;
++        }
++
++        public Builder setTitle(CharSequence t) { title = t; return this; }
++        public Builder setMessage(CharSequence m) { message = m; return this; }
++        public Builder setView(View v) { view = v; return this; }
++
++        public Builder setItems(CharSequence[] i, OnClickListener l) {
++            items = i;
++            itemListener = l;
++            return this;
++        }
++
++        public Builder setSingleChoiceItems(CharSequence[] i, int checkedItem, OnClickListener l) {
++            choiceItems = i;
++            checked = checkedItem;
++            choiceListener = l;
++            return this;
++        }
++
++        public Builder setPositiveButton(CharSequence t, OnClickListener l) {
++            buttonText[0] = t; buttonListener[0] = l; return this;
++        }
++
++        public Builder setNegativeButton(CharSequence t, OnClickListener l) {
++            buttonText[1] = t; buttonListener[1] = l; return this;
++        }
++
++        public Builder setNeutralButton(CharSequence t, OnClickListener l) {
++            buttonText[2] = t; buttonListener[2] = l; return this;
++        }
++
++        public SyncDialog create() { return new SyncDialog(this); }
++
++        public SyncDialog show() {
++            SyncDialog d = create();
++            d.show();
++            return d;
++        }
++    }
++
++    // ------------------------------------------------------------------ Construction
++
++    private SyncDialog(Builder b) {
++        this.ctx = b.ctx;
++        this.accent = b.accent;
++
++        dialog = new Dialog(ctx, android.R.style.Theme_Translucent_NoTitleBar) {
++            @Override public void onBackPressed() { SyncDialog.this.dismiss(); }
++        };
++
++        root = new FrameLayout(ctx);
++        root.setPadding(dp(24), dp(40), dp(24), dp(40));
++        root.setOnClickListener(v -> dismiss()); // tap outside the card
++
++        card = new LinearLayout(ctx);
++        card.setOrientation(LinearLayout.VERTICAL);
++        card.setClickable(true); // swallow taps so they don't reach the root
++        GradientDrawable bg = new GradientDrawable();
++        bg.setColor(SURFACE);
++        bg.setCornerRadius(dp(24));
++        bg.setStroke(dp(1), BORDER);
++        card.setBackground(bg);
++        card.setElevation(dp(18));
++
++        int screenW = ctx.getResources().getDisplayMetrics().widthPixels;
++        int cardW = Math.min(screenW - dp(48), dp(420));
++        root.addView(card, new FrameLayout.LayoutParams(cardW, -2, Gravity.CENTER));
++
++        if (b.title != null) addTitle(b.title);
++        addBody(b);
++        addButtons(b);
++
++        dialog.setContentView(root);
++        applyInsets();
++    }
++
++    private void addTitle(CharSequence title) {
++        TextView t = new TextView(ctx);
++        t.setText(title);
++        t.setTextSize(15);
++        t.setTextColor(TEXT);
++        t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
++        t.setLetterSpacing(0.06f);
++        t.setPadding(dp(22), dp(20), dp(22), dp(12));
++        card.addView(t, new LinearLayout.LayoutParams(-1, -2));
++    }
++
++    private void addBody(Builder b) {
++        boolean hasBody = b.message != null || b.items != null || b.choiceItems != null || b.view != null;
++        if (!hasBody) return;
++
++        ScrollView scroll = new ScrollView(ctx);
++        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
++        LinearLayout body = new LinearLayout(ctx);
++        body.setOrientation(LinearLayout.VERTICAL);
++        scroll.addView(body, new ViewGroup.LayoutParams(-1, -2));
++        // weight 1 + wrap: shrinks and scrolls when content is taller than the screen.
++        card.addView(scroll, new LinearLayout.LayoutParams(-1, -2, 1));
++
++        if (b.message != null) {
++            TextView m = new TextView(ctx);
++            m.setText(b.message);
++            m.setTextSize(14);
++            m.setTextColor(BODY);
++            m.setLineSpacing(0, 1.15f);
++            m.setTextIsSelectable(true);
++            m.setPadding(0, dp(2), 0, dp(6));
++            body.addView(m, sideMargins(-2, dp(22), 0));
++        }
++
++        if (b.items != null) {
++            for (int i = 0; i < b.items.length; i++) {
++                final int index = i;
++                TextView row = row(b.items[i], TEXT);
++                row.setOnClickListener(v -> {
++                    if (b.itemListener != null) b.itemListener.onClick(this, index);
++                    dismiss();
++                });
++                body.addView(row, rowParams());
++                rows.add(row);
++            }
++        }
++
++        if (b.choiceItems != null) {
++            final TextView[] choiceRows = new TextView[b.choiceItems.length];
++            final int[] selected = {b.checked};
++            for (int i = 0; i < b.choiceItems.length; i++) {
++                final int index = i;
++                final CharSequence label = b.choiceItems[i];
++                TextView row = row(choiceLabel(label, i == selected[0]), i == selected[0] ? accent : TEXT);
++                choiceRows[i] = row;
++                row.setOnClickListener(v -> {
++                    selected[0] = index;
++                    for (int k = 0; k < choiceRows.length; k++) {
++                        boolean on = k == index;
++                        choiceRows[k].setText(choiceLabel(b.choiceItems[k], on));
++                        choiceRows[k].setTextColor(on ? accent : TEXT);
++                    }
++                    if (b.choiceListener != null) b.choiceListener.onClick(this, index);
++                });
++                body.addView(row, rowParams());
++                rows.add(row);
++            }
++        }
++
++        if (b.view != null) {
++            View v = b.view;
++            if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
++            if (v instanceof EditText) {
++                styleEditText((EditText) v);
++                body.addView(v, sideMargins(-2, dp(22), dp(4)));
++            } else {
++                // Content views bring their own ~18dp side padding.
++                body.addView(v, sideMargins(-2, dp(4), 0));
++            }
++        }
++
++        // breathing room under the body
++        View pad = new View(ctx);
++        body.addView(pad, new LinearLayout.LayoutParams(-1, dp(4)));
++    }
++
++    private void addButtons(Builder b) {
++        int count = 0;
++        for (CharSequence t : b.buttonText) if (t != null) count++;
++        if (count == 0) {
++            card.addView(new View(ctx), new LinearLayout.LayoutParams(-1, dp(14)));
++            return;
++        }
++
++        LinearLayout bar = new LinearLayout(ctx);
++        bar.setOrientation(LinearLayout.HORIZONTAL);
++        bar.setPadding(dp(18), dp(10), dp(18), dp(18));
++
++        // Android order: neutral (left), negative, positive (right).
++        int[] order = {2, 1, 0};
++        for (int slot : order) {
++            if (b.buttonText[slot] == null) continue;
++            final int which = slot == 0 ? BUTTON_POSITIVE : slot == 1 ? BUTTON_NEGATIVE : BUTTON_NEUTRAL;
++            final OnClickListener listener = b.buttonListener[slot];
++
++            TextView btn = new TextView(ctx);
++            btn.setText(b.buttonText[slot]);
++            btn.setTextSize(11);
++            btn.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
++            btn.setGravity(Gravity.CENTER);
++            btn.setSingleLine(true);
++            boolean primary = slot == 0;
++            btn.setTextColor(primary ? Color.WHITE : TEXT);
++            btn.setBackground(round(primary ? accent : BUTTON, dp(13)));
++            btn.setOnClickListener(v -> {
++                if (listener != null) listener.onClick(this, which);
++                dismiss();
++            });
++            Motion.pressable(btn);
++            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(46), 1);
++            lp.setMargins(dp(4), 0, dp(4), 0);
++            bar.addView(btn, lp);
++            buttons[slot] = btn;
++        }
++        card.addView(bar, new LinearLayout.LayoutParams(-1, -2));
++    }
++
++    // ------------------------------------------------------------------ Public API
++
++    /** Same contract as AlertDialog.getButton: BUTTON_POSITIVE / NEGATIVE / NEUTRAL. */
++    public TextView getButton(int which) {
++        int slot = which == BUTTON_POSITIVE ? 0 : which == BUTTON_NEGATIVE ? 1 : 2;
++        return buttons[slot];
++    }
++
++    public void setOnShowListener(DialogInterface.OnShowListener l) { showListener = l; }
++
++    public void show() {
++        if (ctx instanceof Activity) {
++            Activity a = (Activity) ctx;
++            if (a.isFinishing() || a.isDestroyed()) return;
++        }
++        card.setAlpha(0f);
++        try {
++            dialog.show();
++        } catch (Exception e) {
++            return;
++        }
++        configureWindow();
++        if (showListener != null) showListener.onShow(this);
++        card.post(this::playEnter);
++    }
++
++    @Override public void dismiss() {
++        if (dismissing) return;
++        dismissing = true;
++        if (!dialog.isShowing()) return;
++        if (Motion.reduced(ctx) || (ctx instanceof Activity && ((Activity) ctx).isFinishing())) {
++            finishDismiss();
++            return;
++        }
++        card.animate().cancel();
++        card.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).translationY(dp(10))
++                .setStartDelay(0).setDuration(Motion.FAST + 20)
++                .setInterpolator(Motion.EASE_IN)
++                .withEndAction(this::finishDismiss).start();
++        animateDim(currentDim(), 0f, Motion.FAST + 20);
++    }
++
++    /** Skip the exit animation (used right before the activity is recreated). */
++    public void dismissNow() {
++        dismissing = true;
++        finishDismiss();
++    }
++
++    @Override public void cancel() { dismiss(); }
++
++    // ------------------------------------------------------------------ Motion + window
++
++    private void configureWindow() {
++        Window w = dialog.getWindow();
++        if (w == null) return;
++        w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
++        w.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
++        w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
++        w.setDimAmount(0f);
++        boolean hasEdit = hasEditText(card);
++        w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
++                | (hasEdit ? WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
++                : WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED));
++    }
++
++    private void playEnter() {
++        if (dismissing) return;
++        if (Motion.reduced(ctx)) {
++            card.setAlpha(1f);
++            setDim(DIM);
++            return;
++        }
++        card.setPivotX(card.getWidth() / 2f);
++        card.setPivotY(card.getHeight() / 2f);
++        card.setScaleX(0.94f);
++        card.setScaleY(0.94f);
++        card.setTranslationY(dp(18));
++        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
++                .setStartDelay(0).setDuration(Motion.NORMAL + 30)
++                .setInterpolator(Motion.EASE_OUT).start();
++        animateDim(0f, DIM, Motion.NORMAL);
++
++        // list rows follow the card in with a light stagger
++        for (int i = 0; i < rows.size() && i < 10; i++) {
++            Motion.enter(rows.get(i), 50 + i * 22L, dp(8));
++        }
++    }
++
++    private float dimNow = 0f;
++
++    private float currentDim() { return dimNow; }
++
++    private void setDim(float v) {
++        dimNow = v;
++        Window w = dialog.getWindow();
++        if (w != null) w.setDimAmount(v);
++    }
++
++    private void animateDim(float from, float to, long duration) {
++        ValueAnimator a = ValueAnimator.ofFloat(from, to);
++        a.setDuration(duration);
++        a.setInterpolator(Motion.EASE_OUT);
++        a.addUpdateListener(x -> setDim((float) x.getAnimatedValue()));
++        a.start();
++    }
++
++    private void finishDismiss() {
++        try {
++            dialog.dismiss();
++        } catch (Exception ignored) {
++            // Activity already gone; nothing to clean up.
++        }
++    }
++
++    /** Keep the card clear of the status bar / nav bar / keyboard. */
++    private void applyInsets() {
++        root.setOnApplyWindowInsetsListener((v, insets) -> {
++            int top;
++            int bottom;
++            if (Build.VERSION.SDK_INT >= 30) {
++                android.graphics.Insets bars = insets.getInsets(
++                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
++                android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
++                top = bars.top;
++                bottom = Math.max(bars.bottom, ime.bottom);
++            } else {
++                top = insets.getSystemWindowInsetTop();
++                bottom = insets.getSystemWindowInsetBottom();
++            }
++            v.setPadding(dp(24), dp(24) + top, dp(24), dp(24) + bottom);
++            return insets;
++        });
++    }
++
++    // ------------------------------------------------------------------ Helpers
++
++    private TextView row(CharSequence label, int color) {
++        TextView t = new TextView(ctx);
++        t.setText(label);
++        t.setTextSize(14);
++        t.setTextColor(color);
++        t.setGravity(Gravity.CENTER_VERTICAL);
++        t.setMinHeight(dp(46));
++        t.setMaxLines(2);
++        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
++        t.setPadding(dp(14), dp(10), dp(12), dp(10));
++        t.setBackground(round(SURFACE_2, dp(13)));
++        Motion.pressable(t);
++        return t;
++    }
++
++    private CharSequence choiceLabel(CharSequence label, boolean on) {
++        return (on ? "●  " : "○  ") + label;
++    }
++
++    private LinearLayout.LayoutParams rowParams() {
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
++        lp.setMargins(dp(18), 0, dp(18), dp(6));
++        return lp;
++    }
++
++    private LinearLayout.LayoutParams sideMargins(int height, int side, int vertical) {
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, height);
++        lp.setMargins(side, vertical, side, vertical);
++        return lp;
++    }
++
++    private void styleEditText(EditText e) {
++        e.setBackground(round(SURFACE_2, dp(15)));
++        e.setTextColor(TEXT);
++        e.setHintTextColor(Color.rgb(92, 100, 123));
++        e.setPadding(dp(14), dp(12), dp(14), dp(12));
++    }
++
++    private boolean hasEditText(View v) {
++        if (v instanceof EditText) return true;
++        if (v instanceof ViewGroup) {
++            ViewGroup g = (ViewGroup) v;
++            for (int i = 0; i < g.getChildCount(); i++) {
++                if (hasEditText(g.getChildAt(i))) return true;
++            }
++        }
++        return false;
++    }
++
++    private GradientDrawable round(int color, int radius) {
++        GradientDrawable d = new GradientDrawable();
++        d.setColor(color);
++        d.setCornerRadius(radius);
++        return d;
++    }
++
++    private int dp(int value) {
++        return Math.round(value * ctx.getResources().getDisplayMetrics().density);
++    }
++}
+diff --git a/app/src/main/java/com/sam/syncai/SyncVoiceSession.java b/app/src/main/java/com/sam/syncai/SyncVoiceSession.java
+index 5611a66..90d789e 100644
+--- a/app/src/main/java/com/sam/syncai/SyncVoiceSession.java
++++ b/app/src/main/java/com/sam/syncai/SyncVoiceSession.java
+@@ -42,6 +42,9 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
+     private TextView transcriptView;
+     private TextView responseView;
+     private View micButton;
++    private View panelView;
++    private android.animation.ValueAnimator micPulse;
++    private boolean exiting;
+     private int accent;
+     private boolean ttsReady;
+     private boolean destroyed;
+@@ -76,6 +79,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
+ 
+         Button close = smallButton("×");
+         close.setOnClickListener(v -> exit());
++        Motion.pressable(close);
+         top.addView(close, new LinearLayout.LayoutParams(dp(48), dp(42)));
+         panel.addView(top);
+ 
+@@ -114,7 +118,17 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
+         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
+                 dp(330), dp(355), Gravity.CENTER);
+         root.addView(panel, panelLp);
+-
++        panelView = panel;
++
++        // Entrance: rise + fade + tiny scale so voice mode feels like it surfaces over the screen.
++        if (!Motion.reduced(getContext())) {
++            panel.setAlpha(0f);
++            panel.setTranslationY(dp(28));
++            panel.setScaleX(0.94f);
++            panel.setScaleY(0.94f);
++            panel.post(() -> panel.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
++                    .setDuration(Motion.SLOW).setInterpolator(Motion.EASE_OUT).start());
++        }
+         return root;
+     }
+ 
+@@ -440,14 +454,70 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
+         if (tts != null) {
+             try { tts.stop(); } catch (Exception ignored) {}
+         }
+-        hide();
+-        finish();
++        stopMicPulse();
++        if (exiting) return;
++        exiting = true;
++        if (panelView == null || destroyed || Motion.reduced(getContext())) {
++            hide();
++            finish();
++            return;
++        }
++        panelView.animate().alpha(0f).translationY(dp(20)).scaleX(0.96f).scaleY(0.96f)
++                .setDuration(Motion.FAST + 40).setInterpolator(Motion.EASE_IN)
++                .withEndAction(() -> {
++                    if (destroyed) return;
++                    hide();
++                    finish();
++                }).start();
+     }
+ 
+     private void updateState(String text) {
+         main.post(() -> {
+-            if (!destroyed && stateView != null) stateView.setText(text);
++            if (destroyed || stateView == null) return;
++            Motion.swapText(stateView, text);
++            applyStateMotion(text);
++        });
++    }
++
++    /** Listening = soft breathing on the mic; thinking/responding = dimmed and still. */
++    private void applyStateMotion(String state) {
++        if (micButton == null) return;
++        if (state.startsWith("LISTENING")) {
++            micButton.animate().alpha(1f).setDuration(Motion.FAST).start();
++            startMicPulse();
++        } else if (state.equals("THINKING") || state.equals("RESPONDING") || state.equals("LOADING MODEL")) {
++            stopMicPulse();
++            micButton.animate().alpha(0.55f).setDuration(Motion.NORMAL).start();
++        } else {
++            stopMicPulse();
++            micButton.animate().alpha(1f).setDuration(Motion.FAST).start();
++        }
++    }
++
++    private void startMicPulse() {
++        if (micPulse != null || Motion.reduced(getContext())) return;
++        micPulse = android.animation.ValueAnimator.ofFloat(1f, 1.07f);
++        micPulse.setDuration(1100);
++        micPulse.setInterpolator(Motion.EASE_IN_OUT);
++        micPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
++        micPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
++        micPulse.addUpdateListener(a -> {
++            if (micButton == null) return;
++            float s = (float) a.getAnimatedValue();
++            micButton.setScaleX(s);
++            micButton.setScaleY(s);
+         });
++        micPulse.start();
++    }
++
++    private void stopMicPulse() {
++        if (micPulse != null) {
++            micPulse.cancel();
++            micPulse = null;
++        }
++        if (micButton != null) {
++            micButton.animate().scaleX(1f).scaleY(1f).setDuration(Motion.FAST).start();
++        }
+     }
+ 
+     private TextView text(String value, float size, int color, boolean bold) {
+@@ -492,6 +562,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
+     }
+ 
+     private void cleanup() {
++        stopMicPulse();
+         if (recognizer != null) {
+             try { recognizer.cancel(); } catch (Exception ignored) {}
+             try { recognizer.destroy(); } catch (Exception ignored) {}
+-- 
+2.43.0
+
