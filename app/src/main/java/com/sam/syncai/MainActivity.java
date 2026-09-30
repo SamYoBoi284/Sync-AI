@@ -66,6 +66,7 @@ public final class MainActivity extends Activity {
     private int accent;
     private SideDashboard sideDashboard;
     private FrameLayout rootFrame;
+    private View composerCard;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -152,6 +153,7 @@ public final class MainActivity extends Activity {
         contentRoot.addView(chatScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout composerCard = card();
+        this.composerCard = composerCard;
         composerCard.setPadding(dp(7), dp(7), dp(7), dp(7));
         LinearLayout composer = new LinearLayout(this);
         composer.setGravity(Gravity.BOTTOM);
@@ -165,6 +167,15 @@ public final class MainActivity extends Activity {
         input.setPadding(dp(14), dp(11), dp(14), dp(10));
         input.setMinLines(1);
         input.setMaxLines(5);
+        input.setSingleLine(false);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEND);
+        input.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
+                sendMessage();
+                return true;
+            }
+            return false;
+        });
         input.setBackground(round(SURFACE_2, dp(15)));
         composer.addView(input, new LinearLayout.LayoutParams(0, dp(56), 1));
 
@@ -241,6 +252,20 @@ public final class MainActivity extends Activity {
 
         rootFrame = frame;
         setContentView(frame);
+        rootFrame.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
+            int imeBottom = ime.bottom;
+            composerCard.setTranslationY(-imeBottom);
+            chatScroll.setPadding(
+                    chatScroll.getPaddingLeft(),
+                    chatScroll.getPaddingTop(),
+                    chatScroll.getPaddingRight(),
+                    dp(12) + composerCard.getHeight() + imeBottom
+            );
+            if (imeBottom > 0) chatScroll.post(this::scrollToBottom);
+            return insets;
+        });
+        rootFrame.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         applyAccent();
     }
 
@@ -406,7 +431,7 @@ public final class MainActivity extends Activity {
         if (message.isEmpty()) return;
 
         input.setText("");
-        hideKeyboard();
+        input.requestFocus();
         runtime.chatStore().maybeTitle(activeChat, message);
         ChatMessage user = new ChatMessage(ChatMessage.Role.USER, message);
         runtime.chatStore().add(activeChat, user);
@@ -479,6 +504,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     replaceStreamingBubble(assistant);
+                    activeAssistantBubble = null;
                     setBusy(false);
                 });
             }
