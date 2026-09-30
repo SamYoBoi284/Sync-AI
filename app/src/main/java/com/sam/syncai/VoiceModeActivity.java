@@ -52,7 +52,11 @@ public final class VoiceModeActivity extends Activity {
     private final AtomicBoolean processing = new AtomicBoolean(false);
 
     @Override protected void onCreate(Bundle state) {
+        SyncEventLogger.install(this);
         super.onCreate(state);
+        SyncEventLogger.record(this, "VoiceModeActivity", "onCreate", "INFO",
+                "savedState=" + (state != null) + " taskId=" + getTaskId()
+                        + " intent=" + getIntent());
         android.util.Log.d("SyncAI", "VoiceModeActivity.onCreate savedState="
                 + (state != null) + " taskId=" + getTaskId()
                 + " intent=" + getIntent());
@@ -147,6 +151,36 @@ public final class VoiceModeActivity extends Activity {
         return root;
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        SyncEventLogger.record(this, "VoiceModeActivity", "onStart", "INFO",
+                "taskId=" + getTaskId());
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        SyncEventLogger.record(this, "VoiceModeActivity", "onResume", "INFO",
+                "taskId=" + getTaskId());
+    }
+
+    @Override protected void onPause() {
+        SyncEventLogger.record(this, "VoiceModeActivity", "onPause", "INFO",
+                "taskId=" + getTaskId());
+        super.onPause();
+    }
+
+    @Override protected void onStop() {
+        SyncEventLogger.record(this, "VoiceModeActivity", "onStop", "INFO",
+                "taskId=" + getTaskId());
+        super.onStop();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        SyncEventLogger.recordIntent(this, "VoiceModeActivity", "onNewIntent", intent);
+    }
+
     private void initSpeech() {
         if (recognizer != null) return;
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -156,17 +190,25 @@ public final class VoiceModeActivity extends Activity {
         recognizer = SpeechRecognizer.createSpeechRecognizer(this);
         recognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onReadyForSpeech(Bundle params) {
+                SyncEventLogger.record(VoiceModeActivity.this, "SpeechRecognizer",
+                        "onReadyForSpeech", "INFO", "params=" + params);
                 updateState("LISTENING");
             }
             @Override public void onBeginningOfSpeech() {
+                SyncEventLogger.record(VoiceModeActivity.this, "SpeechRecognizer",
+                        "onBeginningOfSpeech", "INFO", "");
                 updateState("LISTENING…");
             }
             @Override public void onRmsChanged(float rmsdB) {}
             @Override public void onBufferReceived(byte[] buffer) {}
             @Override public void onEndOfSpeech() {
+                SyncEventLogger.record(VoiceModeActivity.this, "SpeechRecognizer",
+                        "onEndOfSpeech", "INFO", "");
                 updateState("THINKING");
             }
             @Override public void onError(int error) {
+                SyncEventLogger.record(VoiceModeActivity.this, "SpeechRecognizer",
+                        "onError", "ERROR", "code=" + error);
                 if (destroyed || processing.get()) return;
                 updateState("LISTENING");
                 if (error != SpeechRecognizer.ERROR_CLIENT &&
@@ -176,6 +218,19 @@ public final class VoiceModeActivity extends Activity {
             }
             @Override public void onResults(Bundle results) {
                 ArrayList<String> values = results.getStringArrayList(
+                        SpeechRecognizer.RESULTS_RECOGNITION);
+                SyncEventLogger.record(VoiceModeActivity.this, "SpeechRecognizer",
+                        "onResults", "INFO",
+                        "hasResults=" + (values != null && !values.isEmpty()));
+                if (values == null || values.isEmpty()) {
+                    startListening();
+                    return;
+                }
+                handleVoiceText(values.get(0));
+                return;
+                
+                // unreachable legacy body intentionally removed
+
                         SpeechRecognizer.RESULTS_RECOGNITION);
                 if (values == null || values.isEmpty()) {
                     startListening();
@@ -196,18 +251,25 @@ public final class VoiceModeActivity extends Activity {
         if (tts != null) return;
         tts = new TextToSpeech(this, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
+            SyncEventLogger.record(VoiceModeActivity.this, "TextToSpeech",
+                    "INITIALIZED", ttsReady ? "INFO" : "ERROR",
+                    "status=" + status);
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
                 tts.setSpeechRate(1.03f);
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {}
                     @Override public void onDone(String id) {
+                        SyncEventLogger.record(VoiceModeActivity.this, "TextToSpeech",
+                                "UTTERANCE_DONE", "INFO", "id=" + id);
                         main.postDelayed(() -> {
                             processing.set(false);
                             if (!destroyed) startListening();
                         }, 350);
                     }
                     @Override public void onError(String id) {
+                        SyncEventLogger.record(VoiceModeActivity.this, "TextToSpeech",
+                                "UTTERANCE_ERROR", "ERROR", "id=" + id);
                         main.postDelayed(() -> {
                             if (!destroyed && !processing.get()) startListening();
                         }, 350);
@@ -253,6 +315,8 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private void startListening() {
+        SyncEventLogger.record(this, "SpeechRecognizer", "START_LISTENING_ATTEMPT",
+                "INFO", "destroyed=" + destroyed);
         if (destroyed || recognizer == null ||
                 this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                         != PackageManager.PERMISSION_GRANTED) {
@@ -281,6 +345,8 @@ public final class VoiceModeActivity extends Activity {
             return;
         }
         String clean = text.trim();
+        SyncEventLogger.record(this, "VoiceModeActivity", "VOICE_TEXT_RECEIVED", "INFO",
+                "length=" + clean.length());
         transcriptView.setText("“" + clean + "”");
 
         String lower = clean.toLowerCase(Locale.US);
@@ -293,6 +359,9 @@ public final class VoiceModeActivity extends Activity {
         processing.set(true);
         updateState("THINKING");
         ToolEngine.Result tool = runtime.tools().handle(clean);
+        SyncEventLogger.record(this, "ToolEngine", "VOICE_ROUTE_RESULT", "INFO",
+                "handled=" + tool.handled + " tool=" + tool.toolName
+                        + " success=" + tool.success + " durationMs=" + tool.durationMs);
         if (tool.handled) {
             appendVoiceChat(clean, tool.response, new DiagnosticRecord(
                     System.currentTimeMillis() - tool.durationMs,
@@ -324,6 +393,8 @@ public final class VoiceModeActivity extends Activity {
 
         List<ChatMessage> messages = buildModelContext(clean);
         long started = System.currentTimeMillis();
+        SyncEventLogger.record(this, "GgufModelBackend", "VOICE_GENERATION_START",
+                "INFO", "model=" + currentModelName());
         StringBuilder response = new StringBuilder();
         runtime.backend().generate(messages, new GenerationConfig(), new LocalModelBackend.GenerateCallback() {
             @Override public void onToken(String token) {
@@ -332,6 +403,9 @@ public final class VoiceModeActivity extends Activity {
             }
             @Override public void onComplete() {
                 long total = System.currentTimeMillis() - started;
+                SyncEventLogger.record(VoiceModeActivity.this, "GgufModelBackend",
+                        "VOICE_GENERATION_COMPLETE", "INFO",
+                        "totalMs=" + total + " responseChars=" + response.length());
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
                         currentModelName(), runtime.backend() instanceof GgufModelBackend
@@ -351,6 +425,9 @@ public final class VoiceModeActivity extends Activity {
             }
             @Override public void onError(Exception error) {
                 long total = System.currentTimeMillis() - started;
+                SyncEventLogger.recordException(VoiceModeActivity.this,
+                        "GgufModelBackend", "VOICE_GENERATION_ERROR", error,
+                        "totalMs=" + total);
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
                         currentModelName(), "Inference error callback.",
