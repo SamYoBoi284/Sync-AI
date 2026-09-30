@@ -10,11 +10,15 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.VelocityTracker;
+import android.view.ViewConfiguration;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -71,6 +75,13 @@ public final class MainActivity extends Activity {
     private View composerCard;
     private int activeGenerations;
     private boolean modelBusy;
+    private LinearLayout contentRootView;
+    private int statusInset;
+    private boolean edgeTracking;
+    private boolean edgeDragging;
+    private float edgeStartX;
+    private float edgeStartY;
+    private VelocityTracker edgeVelocity;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -103,6 +114,7 @@ public final class MainActivity extends Activity {
         contentRoot.setOrientation(LinearLayout.VERTICAL);
         contentRoot.setPadding(dp(16), dp(14), dp(16), dp(10));
         contentRoot.setBackgroundColor(BG);
+        contentRootView = contentRoot;
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -271,6 +283,98 @@ public final class MainActivity extends Activity {
         });
         rootFrame.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         applyAccent();
+        installEdgeGestureExclusion();
+        playStartupMotion(contentRoot);
+    }
+
+    /** Keep the main content below the phone status bar and give the header breathing room. */
+    private void applyTopInset(int top) {
+        if (top == statusInset || contentRootView == null) return;
+        statusInset = top;
+        contentRootView.setPadding(dp(16), dp(14) + top + dp(8), dp(16), dp(10));
+        if (sideDashboard != null) sideDashboard.setTopInset(top);
+    }
+
+    private void playStartupMotion(LinearLayout contentRoot) {
+        if (Motion.reduced(this)) return;
+        float dy = dp(12);
+        Motion.enter(contentRoot.getChildAt(0), 0, dy);
+        Motion.enter(contentRoot.getChildAt(1), 50, dy);
+        Motion.enter(contentRoot.getChildAt(2), 100, dy);
+        Motion.enter(chatScroll, 150, 0);
+        Motion.enter(composerCard, 200, 0);
+    }
+
+    private void installEdgeGestureExclusion() {
+        if (Build.VERSION.SDK_INT < 29) return;
+        rootFrame.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int h = b - t;
+            int top = (int) (h * 0.30f);
+            Rect edge = new Rect(0, top, dp(40), top + dp(200));
+            rootFrame.setSystemGestureExclusionRects(java.util.Collections.singletonList(edge));
+        });
+    }
+
+    @Override public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (sideDashboard != null && handleEdgeSwipe(ev)) return true;
+        return super.dispatchTouchEvent(ev);
+    }
+
+    private boolean handleEdgeSwipe(MotionEvent ev) {
+        int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                edgeTracking = !sideDashboard.isOpen() && ev.getRawX() <= dp(40);
+                edgeDragging = false;
+                if (edgeTracking) {
+                    edgeStartX = ev.getRawX();
+                    edgeStartY = ev.getRawY();
+                    if (edgeVelocity != null) edgeVelocity.recycle();
+                    edgeVelocity = VelocityTracker.obtain();
+                    edgeVelocity.addMovement(ev);
+                }
+                return false;
+            case MotionEvent.ACTION_MOVE: {
+                if (!edgeTracking) return false;
+                edgeVelocity.addMovement(ev);
+                float dx = ev.getRawX() - edgeStartX;
+                float dy = Math.abs(ev.getRawY() - edgeStartY);
+                if (!edgeDragging) {
+                    if (dx > slop && dx > dy * 1.35f) {
+                        edgeDragging = true;
+                        MotionEvent cancel = MotionEvent.obtain(ev);
+                        cancel.setAction(MotionEvent.ACTION_CANCEL);
+                        super.dispatchTouchEvent(cancel);
+                        cancel.recycle();
+                        hideKeyboard();
+                        sideDashboard.beginDrag();
+                    } else if (dy > slop * 2 && dy > dx) {
+                        edgeTracking = false;
+                        return false;
+                    } else {
+                        return false;
+                    }
+                }
+                sideDashboard.dragTo(dx);
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                boolean wasDragging = edgeDragging;
+                if (edgeTracking && edgeVelocity != null) {
+                    edgeVelocity.addMovement(ev);
+                    edgeVelocity.computeCurrentVelocity(1000);
+                    if (wasDragging) sideDashboard.endDrag(edgeVelocity.getXVelocity());
+                    edgeVelocity.recycle();
+                    edgeVelocity = null;
+                }
+                edgeTracking = false;
+                edgeDragging = false;
+                return wasDragging;
+            }
+            default:
+                return edgeDragging;
+        }
     }
 
     private LinearLayout card() {
@@ -643,6 +747,10 @@ public final class MainActivity extends Activity {
                 -2);
         row.addView(bubble, bubbleLp);
         messageContainer.addView(row);
+        if (!Motion.reduced(this)) {
+            bubble.setAlpha(0f);
+            bubble.post(() -> Motion.messageIn(bubble, user));
+        }
         scrollToBottom();
         return body;
     }
