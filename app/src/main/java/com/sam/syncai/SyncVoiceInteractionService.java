@@ -8,15 +8,25 @@ import android.util.Log;
 public final class SyncVoiceInteractionService extends VoiceInteractionService {
     private static final String TAG = "SyncAI";
 
+    @Override public void onCreate() {
+        super.onCreate();
+        Log.d(TAG, "VoiceInteractionService.onCreate");
+    }
+
     @Override public void onReady() {
         super.onReady();
-        Log.d(TAG, "VoiceInteractionService.onReady");
+        Log.d(TAG, "VoiceInteractionService.onReady component=" + getComponentName());
+    }
+
+    @Override public void onShutdown() {
+        Log.d(TAG, "VoiceInteractionService.onShutdown");
+        super.onShutdown();
     }
 
     @Override public void onPrepareToShowSession(Bundle args, int flags) {
         super.onPrepareToShowSession(args, flags);
         Log.d(TAG, "VoiceInteractionService.onPrepareToShowSession flags=" + flags
-                + " args=" + args);
+                + " args=" + args + " thread=" + Thread.currentThread().getName());
     }
 
     @Override public void onShowSessionFailed(Bundle args) {
@@ -28,8 +38,14 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
     }
 
     @Override public void onLaunchVoiceAssistFromKeyguard() {
-        Log.d(TAG, "VoiceInteractionService.onLaunchVoiceAssistFromKeyguard");
+        Log.d(TAG, "VoiceInteractionService.onLaunchVoiceAssistFromKeyguard task=" + getTaskIdSafe());
         launchVoiceMode("keyguard");
+    }
+
+    private int getTaskIdSafe() {
+        // VoiceInteractionService itself is not an Activity; keep this helper only
+        // as a stable log marker without assuming an Activity task exists.
+        return -1;
     }
 
     private void launchVoiceMode(String source) {
