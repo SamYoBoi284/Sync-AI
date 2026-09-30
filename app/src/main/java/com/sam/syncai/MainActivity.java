@@ -716,23 +716,23 @@ public final class MainActivity extends Activity {
 
     private String formatChatExport(ChatRecord chat) {
         StringBuilder out = new StringBuilder();
-        out.append("SYNC AI CHAT EXPORT\\n");
-        out.append("===================\\n\\n");
-        out.append("Title: ").append(chat.title).append('\\n');
-        out.append("Chat ID: ").append(chat.id).append('\\n');
-        out.append("Created: ").append(formatTimestamp(chat.createdAt)).append('\\n');
-        out.append("Updated: ").append(formatTimestamp(chat.updatedAt)).append("\\n\\n");
+        out.append("SYNC AI CHAT EXPORT\n");
+        out.append("===================\n\n");
+        out.append("Title: ").append(chat.title).append('\n');
+        out.append("Chat ID: ").append(chat.id).append('\n');
+        out.append("Created: ").append(formatTimestamp(chat.createdAt)).append('\n');
+        out.append("Updated: ").append(formatTimestamp(chat.updatedAt)).append("\n\n");
         appendMessages(out, chat);
         return out.toString();
     }
 
     private String formatAllChatsExport(List<ChatRecord> chats) {
         StringBuilder out = new StringBuilder();
-        out.append("SYNC AI — ALL CHAT EXPORT\\n");
-        out.append("=========================\\n\\n");
-        out.append("Chats: ").append(chats.size()).append("\\n");
+        out.append("SYNC AI — ALL CHAT EXPORT\n");
+        out.append("=========================\n\n");
+        out.append("Chats: ").append(chats.size()).append("\n");
         for (ChatRecord chat : chats) {
-            out.append("\\n\\n############################################################\\n\\n");
+            out.append("\n\n############################################################\n\n");
             out.append(formatChatExport(chat));
         }
         return out.toString();
@@ -740,22 +740,22 @@ public final class MainActivity extends Activity {
 
     private void appendMessages(StringBuilder out, ChatRecord chat) {
         if (chat.messages.isEmpty()) {
-            out.append("[No saved messages]\\n");
+            out.append("[No saved messages]\n");
             return;
         }
         for (int i = 0; i < chat.messages.size(); i++) {
             ChatMessage message = chat.messages.get(i);
-            out.append("------------------------------------------------------------\\n");
+            out.append("------------------------------------------------------------\n");
             out.append("Message ").append(i + 1).append(" | ")
                     .append(message.role.name()).append(" | ")
-                    .append(formatTimestamp(message.timestamp)).append("\\n\\n");
-            out.append(message.text).append("\\n");
+                    .append(formatTimestamp(message.timestamp)).append("\n\n");
+            out.append(message.text).append("\n");
             if (message.role == ChatMessage.Role.ASSISTANT) {
-                out.append("\\n[AI MESSAGE DIAGNOSTICS]\\n");
+                out.append("\n[AI MESSAGE DIAGNOSTICS]\n");
                 out.append(message.hasDiagnostics()
                         ? message.diagnostics
                         : "No diagnostics recorded for this AI message.");
-                out.append("\\n");
+                out.append("\n");
             }
         }
     }
