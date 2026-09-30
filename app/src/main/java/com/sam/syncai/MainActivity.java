@@ -271,6 +271,11 @@ public final class MainActivity extends Activity {
         rootFrame.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
             int imeBottom = ime.bottom;
+            int topNow = Build.VERSION.SDK_INT >= 30
+                    ? insets.getInsets(android.view.WindowInsets.Type.statusBars()
+                            | android.view.WindowInsets.Type.displayCutout()).top
+                    : insets.getSystemWindowInsetTop();
+            applyTopInset(topNow);
             composerCard.setTranslationY(-imeBottom);
             chatScroll.setPadding(
                     chatScroll.getPaddingLeft(),
