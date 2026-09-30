@@ -2,6 +2,7 @@
 
 > Living handoff/context document for the Sync//AI project.
 > Updated: 2026-09-29
+> Latest verified branch head: `3186102208f172a927c89cde5d19dd18c79313f7`
 > This tracker describes the code that is actually present on the `sync-ai-toolcore-voice-history` branch. It is not a substitute for source verification.
 
 ## Project
@@ -304,6 +305,67 @@ The deterministic tool core can schedule timers and alarms through Android Alarm
 A notification receiver posts the resulting Sync//AI notification.
 
 Exact-alarm behavior can fall back to an inexact idle-safe schedule when the exact-alarm capability is unavailable.
+
+## Chat generation / history stabilization — implemented
+
+The latest chat regression fixes are now present on this branch:
+
+### Follow-up messages during inference
+
+Commit: `03e179e817c2783dca31cfc1d74982ab65c49cc3` — `fix: allow queued follow-up chat messages`
+
+- Send remains enabled while a local generation is running.
+- Multiple user messages can be queued instead of the composer becoming permanently disabled after the first response.
+- The existing single-threaded GGUF backend serializes queued generations safely.
+- Each generation owns its own streaming bubble and completion state.
+- Import remains disabled while generations are active.
+- Generation busy/active counts are tracked separately so the UI can recover correctly after completion or error.
+
+### Native diagnostics deadlock / ANR fix
+
+The ANR was traced to a real JNI mutex deadlock:
+- native generation held `g_mutex`
+- native code called Java `onComplete()` while that mutex was still held
+- Java completion attempted `nativeDiagnostics()`
+- `nativeDiagnostics()` attempted to acquire the same mutex again
+- the callback therefore deadlocked before the assistant message could be persisted
+
+The fix is split across these commits:
+- `263f27f394cdb46b1541aaafe6e506ab0c794290` — callback now carries completion diagnostics
+- `de1e447b61278b3d667ac9261879af5dadc667c8` — Java backend stores the latest generation diagnostics
+- `6b25d074ba5961d702200aff15909b19cddee816` — MainActivity persists the stored diagnostics without querying native during the callback
+- `3186102208f172a927c89cde5d19dd18c79313f7` — native completion passes the already-computed diagnostics string through JNI instead of reacquiring the mutex
+
+Result:
+- assistant messages reach `ChatStore.add(...)` after successful generation
+- AI responses and their diagnostics are persisted alongside user messages
+- Runtime/About can query native diagnostics after generation without reproducing the original completion deadlock
+- per-message diagnostics still contain the actual native inference statistics rather than the temporary placeholder used by the emergency fix
+
+The intermediate emergency commit `c8bdb4e59f9a74ea96cac249faffba8a3b554f23` removed the synchronous native diagnostics call from the callback; the later commits replaced that workaround with proper diagnostics propagation.
+
+## Keyboard / composer behavior — implemented
+
+The composer is kept above the Android IME while typing:
+- root window-insets handling translates the composer above the keyboard
+- chat bottom padding expands with the IME
+- sending no longer forcibly hides the keyboard
+- the input keeps focus after send
+- keyboard IME action triggers Send
+- completion/error paths restore the correct Send/import state
+
+## Latest verification status
+
+GitHub Actions for the current head `3186102208f172a927c89cde5d19dd18c79313f7` are **green**:
+- Run #468 — success
+- Run #469 — success (pull-request workflow)
+
+This is CI/build verification only. Physical-device verification is still required for the actual runtime behavior, especially:
+- send a first message and a follow-up message
+- close/reopen the app and confirm both user and assistant messages persist
+- open per-message Diagnostics after generation
+- open Runtime / About after generation without an ANR
+- verify the sticky composer while the keyboard is visible
 
 ## Native runtime diagnostics
 
