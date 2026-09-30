@@ -208,6 +208,38 @@ The visual revamp work was based on the existing Sync AI ToolCore + voice/histor
 
 Important project rule: **never delete something that already works unless it directly contradicts a new requirement or the thing being fixed.** Preserve working functionality during future visual/voice changes.
 
+## Full Sync AI flight recorder + Export Logs — implemented
+
+Added a persistent app-private **flight recorder** in `SyncEventLogger.java`. It records structured timestamped events with event ID, process ID, thread, component, event name, severity, and details, and keeps a bounded rolling file so diagnostics survive ordinary app restarts and can still be inspected after a crash.
+
+The recorder is installed from every important Sync entry point and captures:
+- MainActivity lifecycle and intent/activity-result transitions
+- VoiceModeActivity lifecycle, voice text, SpeechRecognizer callbacks/errors, TTS initialization/completion/errors, tool routing, model generation start/complete/error, and voice exit
+- SyncVoiceInteractionService lifecycle and assistant entry callbacks including `onReady`, `onPrepareToShowSession`, `onShowSessionFailed`, and `onLaunchVoiceAssistFromKeyguard`
+- SyncVoiceSessionService creation/destruction and session creation
+- SyncVoiceSession preparation/show/hide, task start/finish, assistant-activity launch, voice-activity fallback, direct activity fallback, and launch exceptions
+- MicPermissionActivity lifecycle and permission results
+- SyncRecognitionService lifecycle/listening callbacks
+- notification receiver events
+- model import/load/error events
+- deterministic tool routing events
+- persistent uncaught Java exceptions including stack traces and the last persisted event timeline
+
+The global uncaught-exception handler records fatal Java exceptions before delegating to Android's existing crash handler. Native process-level crashes are not converted into Java exceptions, so the export also includes best-effort Android logcat to preserve system/native crash evidence when Android exposes it to the app.
+
+**Settings → About & Diagnostics** now has an **EXPORT LOGS** button. The generated `sync-ai-full-debug.txt` contains:
+- app/device/Android/ABI/process metadata
+- personalization memory and active-chat metadata
+- local model registry + loaded model metadata
+- runtime/native diagnostics
+- latest request diagnostics
+- every saved chat with per-AI-message diagnostics
+- the persistent Sync AI flight-recorder timeline
+- best-effort Android logcat
+- explicit availability/error messages where Android restricts log access
+
+Existing chat export and working voice/tool/model behavior remain separate from the recorder and were not intentionally removed or replaced.
+
 ## Chat export — implemented
 
 Chats can be exported with AI-message diagnostics so exported conversations can be shared for debugging. This is intended to preserve the exact conversational context and request diagnostics needed to investigate crashes/latency.
