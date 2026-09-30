@@ -199,12 +199,6 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         env->DeleteLocalRef(text);
     }
 
-    std::vector<llama_chat_message> messages;
-    messages.reserve(count);
-    for (size_t i = 0; i < roleStrings.size(); ++i) {
-        messages.push_back({roleStrings[i].c_str(), textStrings[i].c_str()});
-    }
-
     const char *tmpl = llama_model_chat_template(g_model, nullptr);
     if (!tmpl) tmpl = "{{ messages }}";
 
