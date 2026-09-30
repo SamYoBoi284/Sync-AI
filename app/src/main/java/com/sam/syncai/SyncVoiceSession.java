@@ -53,6 +53,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     public SyncVoiceSession(Context context) {
         super(context);
         android.util.Log.d("SyncAI", "VoiceInteractionSession constructed");
+        AppLog.log("VOICE_SESSION", "constructed", "session created");
         runtime = SyncRuntime.get(context);
         accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
         setKeepAwake(true);
@@ -60,6 +61,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public View onCreateContentView() {
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onCreateContentView");
+        AppLog.log("VOICE_SESSION", "onCreateContentView", "bridge created");
         // Global assistant UI is handled by the standalone VoiceModeActivity.
         View bridge = new View(getContext());
         bridge.setBackgroundColor(Color.TRANSPARENT);
@@ -68,6 +70,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onPrepareShow(Bundle args, int showFlags) {
         super.onPrepareShow(args, showFlags);
+        AppLog.log("VOICE_SESSION", "onPrepareShow", "flags=" + showFlags + " args=" + args);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onPrepareShow flags="
                 + showFlags + " args=" + args);
         setUiEnabled(false);
@@ -75,6 +78,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
+        AppLog.log("VOICE_SESSION", "onShow", "flags=" + flags + " args=" + args);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onShow flags=" + flags
                 + " args=" + args);
         Intent intent = new Intent(getContext(), VoiceModeActivity.class);
@@ -106,12 +110,14 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onTaskStarted(Intent intent, int taskId) {
         super.onTaskStarted(intent, taskId);
+        AppLog.log("VOICE_SESSION", "onTaskStarted", "taskId=" + taskId + " intent=" + intent);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onTaskStarted taskId="
                 + taskId + " intent=" + intent);
     }
 
     @Override public void onTaskFinished(Intent intent, int taskId) {
         super.onTaskFinished(intent, taskId);
+        AppLog.log("VOICE_SESSION", "onTaskFinished", "taskId=" + taskId + " intent=" + intent);
         android.util.Log.d("SyncAI", "VoiceInteractionSession.onTaskFinished taskId="
                 + taskId + " intent=" + intent);
         finish();
@@ -519,10 +525,12 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
 
     @Override public void onHide() {
         super.onHide();
+        AppLog.log("VOICE_SESSION", "onHide", "cleanup");
         cleanup();
     }
 
     @Override public void onDestroy() {
+        AppLog.log("VOICE_SESSION", "onDestroy", "destroyed");
         destroyed = true;
         cleanup();
         super.onDestroy();
