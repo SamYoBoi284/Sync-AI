@@ -780,7 +780,7 @@ public final class MainActivity extends Activity {
             items[i + 1] = (chat.id.equals(activeChat.id) ? "● " : "○ ") + chat.title;
         }
 
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("CHATS")
                 .setItems(items, (d, which) -> {
                     if (which == 0) {
@@ -796,7 +796,7 @@ public final class MainActivity extends Activity {
 
     private void showChatActions(ChatRecord chat) {
         String[] actions = {"Open", "Rename", "Export", "Delete"};
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle(chat.title)
                 .setItems(actions, (d, which) -> {
                     if (which == 0) {
@@ -915,7 +915,7 @@ public final class MainActivity extends Activity {
         EditText name = new EditText(this);
         name.setText(chat.title);
         name.setTextColor(TEXT);
-        SyncDialog dialog = new SyncDialog.Builder(this)
+        SyncDialog dialog = new SyncDialog.Builder(this, accent)
                 .setTitle("RENAME CHAT")
                 .setView(name)
                 .setNegativeButton("CANCEL", null)
@@ -930,7 +930,7 @@ public final class MainActivity extends Activity {
     }
 
     private void deleteChat(ChatRecord chat) {
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("DELETE CHAT?")
                 .setMessage("This permanently removes the saved conversation and attached diagnostics.")
                 .setNegativeButton("CANCEL", null)
@@ -959,7 +959,7 @@ public final class MainActivity extends Activity {
         models.setOnClickListener(v -> showModelsDialog());
         content.addView(models);
 
-        SyncDialog dialog = new SyncDialog.Builder(this)
+        SyncDialog dialog = new SyncDialog.Builder(this, accent)
                 .setTitle("SETTINGS")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
@@ -1001,7 +1001,7 @@ public final class MainActivity extends Activity {
         colors.setOnClickListener(v -> showAccentPicker());
         content.addView(colors);
 
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("PERSONALIZATION")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
@@ -1019,7 +1019,7 @@ public final class MainActivity extends Activity {
         editor.setHint("Things Sync should remember…");
         editor.setPadding(dp(12), dp(12), dp(12), dp(12));
 
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("MEMORY")
                 .setView(editor)
                 .setNegativeButton("CANCEL", null)
@@ -1035,7 +1035,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showAccentPicker() {
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("SYNC//AI ACCENT")
                 .setSingleChoiceItems(AppPreferences.ACCENT_NAMES,
                         runtime.preferences().getAccent(), (d, which) -> {
@@ -1092,7 +1092,7 @@ public final class MainActivity extends Activity {
         });
         content.addView(assistant);
 
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("VOICE MODE")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
@@ -1115,7 +1115,7 @@ public final class MainActivity extends Activity {
                 "\n\nLatest request diagnostics:\n" +
                 (latest.isEmpty() ? "No request recorded yet." : latest);
 
-        SyncDialog dialog = new SyncDialog.Builder(this)
+        SyncDialog dialog = new SyncDialog.Builder(this, accent)
                 .setTitle("ABOUT & DIAGNOSTICS")
                 .setMessage(message)
                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(message))
@@ -1155,7 +1155,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showDiagnostic(String diagnostics) {
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("REQUEST DIAGNOSTICS")
                 .setMessage(diagnostics)
                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(diagnostics))
@@ -1171,7 +1171,7 @@ public final class MainActivity extends Activity {
                 "ABI: arm64-v8a\n" +
                 "Network required: no\n\n" +
                 runtime.backend().diagnostics();
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("SYNC//AI RUNTIME")
                 .setMessage(info)
                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(info))
@@ -1182,7 +1182,7 @@ public final class MainActivity extends Activity {
     private void showModelsDialog() {
         List<ModelInfo> models = runtime.modelManager().getModels();
         if (models.isEmpty()) {
-            new SyncDialog.Builder(this)
+            new SyncDialog.Builder(this, accent)
                     .setTitle("LOCAL MODELS")
                     .setMessage("No models imported yet. Model files stay on this phone and are never committed to GitHub.")
                     .setPositiveButton("IMPORT", (d, w) -> openModelPicker())
@@ -1201,7 +1201,7 @@ public final class MainActivity extends Activity {
             items[i] = m.name + " • " + m.sizeLabel() + (loaded ? " ✓" : "");
         }
 
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("LOCAL MODELS")
                 .setItems(items, (d, which) -> showModelActions(models.get(which)))
                 .setPositiveButton("IMPORT", (d, w) -> openModelPicker())
@@ -1210,7 +1210,7 @@ public final class MainActivity extends Activity {
 
     private void showModelActions(ModelInfo model) {
         String[] actions = {"Load model", "Model diagnostics", "Remove model"};
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle(model.name)
                 .setItems(actions, (d, which) -> {
                     if (which == 0) loadModel(model);
@@ -1227,7 +1227,7 @@ public final class MainActivity extends Activity {
                 "\nSize: " + model.sizeLabel() +
                 "\nSHA-256: " + model.sha256 +
                 (runtime.backend().isLoaded() ? "\n\nRUNTIME\n" + runtime.backend().diagnostics() : "");
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("MODEL DIAGNOSTICS")
                 .setMessage(info)
                 .setPositiveButton("COPY", (d, w) -> copyDiagnostics(info))
@@ -1236,7 +1236,7 @@ public final class MainActivity extends Activity {
     }
 
     private void confirmDelete(ModelInfo model) {
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle("REMOVE MODEL?")
                 .setMessage("Delete " + model.name + " from this phone?")
                 .setNegativeButton("CANCEL", null)
@@ -1290,7 +1290,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showError(String title, Exception e) {
-        new SyncDialog.Builder(this)
+        new SyncDialog.Builder(this, accent)
                 .setTitle(title)
                 .setMessage(e.getMessage() == null ? e.toString() : e.getMessage())
                 .setPositiveButton("OK", null)
