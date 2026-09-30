@@ -59,9 +59,6 @@ public final class SyncRecognitionService extends RecognitionService {
             @Override public void onPartialResults(Bundle partialResults) {
                 try { callback.partialResults(partialResults); } catch (RemoteException ignored) {}
             }
-            @Override public void onEvent(int eventType, Bundle params) {
-                try { callback.event(eventType, params); } catch (RemoteException ignored) {}
-            }
         });
 
         Intent request = recognizerIntent == null
