@@ -1,7 +1,6 @@
 package com.sam.syncai;
 
 import android.content.Intent;
-import android.os.Build;
 import android.os.Bundle;
 import android.service.voice.VoiceInteractionService;
 import android.util.Log;
@@ -11,13 +10,6 @@ public final class SyncVoiceInteractionService extends VoiceInteractionService {
 
     @Override public void onReady() {
         super.onReady();
-        if (Build.VERSION.SDK_INT >= 35) {
-            try {
-                setInvocationEffectEnabled(true);
-            } catch (Exception ignored) {
-                // Some vendor SystemUI builds may not expose the invocation effect API.
-            }
-        }
     }
 
     @Override public void onPrepareToShowSession(Bundle args, int flags) {
