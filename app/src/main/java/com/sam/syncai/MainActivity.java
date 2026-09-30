@@ -49,8 +49,10 @@ public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_MEMORY = 1202;
     private static final int REQ_PERMISSIONS = 1203;
     private static final int REQ_EXPORT_CHAT = 1204;
+    private static final int REQ_EXPORT_LOGS = 1205;
 
     private String pendingChatExport;
+    private String pendingLogExport;
 
     private static final int BG = Color.rgb(7, 8, 14);
     private static final int SURFACE = Color.rgb(15, 18, 28);
@@ -88,6 +90,8 @@ public final class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        SyncEventLogger.record(this, "MainActivity", "onCreate", "INFO",
+                "savedState=" + (state != null) + " taskId=" + getTaskId());
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         runtime = SyncRuntime.get(this);
         accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
@@ -97,9 +101,35 @@ public final class MainActivity extends Activity {
         restoreLoadedModel();
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        SyncEventLogger.record(this, "MainActivity", "onStart", "INFO",
+                "taskId=" + getTaskId());
+    }
+
     @Override protected void onResume() {
         super.onResume();
+        SyncEventLogger.record(this, "MainActivity", "onResume", "INFO",
+                "taskId=" + getTaskId());
         if (runtime != null) refreshStatus();
+    }
+
+    @Override protected void onPause() {
+        SyncEventLogger.record(this, "MainActivity", "onPause", "INFO",
+                "taskId=" + getTaskId());
+        super.onPause();
+    }
+
+    @Override protected void onStop() {
+        SyncEventLogger.record(this, "MainActivity", "onStop", "INFO",
+                "taskId=" + getTaskId());
+        super.onStop();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        SyncEventLogger.recordIntent(this, "MainActivity", "onNewIntent", intent);
     }
 
     private ChatRecord getActiveChat() {
