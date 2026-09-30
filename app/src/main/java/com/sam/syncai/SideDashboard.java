@@ -1,12 +1,18 @@
 package com.sam.syncai;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.VelocityTracker;
 import android.view.View;
-import android.view.animation.DecelerateInterpolator;
+import android.view.ViewConfiguration;
+import android.view.animation.Interpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -31,20 +37,35 @@ public final class SideDashboard extends FrameLayout {
     private final Activity activity;
     private final Actions actions;
     private LinearLayout panel;
+    private FrameLayout pages;
     private LinearLayout mainContent;
     private LinearLayout settingsContent;
     private View scrim;
     private boolean open;
+    private boolean dragging;
+    private boolean settingsShown;
+    private float progress; // 0 = fully hidden, 1 = fully open
+    private ValueAnimator drawerAnim;
+    private int topInset;
+
+    // touch tracking for drag-to-close
+    private float downX, downY;
+    private boolean closeDrag;
+    private VelocityTracker velocity;
+    private final int touchSlop;
 
     public SideDashboard(Activity activity, FrameLayout host, Actions actions) {
         super(activity);
         this.activity = activity;
         this.actions = actions;
+        this.touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
         setClickable(true);
         build();
         host.addView(this, new FrameLayout.LayoutParams(-1, -1));
         setVisibility(INVISIBLE);
     }
+
+    private int hiddenOffset() { return dp(340); }
 
     private void build() {
         setBackgroundColor(Color.TRANSPARENT);
@@ -59,17 +80,30 @@ public final class SideDashboard extends FrameLayout {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(18), dp(22), dp(14), dp(18));
         panel.setBackground(round(Color.rgb(14, 17, 27), dp(24)));
+        panel.setElevation(dp(16));
 
         FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(dp(320), -1, Gravity.START);
         pp.setMargins(0, dp(8), 0, dp(8));
         addView(panel, pp);
 
+        // Both screens live in the same surface so Settings <-> Main feels like navigation.
+        pages = new FrameLayout(activity);
         buildMainContent();
         buildSettingsContent();
-        panel.addView(mainContent, new LinearLayout.LayoutParams(-1, 0, 1));
-        panel.addView(settingsContent, new LinearLayout.LayoutParams(-1, 0, 1));
+        pages.addView(mainContent, new FrameLayout.LayoutParams(-1, -1));
+        pages.addView(settingsContent, new FrameLayout.LayoutParams(-1, -1));
         settingsContent.setVisibility(GONE);
-        panel.setTranslationX(-dp(340));
+        panel.addView(pages, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        applyProgress(0f);
+    }
+
+    /** Push the drawer below the system status bar (+ a little breathing room). */
+    public void setTopInset(int px) {
+        topInset = px;
+        FrameLayout.LayoutParams pp = (FrameLayout.LayoutParams) panel.getLayoutParams();
+        pp.topMargin = dp(8) + px;
+        panel.setLayoutParams(pp);
     }
 
     private void buildMainContent() {
@@ -112,6 +146,7 @@ public final class SideDashboard extends FrameLayout {
         back.setGravity(Gravity.CENTER);
         back.setBackground(round(Color.rgb(21,25,38), dp(13)));
         back.setOnClickListener(v -> showMain());
+        Motion.pressable(back);
         titleRow.addView(back, new LinearLayout.LayoutParams(dp(48), dp(46)));
 
         TextView title = label("SETTINGS", 18, Color.rgb(240,242,250), true);
@@ -150,18 +185,67 @@ public final class SideDashboard extends FrameLayout {
         close.setGravity(Gravity.CENTER);
         close.setBackground(round(Color.rgb(28,33,49), dp(13)));
         close.setOnClickListener(v -> close());
+        Motion.pressable(close);
         target.addView(close, new LinearLayout.LayoutParams(-1, dp(46)));
     }
 
+    // ---------------------------------------------------------------- Settings <-> Main
+
     private void showSettings() {
-        mainContent.setVisibility(GONE);
-        settingsContent.setVisibility(VISIBLE);
+        if (settingsShown) return;
+        settingsShown = true;
+        slidePages(mainContent, settingsContent, -1);
     }
 
     private void showMain() {
+        if (!settingsShown) return;
+        settingsShown = false;
+        slidePages(settingsContent, mainContent, 1);
+    }
+
+    /** Instantly reset to the main page (used while the drawer is hidden). */
+    private void showMainInstant() {
+        settingsShown = false;
+        for (View v : new View[]{mainContent, settingsContent}) {
+            v.animate().cancel();
+            v.setAlpha(1f);
+            v.setTranslationX(0f);
+        }
         settingsContent.setVisibility(GONE);
         mainContent.setVisibility(VISIBLE);
+        resetChildren(mainContent);
     }
+
+    /** direction: -1 = outgoing slides left / incoming from right; +1 = the reverse. */
+    private void slidePages(View out, View in, int direction) {
+        if (Motion.reduced(activity)) {
+            out.setVisibility(GONE);
+            in.setVisibility(VISIBLE);
+            in.setAlpha(1f);
+            in.setTranslationX(0f);
+            return;
+        }
+        float dist = dp(48);
+        out.animate().cancel();
+        in.animate().cancel();
+
+        in.setVisibility(VISIBLE);
+        in.setAlpha(0f);
+        in.setTranslationX(-direction * dist);
+
+        out.animate().alpha(0f).translationX(direction * dist * 0.6f)
+                .setDuration(Motion.FAST).setInterpolator(Motion.EASE_IN)
+                .withEndAction(() -> {
+                    out.setVisibility(GONE);
+                    out.setAlpha(1f);
+                    out.setTranslationX(0f);
+                }).start();
+        in.animate().alpha(1f).translationX(0f)
+                .setStartDelay(50).setDuration(Motion.NORMAL).setInterpolator(Motion.EASE_OUT).start();
+        if (in instanceof LinearLayout) staggerChildren((LinearLayout) in, 60);
+    }
+
+    // ---------------------------------------------------------------- Layout helpers
 
     private void section(LinearLayout target, String title) {
         TextView t = label(title, 9, Color.rgb(145,153,177), true);
@@ -178,36 +262,200 @@ public final class SideDashboard extends FrameLayout {
             listener.onClick(v);
             if (closeAfter) close();
         });
+        Motion.pressable(t);
         target.addView(t, new LinearLayout.LayoutParams(-1, dp(46)));
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams)t.getLayoutParams();
         lp.bottomMargin = dp(5);
         t.setLayoutParams(lp);
     }
 
+    private void staggerChildren(LinearLayout group, long baseDelay) {
+        Motion.stagger(group, baseDelay, dp(10));
+    }
+
+    private void resetChildren(LinearLayout group) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View c = group.getChildAt(i);
+            c.animate().cancel();
+            c.setAlpha(1f);
+            c.setTranslationY(0f);
+        }
+    }
+
+    // ---------------------------------------------------------------- Drawer motion
+
+    /** Single source of truth: panel position and scrim are both derived from progress. */
+    private void applyProgress(float p) {
+        progress = Math.max(0f, Math.min(1f, p));
+        panel.setTranslationX(-hiddenOffset() * (1f - progress));
+        scrim.setAlpha(progress);
+    }
+
+    private void animateTo(float target, long duration, Interpolator interp) {
+        if (drawerAnim != null) drawerAnim.cancel();
+        if (Motion.reduced(activity)) {
+            applyProgress(target);
+            finishIfHidden();
+            return;
+        }
+        float from = progress;
+        // Shorter run if the panel is already most of the way there (keeps velocity feel).
+        long d = Math.max(90, (long) (duration * Math.abs(target - from)));
+        drawerAnim = ValueAnimator.ofFloat(from, target);
+        drawerAnim.setDuration(d);
+        drawerAnim.setInterpolator(interp);
+        drawerAnim.addUpdateListener(a -> applyProgress((float) a.getAnimatedValue()));
+        drawerAnim.addListener(new AnimatorListenerAdapter() {
+            private boolean canceled;
+            @Override public void onAnimationCancel(Animator animation) { canceled = true; }
+            @Override public void onAnimationEnd(Animator animation) {
+                if (canceled) return;
+                applyProgress(target);
+                finishIfHidden();
+            }
+        });
+        drawerAnim.start();
+    }
+
+    private void finishIfHidden() {
+        if (progress <= 0f && !open) {
+            setVisibility(INVISIBLE);
+            showMainInstant();
+        }
+    }
+
+    /** Called by the edge-swipe zone when a drag begins. */
+    public void beginDrag() {
+        if (open) return;
+        if (drawerAnim != null) drawerAnim.cancel();
+        dragging = true;
+        showMainInstant();
+        setVisibility(VISIBLE);
+        applyProgress(progress);
+    }
+
+    /** Called with the finger's horizontal distance (px) from where the drag started. */
+    public void dragTo(float dxPx) {
+        if (!dragging) return;
+        applyProgress(dxPx / hiddenOffset());
+    }
+
+    /** Release: settle open or closed depending on distance + fling velocity (px/s). */
+    public void endDrag(float velocityX) {
+        if (!dragging) return;
+        dragging = false;
+        boolean shouldOpen = velocityX > dp(500) || (progress > 0.4f && velocityX > -dp(500));
+        if (shouldOpen) {
+            open = true;
+            animateTo(1f, Motion.DRAWER_OPEN, Motion.EASE_OUT);
+            staggerChildren(mainContent, 70);
+        } else {
+            open = false;
+            animateTo(0f, Motion.DRAWER_CLOSE, Motion.EASE_IN_OUT);
+        }
+    }
+
     public void open() {
         if (open) return;
-        showMain();
+        if (drawerAnim != null) drawerAnim.cancel();
+        showMainInstant();
         open = true;
+        dragging = false;
         setVisibility(VISIBLE);
-        scrim.animate().alpha(1f).setDuration(180).start();
-        panel.animate().translationX(0f).setDuration(260)
-                .setInterpolator(new DecelerateInterpolator()).start();
+        animateTo(1f, Motion.DRAWER_OPEN, Motion.EASE_OUT);
+        if (!Motion.reduced(activity)) {
+            // Items enter just after the panel starts moving.
+            for (int i = 0; i < mainContent.getChildCount(); i++) {
+                mainContent.getChildAt(i).setAlpha(0f);
+            }
+            staggerChildren(mainContent, 70);
+        }
     }
 
     public void close() {
-        if (!open) {
+        if (!open && progress <= 0f) {
             setVisibility(INVISIBLE);
             return;
         }
         open = false;
-        showMain();
-        scrim.animate().alpha(0f).setDuration(160).start();
-        panel.animate().translationX(-dp(340)).setDuration(220)
-                .setInterpolator(new DecelerateInterpolator())
-                .withEndAction(() -> setVisibility(INVISIBLE)).start();
+        dragging = false;
+        animateTo(0f, Motion.DRAWER_CLOSE, Motion.EASE_IN_OUT);
     }
 
     public boolean isOpen() { return open; }
+
+    // ---------------------------------------------------------------- Drag-to-close touch handling
+
+    @Override public boolean onInterceptTouchEvent(MotionEvent e) {
+        if (!open) return false;
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = e.getX();
+                downY = e.getY();
+                closeDrag = false;
+                resetVelocity(e);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (velocity != null) velocity.addMovement(e);
+                float dx = e.getX() - downX;
+                float dy = Math.abs(e.getY() - downY);
+                if (!closeDrag && dx < -touchSlop && Math.abs(dx) > dy * 1.3f) {
+                    closeDrag = true;
+                    if (drawerAnim != null) drawerAnim.cancel();
+                    return true;
+                }
+                break;
+            default:
+                break;
+        }
+        return false;
+    }
+
+    @Override public boolean onTouchEvent(MotionEvent e) {
+        if (!open) return super.onTouchEvent(e);
+        if (velocity == null) resetVelocity(e);
+        velocity.addMovement(e);
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = e.getX();
+                downY = e.getY();
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                if (closeDrag) {
+                    float dx = e.getX() - downX;
+                    applyProgress(1f + Math.min(0f, dx + touchSlop) / hiddenOffset());
+                    return true;
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (closeDrag) {
+                    velocity.computeCurrentVelocity(1000);
+                    float vx = velocity.getXVelocity();
+                    closeDrag = false;
+                    if (vx < -dp(500) || progress < 0.6f) {
+                        open = false;
+                        animateTo(0f, Motion.DRAWER_CLOSE, Motion.EASE_IN_OUT);
+                    } else {
+                        animateTo(1f, Motion.DRAWER_OPEN, Motion.EASE_OUT);
+                    }
+                }
+                velocity.recycle();
+                velocity = null;
+                return true;
+            default:
+                break;
+        }
+        return super.onTouchEvent(e);
+    }
+
+    private void resetVelocity(MotionEvent e) {
+        if (velocity != null) velocity.recycle();
+        velocity = VelocityTracker.obtain();
+        velocity.addMovement(e);
+    }
+
+    // ---------------------------------------------------------------- Utils
 
     private TextView label(String value, float size, int color, boolean bold) {
         TextView t = new TextView(activity);
