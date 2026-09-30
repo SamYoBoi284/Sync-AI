@@ -210,8 +210,10 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
 
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
+    // Keep a modest cap for mobile RAM while allowing models trained for larger
+    // contexts to retain more conversation than the old hard 2048-token ceiling.
     const uint32_t contextSize = static_cast<uint32_t>(
-            std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx)));
+            std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
     ctxParams.n_batch = 256;
     ctxParams.n_ubatch = 256;
