@@ -478,6 +478,8 @@ public final class MainActivity extends Activity {
                     if (model != null) loadModel(model);
                 });
             } catch (Exception e) {
+                SyncEventLogger.recordException(this, "ModelManager", "MODEL_IMPORT_ERROR",
+                        e, "uri=" + uri);
                 runOnUiThread(() -> {
                     setBusy(false);
                     showProgress(false);
@@ -525,6 +527,8 @@ public final class MainActivity extends Activity {
         showProgress(true);
         modelText.setText("LOADING • " + model.name);
         statusText.setText("GGUF • INITIALIZING LOCAL CPU RUNTIME…");
+        SyncEventLogger.record(this, "ModelManager", "MODEL_LOAD_START", "INFO",
+                "model=" + model.name + " id=" + model.id);
 
         runtime.backend().load(model, new LocalModelBackend.LoadCallback() {
             @Override public void onLoaded() {
@@ -533,6 +537,8 @@ public final class MainActivity extends Activity {
                     showProgress(false);
                     setBusy(false);
                     refreshStatus();
+                    SyncEventLogger.record(this, "ModelManager", "MODEL_LOAD_COMPLETE", "INFO",
+                            "model=" + model.name + " id=" + model.id);
                     showToast("Loaded " + model.name);
                 });
             }
@@ -543,6 +549,8 @@ public final class MainActivity extends Activity {
                     showProgress(false);
                     setBusy(false);
                     refreshStatus();
+                    SyncEventLogger.recordException(this, "ModelManager", "MODEL_LOAD_ERROR",
+                            error, "model=" + model.name + " id=" + model.id);
                     showError("Model load failed", error);
                 });
             }
@@ -555,6 +563,8 @@ public final class MainActivity extends Activity {
 
         input.setText("");
         input.requestFocus();
+        SyncEventLogger.record(this, "MainActivity", "MESSAGE_SUBMITTED", "INFO",
+                "chatId=" + activeChat.id + " length=" + message.length());
         runtime.chatStore().maybeTitle(activeChat, message);
         ChatMessage user = new ChatMessage(ChatMessage.Role.USER, message);
         runtime.chatStore().add(activeChat, user);
@@ -566,6 +576,9 @@ public final class MainActivity extends Activity {
 
         long started = System.currentTimeMillis();
         ToolEngine.Result tool = runtime.tools().handle(message);
+        SyncEventLogger.record(this, "ToolEngine", "ROUTE_RESULT", "INFO",
+                "handled=" + tool.handled + " tool=" + tool.toolName
+                        + " success=" + tool.success + " durationMs=" + tool.durationMs);
         if (tool.handled) {
             DiagnosticRecord diag = new DiagnosticRecord(
                     started, tool.durationMs, "DETERMINISTIC TOOL",
@@ -599,6 +612,9 @@ public final class MainActivity extends Activity {
                 new ChatMessage(ChatMessage.Role.ASSISTANT, "Thinking…"), true);
         streamingBubble.setTextColor(MUTED);
         activeGenerations++;
+        SyncEventLogger.record(this, "GgufModelBackend", "GENERATION_START", "INFO",
+                "chatId=" + activeChat.id + " generationIndex=" + activeGenerations
+                        + " model=" + currentModelName());
 
         List<ChatMessage> context = buildModelContext(message);
         GenerationConfig config = new GenerationConfig();
@@ -616,6 +632,10 @@ public final class MainActivity extends Activity {
 
             @Override public void onComplete() {
                 long total = System.currentTimeMillis() - started;
+                SyncEventLogger.record(MainActivity.this, "GgufModelBackend",
+                        "GENERATION_COMPLETE", "INFO",
+                        "chatId=" + activeChat.id + " totalMs=" + total
+                                + " responseChars=" + response.length());
                 // Do not call backend().diagnostics() from this callback.
                 // llama.cpp invokes the callback while its native generation mutex is held;
                 // synchronously requesting diagnostics here would deadlock the executor.
@@ -640,6 +660,9 @@ public final class MainActivity extends Activity {
 
             @Override public void onError(Exception error) {
                 long total = System.currentTimeMillis() - started;
+                SyncEventLogger.recordException(MainActivity.this, "GgufModelBackend",
+                        "GENERATION_ERROR", error,
+                        "chatId=" + activeChat.id + " totalMs=" + total);
                 // Same deadlock rule as onComplete(): diagnostics must not be queried
                 // synchronously from the native callback.
                 DiagnosticRecord diag = new DiagnosticRecord(
