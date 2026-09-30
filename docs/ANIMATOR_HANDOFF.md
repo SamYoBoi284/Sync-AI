@@ -293,6 +293,8 @@ The current visual language is:
 - futuristic/local-agent aesthetic
 - restrained UI rather than excessive decoration
 
+(note from user: if you can add a fade out from nothing animation to both messages sent by user or ai when sent, that would be good, kinda like how the WhatsApp typing "..." appears and dots jump one by one)
+
 The goal is **premium, fluid, futuristic motion**, not flashy motion for its own sake.
 
 Motion should communicate hierarchy and state.
@@ -402,7 +404,7 @@ The left dashboard must remain a **sliding drawer**.
 
 Current behavior:
 - hamburger button opens it
-- left-edge swipe opens it
+- left-edge swipe doesn't open it, while it should, please make it do so
 - scrim fades in
 - drawer slides from the left
 - scrim tap closes it
@@ -535,3 +537,6 @@ rather than:
 **"A normal Android app with random animations added to it."**
 
 Before changing architecture, understand the existing code and preserve the real application behavior.
+
+
+so long story short it should be a good visual revamp, not touching any code UNLESS its for the visual fix.
