@@ -452,6 +452,18 @@ public final class VoiceModeActivity extends Activity {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onStart taskId=" + getTaskId()
+                + " intent=" + getIntent());
+    }
+
+    @Override protected void onStop() {
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onStop finishing=" + isFinishing()
+                + " taskId=" + getTaskId());
+        super.onStop();
+    }
+
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
