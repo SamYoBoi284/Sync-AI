@@ -13,11 +13,16 @@ public final class SyncRuntime {
 
     private SyncRuntime(Context context) {
         Context app = context.getApplicationContext();
+        SyncEventLogger.install(app);
+        SyncEventLogger.record(app, "SyncRuntime", "RUNTIME_INIT", "INFO",
+                "initializing shared runtime");
         preferences = new AppPreferences(app);
         chatStore = new ChatStore(app);
         modelManager = new ModelManager(app);
         backend = new GgufModelBackend();
         toolEngine = new ToolEngine(app);
+        SyncEventLogger.record(app, "SyncRuntime", "RUNTIME_READY", "INFO",
+                "preferences/chat/model/backend/tool engine initialized");
     }
 
     public static SyncRuntime get(Context context) {
