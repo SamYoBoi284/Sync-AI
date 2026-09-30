@@ -333,7 +333,9 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
                 long total = System.currentTimeMillis() - started;
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
-                        currentModelName(), runtime.backend().diagnostics(), "", "");
+                        currentModelName(), runtime.backend() instanceof GgufModelBackend
+                                ? ((GgufModelBackend) runtime.backend()).lastGenerationDiagnostics()
+                                : "Inference completed.", "", "");
                 String generated = response.toString().trim();
                 final String finalText = generated.isEmpty()
                         ? "I got nothing back from the local model."
@@ -350,7 +352,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
                 long total = System.currentTimeMillis() - started;
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
-                        currentModelName(), runtime.backend().diagnostics(),
+                        currentModelName(), "Inference error callback.",
                         "generation", error.getMessage());
                 String failure = "I couldn't generate that response yet, bro. Runtime was "
                         + total + " ms.";
