@@ -153,7 +153,7 @@ public final class SyncEventLogger {
         };
         for (String command : commands) {
             try {
-                Process process = Runtime.getRuntime().exec(command.split(" "));
+                java.lang.Process process = Runtime.getRuntime().exec(command.split(" "));
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                         process.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
