@@ -39,7 +39,8 @@
             android:name=".VoiceModeActivity"
             android:screenOrientation="portrait"
             android:theme="@android:style/Theme.Material.NoActionBar"
-            android:exported="false" />
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
         <activity
             android:name=".MicPermissionActivity"
