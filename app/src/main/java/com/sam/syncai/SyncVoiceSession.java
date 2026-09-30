@@ -64,16 +64,26 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         return bridge;
     }
 
+    @Override public void onPrepareShow(Bundle args, int showFlags) {
+        super.onPrepareShow(args, showFlags);
+        setUiEnabled(false);
+    }
+
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
         try {
             Intent intent = new Intent(getContext(), VoiceModeActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_HISTORY);
+            // startAssistantActivity supplies NEW_TASK itself and gives the Activity
+            // the proper assistant activity layer, including background/keyguard launch.
             startAssistantActivity(intent);
         } catch (Exception ignored) {
-        } finally {
-            hide();
+            finish();
         }
+    }
+
+    @Override public void onTaskFinished(Intent intent, int taskId) {
+        super.onTaskFinished(intent, taskId);
+        finish();
     }
 
     private void configureWindow() {
