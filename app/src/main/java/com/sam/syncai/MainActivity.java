@@ -1010,20 +1010,10 @@ public final class MainActivity extends Activity {
 
     private void launchVoiceMode() {
         try {
-            ComponentName voiceService = new ComponentName(
-                    this, SyncVoiceInteractionService.class);
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-                    && VoiceInteractionService.isActiveService(this, voiceService)
-                    && isLocalVoiceInteractionSupported()) {
-                startLocalVoiceInteraction(new Bundle());
-                return;
-            }
-
-            // Sync must be the selected Android voice assistant before its
-            // VoiceInteractionSession can be started directly. ACTION_ASSIST
-            // would show the system "Complete action using" chooser instead.
-            showVoiceSettings();
+            // In-app Voice Mode is independent from the system DDA selection.
+            // The global side-button/assistant path is handled by
+            // SyncVoiceInteractionService + SyncVoiceSession.
+            startActivity(new Intent(this, VoiceModeActivity.class));
         } catch (Exception e) {
             showError("Voice mode unavailable", e);
         }
