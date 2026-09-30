@@ -1,21 +1,30 @@
 package com.sam.syncai;
 
 import android.content.Intent;
+import android.os.RemoteException;
 import android.speech.RecognitionService;
 
 public final class SyncRecognitionService extends RecognitionService {
     @Override
     protected void onStartListening(Intent recognizerIntent, Callback listener) {
-        listener.error(5);
+        reportError(listener);
     }
 
     @Override
     protected void onStopListening(Callback listener) {
-        listener.error(5);
+        reportError(listener);
     }
 
     @Override
     protected void onCancel(Callback listener) {
-        listener.error(5);
+        reportError(listener);
+    }
+
+    private void reportError(Callback listener) {
+        try {
+            listener.error(5);
+        } catch (RemoteException ignored) {
+            // Client went away while the recognition request was being rejected.
+        }
     }
 }
