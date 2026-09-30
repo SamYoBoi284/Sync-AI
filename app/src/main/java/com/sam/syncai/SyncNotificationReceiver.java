@@ -12,6 +12,9 @@ public final class SyncNotificationReceiver extends BroadcastReceiver {
     private static final String CHANNEL = "sync_tools";
 
     @Override public void onReceive(Context context, Intent intent) {
+        SyncEventLogger.install(context);
+        SyncEventLogger.recordIntent(context, "SyncNotificationReceiver",
+                "onReceive", intent);
         NotificationManager manager =
                 (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
