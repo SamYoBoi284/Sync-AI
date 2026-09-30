@@ -211,10 +211,10 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
     const uint32_t contextSize = static_cast<uint32_t>(
-            std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx)));
+            std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
-    ctxParams.n_batch = 256;
-    ctxParams.n_ubatch = 256;
+    ctxParams.n_batch = 512;
+    ctxParams.n_ubatch = 512;
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     const int threads = std::max(2, std::min(6, cpuCount - 1));
     ctxParams.n_threads = threads;
@@ -321,7 +321,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
 
     std::string pendingUtf8;
-    const int generationLimit = std::max(1, std::min(128, static_cast<int>(maxTokens)));
+    const int generationLimit = std::max(1, std::min(256, static_cast<int>(maxTokens)));
     int generated = 0;
 
     for (; generated < generationLimit; ++generated) {
