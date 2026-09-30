@@ -843,6 +843,87 @@ public final class MainActivity extends Activity {
         startActivityForResult(intent, REQ_EXPORT_CHAT);
     }
 
+    private void exportAllDiagnostics() {
+        SyncEventLogger.record(this, "MainActivity", "LOG_EXPORT_REQUEST", "INFO",
+                "source=About & Diagnostics");
+        ioExecutor.execute(() -> {
+            StringBuilder out = new StringBuilder();
+            out.append("SYNC AI — FULL DEBUG / FLIGHT RECORDER EXPORT\n");
+            out.append("==============================================\n\n");
+            out.append("Exported: ").append(formatTimestamp(System.currentTimeMillis())).append('\n');
+            out.append("App: Sync AI\n");
+            out.append("Version: ").append(BuildConfig.VERSION_NAME).append(" (")
+                    .append(BuildConfig.VERSION_CODE).append(")\n");
+            out.append("Device: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
+            out.append("Android: ").append(Build.VERSION.RELEASE).append(" (API ")
+                    .append(Build.VERSION.SDK_INT).append(")\n");
+            out.append("ABI: ").append(Build.SUPPORTED_ABIS.length == 0
+                    ? "unknown" : Build.SUPPORTED_ABIS[0]).append('\n');
+            out.append("PID: ").append(android.os.Process.myPid()).append('\n');
+            out.append("Active Chat ID: ").append(runtime.preferences().getActiveChatId()).append('\n');
+            out.append("Accent: ").append(AppPreferences.ACCENT_NAMES[
+                    runtime.preferences().getAccent()]).append('\n\n');
+
+            out.append("=== PERSONALIZATION MEMORY ===\n");
+            out.append(runtime.preferences().getMemory()).append("\n\n");
+
+            out.append("=== RUNTIME DIAGNOSTICS ===\n");
+            try {
+                out.append(runtime.backend().diagnostics());
+            } catch (Exception error) {
+                out.append("Runtime diagnostics failed: ").append(error).append('\n');
+            }
+
+            out.append("\n\n=== LOADED MODEL ===\n");
+            ModelInfo loaded = runtime.modelManager().getLoadedModel();
+            out.append(loaded == null ? "None\n"
+                    : loaded.name + " | " + loaded.format + " | "
+                    + loaded.sizeLabel() + " | sha256=" + loaded.sha256 + "\n");
+
+            out.append("\n=== REGISTERED LOCAL MODELS ===\n");
+            for (ModelInfo model : runtime.modelManager().getModels()) {
+                out.append(model.name).append(" | ")
+                        .append(model.format).append(" | ")
+                        .append(model.sizeLabel()).append(" | sha256=")
+                        .append(model.sha256).append('\n');
+            }
+
+            out.append("\n=== LATEST REQUEST DIAGNOSTICS ===\n");
+            String latest = latestDiagnostics();
+            out.append(latest.isEmpty() ? "No request diagnostics recorded." : latest)
+                    .append("\n\n");
+
+            out.append("=== ALL SAVED CHATS + PER-MESSAGE DIAGNOSTICS ===\n");
+            out.append(formatAllChatsExport(runtime.chatStore().all())).append("\n");
+
+            out.append("=== PERSISTENT SYNC AI EVENT TIMELINE ===\n");
+            out.append(SyncEventLogger.readAll(this)).append("\n");
+
+            out.append("=== CURRENT/BEST-EFFORT ANDROID LOGCAT ===\n");
+            out.append(SyncEventLogger.captureLogcat()).append("\n");
+
+            out.append("=== END FULL DEBUG EXPORT ===\n");
+
+            pendingLogExport = out.toString();
+            SyncEventLogger.record(this, "MainActivity", "LOG_EXPORT_READY", "INFO",
+                    "bytes=" + pendingLogExport.getBytes(StandardCharsets.UTF_8).length);
+
+            runOnUiThread(() -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("text/plain");
+                    intent.putExtra(Intent.EXTRA_TITLE, "sync-ai-full-debug.txt");
+                    startActivityForResult(intent, REQ_EXPORT_LOGS);
+                } catch (Exception error) {
+                    SyncEventLogger.recordException(this, "MainActivity",
+                            "LOG_EXPORT_DOCUMENT_PICKER_FAILED", error, "");
+                    showError("Log export unavailable", error);
+                }
+            });
+        });
+    }
+
     private String formatChatExport(ChatRecord chat) {
         StringBuilder out = new StringBuilder();
         out.append("SYNC AI CHAT EXPORT\n");
@@ -1129,14 +1210,8 @@ public final class MainActivity extends Activity {
         SyncDialog dialog = new SyncDialog.Builder(this, accent)
                 .setTitle("ABOUT & DIAGNOSTICS")
                 .setMessage(message)
-                .setPositiveButton("COPY", (d, w) -> copyDiagnostics(message))
-                .setNeutralButton("ASSISTANT", (d, w) -> {
-                    try {
-                        startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
-                    } catch (Exception e) {
-                        showError("Assistant settings unavailable", e);
-                    }
-                })
+                .setPositiveButton("EXPORT LOGS", (d, w) -> exportAllDiagnostics())
+                .setNeutralButton("COPY", (d, w) -> copyDiagnostics(message))
                 .setNegativeButton("CLOSE", null)
                 .create();
         dialog.show();
@@ -1327,6 +1402,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        SyncEventLogger.record(this, "MainActivity", "onDestroy", "INFO",
+                "taskId=" + getTaskId());
         ioExecutor.shutdownNow();
         super.onDestroy();
     }
