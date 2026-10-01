@@ -11,13 +11,14 @@ public final class GgufNative {
 
     public interface Callback {
         void onToken(String token);
-        void onComplete();
+        void onComplete(String diagnostics);
         void onError(String message);
     }
 
     public static native int nativeLoad(String path);
     public static native void nativeUnload();
     public static native String nativeInfo();
+    public static native String nativeDiagnostics();
 
     public static void generate(
             List<ChatMessage> messages,

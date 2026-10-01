@@ -1,224 +1,265 @@
 # Sync//AI — Context Tracker
 
 > Living handoff/context document for the Sync//AI project.
-> Last updated: 2026-09-30
+> Updated: 2026-09-29
+> Latest verified branch head: `3186102208f172a927c89cde5d19dd18c79313f7`
+> This tracker describes the code that is actually present on the `sync-ai-toolcore-voice-history` branch. It is not a substitute for source verification.
 
 ## Project
+
 - Repository: `SamYoBoi284/Sync-AI`
-- Android local AI assistant for the user's Samsung Galaxy A16 4G.
+- Android offline-first local AI assistant.
 - Core architecture: **local model = brain, deterministic Android tools = hands**.
-- Primary runtime: Android Java + C++ JNI + llama.cpp, arm64-v8a, CPU-first.
-- Models are imported on-device; model files are not committed to GitHub.
+- Primary runtime: Android Java + C++ JNI + llama.cpp, CPU-first, arm64-v8a.
+- Model files remain on-device and are not committed to GitHub.
 
-## Device / Runtime Target
-- Samsung Galaxy A16 4G (SM-A165M)
-- 4 GB RAM / 128 GB storage
-- MediaTek Helio G99
-- Android 16 / One UI 8.5
-- arm64-v8a
-- Shizuku available
-- Device is not rooted
+## Baseline audit
 
-## Architecture Decisions
+Before this milestone, the default `main` branch contained:
+- the GGUF model/import layer
+- the native llama.cpp runtime
+- a basic chat Activity
+- the initial `SyncTool` / `ToolRegistry` foundation
 
-### Three-tier request routing
-1. **Tier 1 — deterministic tools**
-   - Direct Android commands execute immediately without the LLM.
-   - Natural-language variants and compound commands are supported.
-2. **Tier 2 — deterministic contextual resolution**
-   - Recent successful tool context resolves unambiguous follow-ups.
-   - Example: `turn on my flashlight` → `turn it off` resolves `it` to flashlight.
-3. **Tier 3 — local LLM fallback**
-   - Used only for genuine language reasoning, ambiguity, complex planning, or unsupported wording.
-   - Direct commands must not be sent through an LLM classifier.
+The baseline did **not** contain:
+- a `VoiceInteractionService`
+- a `SpeechRecognizer` voice controller
+- a voice overlay
+- a wake-word detector
+- persistent chat history
+- a real deterministic Android request router
 
-### Tool registry
-- Tool abstraction exists through `SyncTool` / `ToolRegistry`.
-- Fast execution path supports multiple deterministic tools in one request.
-- Runtime permissions are aggregated before queued tool execution.
-- Successful tool calls are remembered for contextual follow-ups.
+The milestone below was therefore implemented as new functionality rather than assuming tracker text represented existing code.
 
-## Deterministic Tool Work Completed
-- Flashlight on/off/toggle parsing.
-- Open/launch app parsing with natural aliases.
-- Contact calling with natural command lead-ins.
-- Calculator parsing:
-  - arithmetic chains
-  - parentheses
-  - word operators
-  - percentages
-  - common phrasing such as “what is”, “how much is”, “work out”, etc.
-- Timers:
-  - seconds/minutes/hours
-  - natural variants such as “remind me in 15 minutes”
-- Alarms:
-  - multiple alarms in one message
-  - hour/minute + AM/PM
-  - titles
-  - natural “wake me”, “set”, “schedule”, and “remind me” forms
-- Compound-command boundaries were fixed so one command does not accidentally consume the next command.
-- Contextual follow-ups implemented for:
-  - flashlight
-  - opening/launching the previous app
-  - calling the previous contact again
-  - restarting the previous timer
-  - repeating the previous calculation
-- “New chat” clears deterministic command context.
+## Deterministic Sync//Tool Core — implemented
 
-## Alarm Runtime
-- Replaced dependency on `AlarmClock.ACTION_SET_ALARM` because some devices returned:
-  “No alarm application can handle this request.”
-- Native alarm scheduling now uses Android `AlarmManager`.
-- Uses exact alarm scheduling when available and an idle-safe fallback otherwise.
-- Added:
-  - `AlarmReceiver`
-  - `AlarmActivity`
-  - alarm notification channel
-  - alarm ringtone/vibration
-  - full-screen alarm UI
-  - dismiss/stop controls
-- Manifest includes required alarm/full-screen notification permissions.
-- Notification permission is requested at runtime for alarm tools.
-- Exact-alarm and full-screen behavior still needs device-level verification.
+Direct device-known requests are routed before the local LLM.
 
-## Voice / Assistant Integration
-- Sync//AI is integrated as the Android digital assistant / voice interaction service.
-- Samsung Settings can select Sync//AI as the default digital assistant.
-- Side-button assistant invocation works.
-- VoiceController uses Android SpeechRecognizer + TTS.
-- Voice state flow is designed around:
-  IDLE → LISTENING → THINKING → TOOL/LLM → RESPONDING → LISTENING.
-- Voice mode supports continuous listening/restart behavior and explicit exit/farewell phrases.
-- Voice output setting is persisted.
+Current deterministic tools include:
+- current time
+- current date
+- local timezone
+- battery percentage / charging state
+- Wi-Fi state
+- network/internet state
+- Bluetooth state
+- media volume
+- screen brightness
+- RAM usage
+- storage availability
+- device information
+- flashlight/torch on/off/toggle
+- app launch
+- contact lookup + dialer handoff
+- calculator
+- timers
+- alarms
+- compound commands
+- contextual follow-ups
 
-## Wake Word Status / Direction
-- Previous wake-word implementation used built-in wake-word support such as “Hey Jarvis”.
-- **Project direction is now to remove wake-word functionality entirely.**
-- Microphone access should be restricted to active Sync//AI voice mode.
-- No always-listening/background wake-word detector should remain.
-- The Android default-assistant / side-button path remains the entry point for voice mode.
+Examples:
+- `what time is it?` → Android clock
+- `how much battery do I have?` → BatteryManager
+- `turn on my flashlight` → CameraManager torch
+- `open Discord` → Android launcher intent
+- `turn it off` after flashlight control → remembered flashlight context
+- `what time is it and turn on the flashlight` → multiple deterministic actions
 
-## Voice UI Direction
-- Replace the current opaque/separate-feeling voice page/overlay with a nearly transparent overlay.
-- Underlying app should remain visibly present.
-- Central voice/power control remains available.
-- User can exit voice mode at any time.
-- Transcript and Sync response remain visible.
-- Voice mode is the only place that should activate microphone access.
+Deterministic routing does not ask the LLM to classify basic Android commands.
 
-## Conversation / Personality
-- Added fast-path handling for common greetings and casual “how are you/how ya doing” phrases.
-- Casual language, slang, shorthand, contractions, typos, and bro/bfam-style wording are intended to be understood naturally.
-- Sync should not respond to ordinary “how are you doing?” as though it were a medical/health question.
-- Sync should not volunteer “I’m just a bot/AI” during normal conversation.
-- Direct identity questions can identify the app as Sync//AI without pretending to be human.
+## Contextual tool state — implemented
 
-## Local Model Runtime
-- GGUF + llama.cpp native runtime is integrated.
-- CPU-only arm64 runtime.
-- Runtime tuning already attempted:
-  - bounded context size
-  - bounded generation length
-  - CPU thread tuning
-  - batch/ubatch tuning
-  - sampler configuration
-  - UTF-8/error handling
-  - ggml backend loading/diagnostics
-- Tested small local model sizes because 4 GB RAM is restrictive.
-- Current investigation target is **why some LLM fallback requests still take ~40 seconds**, rather than assuming model size alone is responsible.
+The tool engine remembers recent successful deterministic context for follow-ups such as:
+- `turn it off`
+- `turn it on`
+- `open it`
+- `call again`
+- `call them`
+- `do that again`
+- `repeat that`
 
-## Native Diagnostics Already Added
-`syncai_native.cpp` tracks:
+Starting or switching to a new chat clears the deterministic context.
+
+## Persistent chat history — implemented
+
+Chats are stored in app-private `chats.json`.
+
+Each chat stores:
+- ID
+- title
+- created time
+- updated time
+- messages
+
+Each saved message stores:
+- role
+- text
+- timestamp
+- optional diagnostics
+
+The main app now supports:
+- multiple chats
+- New Chat
+- opening previous chats
+- automatic initial titles from the first user message
+- rename
+- delete
+- restoring the active chat after app restart
+
+Persistent chat storage is separate from model context. Historical chats are **not** all injected into inference; only a bounded recent slice is sent to the local model.
+
+This preserves error messages and diagnostics so a failed request can still be screenshotted after the app is reopened.
+
+## Inference diagnostics — implemented
+
+Every local-model request now records native timing evidence.
+
+Tracked items include:
+- route
+- total request time
+- prompt token count
+- context size
+- CPU thread count
 - prompt evaluation time
 - generation time
 - generated token count
-- native runtime/model information
-- architecture
-- parameters
-- tensor size
-- training context
-- backend
-
-`GgufModelBackend.diagnostics()` exposes native diagnostics.
-
-### Required next diagnostics layer
-Each request should eventually record:
-- request ID
-- routing path: deterministic / contextual / LLM
-- total request duration
-- prompt token count
-- context size
-- prompt evaluation ms
-- generation ms
-- generated token count
 - tokens/sec
-- model name
-- CPU thread count
-- deterministic tool execution time
-- error stage
-- error message
+- model information
+- error stage/message when generation fails
 
-Diagnostics should be visible in Runtime/About and preserved with chat history so failures can be screenshotted and investigated later.
+The UI exposes diagnostics through:
+- Runtime
+- About & Diagnostics
+- per-message `⌁ DIAGNOSTICS` entries
 
-## Canvas / AI Workspace
-- Canvas is an **AI-owned workspace**, not a second place for the user to manually type.
-- Sync can use it for substantial:
-  - planning
-  - drafting
-  - outlining
-  - organizing
-  - revision
-- Canvas tools exist:
-  - read canvas
-  - write canvas
-  - replace canvas text
-  - open canvas
-- Workspace is stored as `workspace/canvas.md` in app-private storage.
-- Canvas UI has Sync//AI branding and AI-owned-workspace labeling.
+Diagnostics are persisted with the corresponding assistant message.
 
-## Side Dashboard / Settings
-- Settings moved into the side dashboard.
-- Side dashboard is opened from the left edge.
-- Main sections include:
-  - CHATS
-  - WORKSPACE
-  - SETTINGS
-- Settings currently has areas for:
-  - Assistant / voice output
-  - Workspace / files
-  - memory
-  - models
-  - import model
-  - runtime
-- Top-right standalone Settings button was removed.
+The native runtime also keeps the latest request diagnostic record so the 40-second issue can be investigated with actual measurements instead of guesses.
 
-## Persistent Chat History — Required / In Progress
-Current architecture previously kept the active conversation only in an in-memory:
-`List<ChatMessage> conversation`.
+## Local inference tuning — implemented on this milestone
 
-Required persistent system:
-- Save multiple chats.
-- Restore the last active chat after app restart.
-- CHATS section should list saved conversations.
-- Open/switch between previous chats.
-- New Chat creates a separate persistent conversation.
-- Save:
-  - user messages
-  - Sync responses
-  - tool results
-  - errors
-  - diagnostic metadata
-- Do **not** feed every historical chat into the LLM. Persistent storage and model context are separate; inference should still use a bounded recent context.
-- This history is specifically important for preserving error messages/diagnostics for screenshots and debugging.
+Current safety/performance bounds:
+- generation default: 128 tokens
+- native generation hard bound: 128 tokens
+- context size: 1024–2048 tokens
+- native batch / ubatch: 256
+- CPU threads: bounded to 2–6 based on device hardware
 
-## Personalization — Required / In Progress
-Add a dedicated Personalization settings section containing:
-- Memory controls / memory import access
-- 8 selectable Sync//AI accent colors
-- UI personalization hooks for future settings
-- Keep memory under Personalization rather than general Workspace settings.
+The runtime still creates an inference context per request. The new diagnostics are intended to show whether the dominant latency is prompt evaluation, generation, or another stage before further optimization.
 
-Suggested eight accent choices:
+## Conversational fallback — implemented
+
+The main chat and voice paths now use this routing order:
+
+1. deterministic Android tool
+2. recent contextual tool resolution
+3. bounded local-model conversation
+4. small offline fallback response when no model is loaded
+
+The local system prompt instructs Sync to:
+- speak naturally
+- understand slang, shorthand, contractions, typos, and bro/bfam wording
+- avoid unnecessary robotic identity disclaimers
+- leave direct device actions to deterministic tools
+
+Common basic greetings / casual questions have a lightweight fallback when no model is loaded.
+
+## Voice / Android assistant integration — implemented
+
+The branch adds:
+- `SyncVoiceInteractionService`
+- `SyncVoiceSessionService`
+- `SyncVoiceSession`
+- Android voice-interaction service metadata
+- default-assistant manifest declarations
+
+The intended entry point is the Android assistant/side-button path.
+
+When Sync is selected as the default digital assistant, the voice session provides:
+- speech recognition
+- deterministic tool execution
+- local LLM fallback
+- text-to-speech response
+- repeated listening after the response
+- explicit exit phrases
+- an always-visible close button
+
+## Wake-word status — removed by design
+
+There is **no wake-word detector in this branch**.
+
+There is no:
+- “Hey Jarvis” style trigger
+- background hotword loop
+- always-listening speech service
+
+Voice mode begins from the explicit Android assistant entry point.
+
+Microphone use:
+- `RECORD_AUDIO` is declared because the voice session needs speech recognition.
+- Sync only starts `SpeechRecognizer` while the active voice session is running.
+- Outside voice mode, Sync does not start a speech listener.
+
+Android still controls the actual runtime permission grant at the system level.
+
+## Voice overlay — implemented
+
+The assistant session uses a transparent session root with a nearly transparent central Sync panel.
+
+Current behavior:
+- underlying app remains visible
+- no opaque full-screen chat page is opened for assistant invocation
+- central mic/power control
+- transcript area
+- response area
+- close `×` button
+- no background dim
+- back/close session exits voice mode
+
+Voice flow:
+
+```
+IDLE
+  ↓
+LISTENING
+  ↓
+THINKING
+  ↓
+TOOL / LLM
+  ↓
+RESPONDING
+  ↓
+LISTENING
+```
+
+Explicit exit phrases include:
+- stop listening
+- goodbye
+- exit
+- cancel
+- close sync
+- that’s all
+
+## Voice output — implemented
+
+- Text-to-speech is provided through Android `TextToSpeech`.
+- Voice output can be toggled from Settings.
+- After TTS completes, Sync returns to listening while the session remains open.
+
+## Settings / Personalization — implemented
+
+Settings now contains:
+- Personalization
+- About & Diagnostics
+- Voice Mode
+- Local Models
+
+Personalization contains:
+- editable local Memory
+- text-file Memory import
+- 8 persisted accent choices
+
+Accent choices:
 1. Purple
 2. Blue
 3. Cyan
@@ -228,50 +269,151 @@ Suggested eight accent choices:
 7. Red
 8. Pink
 
-The selected accent should be persisted and applied consistently across Sync//AI UI.
+Memory remains app-local and is added as optional system context for local model generation.
 
-## About — Required / In Progress
-Add an About section under Settings containing:
-- App name: Sync//AI
-- App version
-- Build/version information
-- Created by Sam
-- Arabic creator label: **أنشأه حسام**
-- Runtime/model information
-- Diagnostics/debug access
-- Relevant project/runtime details useful when reporting bugs
-- A compact “copy diagnostics” / shareable diagnostic view is desirable.
+## About — implemented
 
-## Regression Requirements
-Before considering the current milestone complete, verify:
-- Direct flashlight command is instant.
-- Flashlight contextual follow-up actually toggles the device.
-- Time/date commands are deterministic and do not invoke the LLM.
-- Compound commands execute all intended tools.
-- Alarms work natively.
-- Calling/contact permissions behave correctly.
-- App launching works.
-- Calculator/timer/alarm parsing does not consume adjacent commands.
-- Conversation small talk does not invoke the tool/LLM path unnecessarily.
-- Persistent chats survive app close/reopen.
-- Switching chats restores their messages.
-- Errors and diagnostics remain attached to the relevant chat.
-- Mic permission is absent/inactive outside voice mode.
-- Voice mode can start/stop cleanly.
-- Wake-word/background microphone behavior is gone.
-- Voice overlay is translucent and dismissible.
-- Personalization color persists.
-- About/diagnostics display correctly.
-- Debug APK / GitHub Actions build succeeds.
+About & Diagnostics includes:
+- app name
+- version name + version code
+- `Created By Sam`
+- **`صنعه حسام`**
+- local GGUF + llama.cpp runtime information
+- target ABI
+- latest request diagnostics
+- copy-to-clipboard diagnostics access
+- Android assistant settings shortcut
 
-## Recent Known CI State
-- Recent voice/settings work reached successful GitHub Actions builds.
-- Earlier overlapping runs had transient log retrieval issues, but the latest verified build state was successful.
+## Permissions / Android capabilities
 
-## Important Project Rules
-- Do not manually bump package versions when the project release script owns versioning.
-- Keep deterministic tools independent of the LLM.
-- Prefer native Android APIs for simple device actions.
-- Preserve diagnostic evidence instead of replacing failures with generic “Generation Failed”.
-- Keep the local model optional; the deterministic tool layer must remain useful without it.
-- User wants a plan stated before major code changes.
+Declared for the current deterministic/voice feature set:
+- RECORD_AUDIO
+- CAMERA
+- READ_CONTACTS
+- BLUETOOTH_CONNECT
+- POST_NOTIFICATIONS
+- SCHEDULE_EXACT_ALARM
+
+Runtime permissions are requested only when the relevant operation needs them.
+
+Contact handling currently opens the Android dialer for the matched contact rather than silently placing a call.
+
+## Timers / alarms
+
+The deterministic tool core can schedule timers and alarms through Android AlarmManager.
+
+A notification receiver posts the resulting Sync//AI notification.
+
+Exact-alarm behavior can fall back to an inexact idle-safe schedule when the exact-alarm capability is unavailable.
+
+## Chat generation / history stabilization — implemented
+
+The latest chat regression fixes are now present on this branch:
+
+### Follow-up messages during inference
+
+Commit: `03e179e817c2783dca31cfc1d74982ab65c49cc3` — `fix: allow queued follow-up chat messages`
+
+- Send remains enabled while a local generation is running.
+- Multiple user messages can be queued instead of the composer becoming permanently disabled after the first response.
+- The existing single-threaded GGUF backend serializes queued generations safely.
+- Each generation owns its own streaming bubble and completion state.
+- Import remains disabled while generations are active.
+- Generation busy/active counts are tracked separately so the UI can recover correctly after completion or error.
+
+### Native diagnostics deadlock / ANR fix
+
+The ANR was traced to a real JNI mutex deadlock:
+- native generation held `g_mutex`
+- native code called Java `onComplete()` while that mutex was still held
+- Java completion attempted `nativeDiagnostics()`
+- `nativeDiagnostics()` attempted to acquire the same mutex again
+- the callback therefore deadlocked before the assistant message could be persisted
+
+The fix is split across these commits:
+- `263f27f394cdb46b1541aaafe6e506ab0c794290` — callback now carries completion diagnostics
+- `de1e447b61278b3d667ac9261879af5dadc667c8` — Java backend stores the latest generation diagnostics
+- `6b25d074ba5961d702200aff15909b19cddee816` — MainActivity persists the stored diagnostics without querying native during the callback
+- `3186102208f172a927c89cde5d19dd18c79313f7` — native completion passes the already-computed diagnostics string through JNI instead of reacquiring the mutex
+
+Result:
+- assistant messages reach `ChatStore.add(...)` after successful generation
+- AI responses and their diagnostics are persisted alongside user messages
+- Runtime/About can query native diagnostics after generation without reproducing the original completion deadlock
+- per-message diagnostics still contain the actual native inference statistics rather than the temporary placeholder used by the emergency fix
+
+The intermediate emergency commit `c8bdb4e59f9a74ea96cac249faffba8a3b554f23` removed the synchronous native diagnostics call from the callback; the later commits replaced that workaround with proper diagnostics propagation.
+
+## Keyboard / composer behavior — implemented
+
+The composer is kept above the Android IME while typing:
+- root window-insets handling translates the composer above the keyboard
+- chat bottom padding expands with the IME
+- sending no longer forcibly hides the keyboard
+- the input keeps focus after send
+- keyboard IME action triggers Send
+- completion/error paths restore the correct Send/import state
+
+## Latest verification status
+
+GitHub Actions for the current head `3186102208f172a927c89cde5d19dd18c79313f7` are **green**:
+- Run #468 — success
+- Run #469 — success (pull-request workflow)
+
+This is CI/build verification only. Physical-device verification is still required for the actual runtime behavior, especially:
+- send a first message and a follow-up message
+- close/reopen the app and confirm both user and assistant messages persist
+- open per-message Diagnostics after generation
+- open Runtime / About after generation without an ANR
+- verify the sticky composer while the keyboard is visible
+
+## Native runtime diagnostics
+
+`GgufNative.nativeDiagnostics()` now exposes:
+- model information
+- latest request timing
+- prompt tokens
+- context size
+- thread count
+- prompt evaluation
+- generation time
+- token count
+- tokens/sec
+- total inference time
+
+This is the primary instrumentation for investigating the recurring ~40 second responses.
+
+## What is intentionally not claimed as fully verified
+
+The code is implemented, but these parts still require physical device validation:
+- selecting Sync//AI as the default assistant in Samsung/Android settings
+- side-button invocation behavior on the Galaxy A16 / One UI 8.5
+- first-run microphone permission flow
+- actual SpeechRecognizer behavior on the device
+- TTS behavior on the device
+- exact visual opacity/placement of the translucent overlay
+- real-world flashlight/contact/Bluetooth permission behavior
+- actual local-model latency measurements on the target phone
+- Android timer/alarm notification behavior under device power-management rules
+
+CI build verification is tracked separately below.
+
+## CI / branch
+
+Development branch:
+`sync-ai-toolcore-voice-history`
+
+Pull request:
+`Sync-AI #6 — feat: Sync//AI tool core, persistent chats, diagnostics, voice overlay`
+
+The GitHub Actions workflow is configured to build this branch.
+
+## Project rules
+
+- Do not manually bump package versions when the release script owns versioning.
+- Keep deterministic device tools independent from the LLM.
+- Preserve diagnostic evidence instead of replacing errors with a generic failure.
+- Keep persistent chat storage separate from bounded inference context.
+- Keep wake-word/background microphone behavior out of the project.
+- Keep model files out of GitHub.
+- Treat source code and CI/device verification as the authority for completed features, not tracker text alone.

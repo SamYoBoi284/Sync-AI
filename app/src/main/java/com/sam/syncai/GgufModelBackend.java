@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 public final class GgufModelBackend implements LocalModelBackend {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile ModelInfo loaded;
+    private volatile String lastGenerationDiagnostics = "";
 
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
@@ -20,9 +21,10 @@ public final class GgufModelBackend implements LocalModelBackend {
                 }
                 int result = GgufNative.nativeLoad(model.path);
                 if (result != 0) {
+                    String details = GgufNative.nativeDiagnostics();
                     throw new IllegalStateException(
-                            "The GGUF model could not be loaded. It may be unsupported, damaged, " +
-                            "or too large for this device."
+                            "The GGUF model could not be loaded.\n\n" +
+                            details
                     );
                 }
                 loaded = model;
@@ -62,7 +64,10 @@ public final class GgufModelBackend implements LocalModelBackend {
             try {
                 GgufNative.generate(messages, config, new GgufNative.Callback() {
                     @Override public void onToken(String token) { callback.onToken(token); }
-                    @Override public void onComplete() { callback.onComplete(); }
+                    @Override public void onComplete(String diagnostics) {
+                        lastGenerationDiagnostics = diagnostics == null ? "" : diagnostics;
+                        callback.onComplete();
+                    }
                     @Override public void onError(String message) {
                         callback.onError(new IllegalStateException(message));
                     }
@@ -74,8 +79,12 @@ public final class GgufModelBackend implements LocalModelBackend {
         });
     }
 
+    public String lastGenerationDiagnostics() {
+        return lastGenerationDiagnostics;
+    }
+
     public String diagnostics() {
         if (!isLoaded()) return "No model loaded.";
-        return GgufNative.nativeInfo();
+        return GgufNative.nativeDiagnostics();
     }
 }
