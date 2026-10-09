@@ -514,7 +514,7 @@ public final class MainActivity extends Activity {
     private void toggleWakeWord() {
         if (SyncAssistantService.isRunning()) {
             runtime.preferences().setWakeWordEnabled(false);
-            stopService(new Intent(this, SyncAssistantService.class));
+            SyncAssistantService.requestStop(this);
             showToast("Hey Sync wake word disabled.");
             showVoiceSettings();
             return;
@@ -541,7 +541,8 @@ public final class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
             else startService(service);
             showToast("Hey Sync enabled. The foreground notification stays visible while listening.");
-            showVoiceSettings();
+            new android.os.Handler(android.os.Looper.getMainLooper())
+                    .postDelayed(this::showVoiceSettings, 700L);
         } catch (Exception error) {
             runtime.preferences().setWakeWordEnabled(false);
             SyncEventLogger.recordException(this, "MainActivity", "WAKE_SERVICE_START_ERROR",
