@@ -297,7 +297,7 @@ public final class VoiceModeActivity extends Activity {
                 main.post(() -> updateState("LISTENING"));
             }
             @Override public void onError(Exception error) {
-                main.post(() -> responseView.setText(
+                main.post(() -> showResponse(
                         "Model load failed; deterministic tools remain available."));
             }
         });
@@ -311,7 +311,7 @@ public final class VoiceModeActivity extends Activity {
             try {
                 startActivity(new Intent(this, MicPermissionActivity.class));
             } catch (Exception e) {
-                responseView.setText("Open Sync//AI once and enable microphone permission in Android Settings.");
+                showResponse("Open Sync AI once and enable microphone permission in Android Settings.");
             }
             main.postDelayed(() -> {
                 if (!destroyed && this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
@@ -343,7 +343,7 @@ public final class VoiceModeActivity extends Activity {
             recognizer.startListening(intent);
         } catch (Exception e) {
             updateState("MIC ERROR");
-            responseView.setText(e.getMessage() == null ? e.toString() : e.getMessage());
+            showResponse(e.getMessage() == null ? e.toString() : e.getMessage());
         }
     }
 
@@ -356,8 +356,8 @@ public final class VoiceModeActivity extends Activity {
         SyncEventLogger.record(this, "VoiceModeActivity", "VOICE_TEXT_RECEIVED", "INFO",
                 "length=" + clean.length());
         transcriptView.setText("Processing your message…");
-        appendTranscriptBubble("YOU", clean, true);
-        responseView = appendTranscriptBubble("SYNC AI", "Thinking…", false);
+        addTranscriptEntry("YOU", clean, true);
+        responseView = addTranscriptEntry("SYNC AI", "Thinking…", false);
 
         String lower = clean.toLowerCase(Locale.US);
         if (lower.matches(".*\\b(?:stop listening|goodbye|exit|cancel|close sync|that's all|thats all)\\b.*")) {
@@ -409,7 +409,10 @@ public final class VoiceModeActivity extends Activity {
         runtime.backend().generate(messages, new GenerationConfig(), new LocalModelBackend.GenerateCallback() {
             @Override public void onToken(String token) {
                 response.append(token);
-                main.post(() -> responseView.setText(response.toString()));
+                main.post(() -> {
+                    if (responseView != null) responseView.setText(response.toString());
+                    scrollTranscriptToBottom();
+                });
             }
             @Override public void onComplete() {
                 long total = System.currentTimeMillis() - started;
@@ -429,7 +432,8 @@ public final class VoiceModeActivity extends Activity {
                 main.post(() -> {
                     processing.set(false);
                     updateState("RESPONDING");
-                    responseView.setText(finalText);
+                    if (responseView != null) responseView.setText(finalText);
+                    scrollTranscriptToBottom();
                 });
                 speakAndMaybeListen(finalText, false);
             }
@@ -448,7 +452,8 @@ public final class VoiceModeActivity extends Activity {
                 main.post(() -> {
                     processing.set(false);
                     updateState("ERROR");
-                    responseView.setText(failure + "\n\n" + diag.format());
+                    if (responseView != null) responseView.setText(failure + "\n\n" + diag.format());
+                    scrollTranscriptToBottom();
                 });
                 speakAndMaybeListen(failure, false);
             }
