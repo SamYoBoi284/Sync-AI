@@ -60,6 +60,10 @@ public final class VoiceModeActivity extends Activity {
         android.util.Log.d("SyncAI", "VoiceModeActivity.onCreate savedState="
                 + (state != null) + " taskId=" + getTaskId()
                 + " intent=" + getIntent());
+        if (SyncAssistantService.isRunning()) {
+            sendBroadcast(new Intent(SyncAssistantService.ACTION_VOICE_MODE_STARTED)
+                    .setPackage(getPackageName()));
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
@@ -89,16 +93,16 @@ public final class VoiceModeActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(22), dp(18), dp(22), dp(18));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x660B0D16);
+        bg.setColor(0xB30A0E1A);
         bg.setCornerRadius(dp(28));
-        bg.setStroke(dp(1), (accent & 0x00FFFFFF) | 0xAA000000);
+        bg.setStroke(dp(1), (accent & 0x00FFFFFF) | 0xCC000000);
         panel.setBackground(bg);
-        panel.setElevation(dp(14));
+        panel.setElevation(dp(20));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView title = text("SYNC // AI", 18, Color.WHITE, true);
+        TextView title = text("SYNC AI", 18, Color.WHITE, true);
         top.addView(title, new LinearLayout.LayoutParams(0, dp(35), 1));
 
         Button close = smallButton("×");
@@ -650,6 +654,10 @@ public final class VoiceModeActivity extends Activity {
                 + isFinishing() + " changingConfigurations=" + isChangingConfigurations()
                 + " taskId=" + getTaskId());
         destroyed = true;
+        if (SyncAssistantService.isRunning()) {
+            sendBroadcast(new Intent(SyncAssistantService.ACTION_VOICE_MODE_FINISHED)
+                    .setPackage(getPackageName()));
+        }
         cleanup();
         super.onDestroy();
     }
