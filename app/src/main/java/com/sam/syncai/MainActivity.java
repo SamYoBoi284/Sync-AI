@@ -1299,7 +1299,7 @@ public final class MainActivity extends Activity {
         content.addView(output);
 
         String wakeStatus = SyncAssistantService.isRunning()
-                ? "Listening locally • tap to stop"
+                ? "Active • tap to stop"
                 : (VoskModelInstaller.isInstalled(this) ? "Off • tap to enable" : "Model needed • tap to import");
         Button wakeWord = sectionButton("HEY SYNC WAKE WORD", wakeStatus);
         wakeWord.setOnClickListener(v -> toggleWakeWord());
