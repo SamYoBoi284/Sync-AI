@@ -73,8 +73,9 @@ public final class SyncAssistantService extends Service implements RecognitionLi
                 voiceModeActive = true;
                 waitingForVoiceStart = false;
                 main.removeCallbacks(launchTimeout);
+                stopSpeechPipeline();
                 SyncEventLogger.record(SyncAssistantService.this, "SyncAssistantService",
-                        "VOICE_MODE_STARTED", "INFO", "wake listener paused");
+                        "VOICE_MODE_STARTED", "INFO", "wake listener stopped; voice mode owns the microphone");
             } else if (ACTION_VOICE_MODE_FINISHED.equals(action)) {
                 voiceModeActive = false;
                 waitingForVoiceStart = false;
