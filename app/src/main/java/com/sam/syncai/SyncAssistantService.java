@@ -26,6 +26,8 @@ import org.vosk.android.SpeechService;
 
 import java.io.File;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -46,6 +48,8 @@ public final class SyncAssistantService extends Service implements RecognitionLi
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AtomicBoolean wakeTriggered = new AtomicBoolean(false);
+    private final ExecutorService modelExecutor = Executors.newSingleThreadExecutor();
+    private boolean modelLoading;
     private Model model;
     private Recognizer recognizer;
     private SpeechService speechService;
@@ -127,25 +131,54 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         }
         getPreferences().setWakeWordEnabled(true);
         if (model == null) {
-            try {
-                File modelDir = VoskModelInstaller.modelDirectory(this);
-                model = new Model(modelDir.getAbsolutePath());
-                SyncEventLogger.record(this, "SyncAssistantService", "VOSK_MODEL_READY",
-                        "INFO", "modelPath=" + modelDir.getAbsolutePath());
-            } catch (Exception error) {
-                SyncEventLogger.recordException(this, "SyncAssistantService",
-                        "VOSK_MODEL_LOAD_ERROR", error, "model initialization failed");
-                updateNotification("Vosk model could not load — open Sync AI for diagnostics.");
-                stopSelf();
-                return START_NOT_STICKY;
-            }
+            loadVoskModelAsync();
+        } else {
+            startWakeListening();
         }
-        startWakeListening();
         return START_NOT_STICKY;
     }
 
     private AppPreferences getPreferences() {
         return SyncRuntime.get(this).preferences();
+    }
+
+    private void loadVoskModelAsync() {
+        if (modelLoading) return;
+        modelLoading = true;
+        File modelDir = VoskModelInstaller.modelDirectory(this);
+        modelExecutor.execute(() -> {
+            Model loaded = null;
+            Exception failure = null;
+            try {
+                loaded = new Model(modelDir.getAbsolutePath());
+            } catch (Exception error) {
+                failure = error;
+            }
+            final Model loadedModel = loaded;
+            final Exception loadError = failure;
+            main.post(() -> {
+                modelLoading = false;
+                if (!running || !getPreferences().isWakeWordEnabled()) {
+                    if (loadedModel != null) {
+                        try { loadedModel.close(); } catch (Exception ignored) {}
+                    }
+                    return;
+                }
+                if (loadError != null || loadedModel == null) {
+                    if (loadError != null) {
+                        SyncEventLogger.recordException(this, "SyncAssistantService",
+                                "VOSK_MODEL_LOAD_ERROR", loadError, "model initialization failed");
+                    }
+                    updateNotification("Vosk model could not load — open Sync AI for diagnostics.");
+                    stopSelf();
+                    return;
+                }
+                model = loadedModel;
+                SyncEventLogger.record(this, "SyncAssistantService", "VOSK_MODEL_READY",
+                        "INFO", "modelPath=" + modelDir.getAbsolutePath());
+                startWakeListening();
+            });
+        });
     }
 
     private void startWakeListening() {
@@ -331,7 +364,8 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         SyncEventLogger.record(this, "SyncAssistantService", "SERVICE_STOPPED",
                 "INFO", "foreground wake service destroyed");
         running = false;
-        main.removeCallbacksAndMessages(null);
+        main.removeCallbacks(launchTimeout);
+        modelExecutor.shutdownNow();
         stopSpeechPipeline();
         if (model != null) {
             try { model.close(); } catch (Exception ignored) {}
