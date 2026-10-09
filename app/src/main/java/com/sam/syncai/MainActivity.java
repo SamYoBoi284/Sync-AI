@@ -447,6 +447,14 @@ public final class MainActivity extends Activity {
         SyncEventLogger.record(this, "MainActivity", "onActivityResult", "INFO",
                 "requestCode=" + requestCode + " resultCode=" + resultCode
                         + " hasData=" + (data != null));
+        if (requestCode == REQ_ASSISTANT_ROLE) {
+            if (resultCode == RESULT_OK) {
+                showToast("Sync AI selected. Set Samsung Side button → Press and hold → Digital assistant.");
+            } else {
+                showToast("Sync AI was not selected as the default assistant.");
+            }
+            return;
+        }
         if (requestCode == REQ_IMPORT_MODEL && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri != null) importModel(uri);
@@ -1387,7 +1395,7 @@ public final class MainActivity extends Activity {
 
         Button assistant = sectionButton(
                 "ANDROID ASSISTANT SETTINGS",
-                "Select Sync AI as the default digital assistant");
+                "Choose Sync AI, then set Samsung Side button hold to Digital assistant");
         assistant.setOnClickListener(v -> requestDefaultAssistant());
         content.addView(assistant);
 
