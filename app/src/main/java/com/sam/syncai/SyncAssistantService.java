@@ -251,18 +251,25 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         vibrate();
         waitingForVoiceStart = true;
         main.postDelayed(launchTimeout, 9000L);
+        SyncEventLogger.record(this, "SyncAssistantService", "MIC_HANDOFF_RELEASE_WAIT",
+                "INFO", "Vosk stopped; waiting briefly before requesting assistant session");
+        main.postDelayed(this::dispatchAssistantHandoff, 250L);
+    }
+
+    private void dispatchAssistantHandoff() {
+        if (!running || !waitingForVoiceStart || voiceModeActive) return;
         try {
             Intent assist = new Intent(Intent.ACTION_ASSIST);
             assist.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(assist);
             SyncEventLogger.record(this, "SyncAssistantService", "ASSIST_HANDOFF",
-                    "INFO", "ACTION_ASSIST dispatched to Android default assistant");
+                    "INFO", "ACTION_ASSIST dispatched after Vosk shutdown");
         } catch (Exception error) {
             waitingForVoiceStart = false;
             main.removeCallbacks(launchTimeout);
             SyncEventLogger.recordException(this, "SyncAssistantService",
                     "ASSIST_HANDOFF_ERROR", error, "ACTION_ASSIST launch failed");
-            updateNotification("Couldn't open voice mode — tap Sync AI to reopen.");
+            updateNotification("Couldn't open voice mode — check default assistant settings.");
             main.postDelayed(this::startWakeListening, 1000L);
         }
     }
