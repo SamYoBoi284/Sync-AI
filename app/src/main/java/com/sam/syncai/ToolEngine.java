@@ -150,6 +150,9 @@ public final class ToolEngine {
     }
 
     private Result handleSingle(String command) throws Exception {
+        Result wakeWordCommand = handleWakeWordCommand(command);
+        if (wakeWordCommand.handled) return wakeWordCommand;
+
         if (command.contains("current time")
                 || command.matches(".*\\bwhat(?:'s| is)?(?: the)? time(?: now| right now)?\\b.*")
                 || command.matches(".*\\btell me(?: the)? time\\b.*")
@@ -366,34 +369,161 @@ public final class ToolEngine {
         return Result.none();
     }
 
+    private Result handleWakeWordCommand(String command) throws Exception {
+        String c = command.toLowerCase(Locale.US);
+        boolean mentionsWakeWord = c.contains("wake word") || c.contains("wake-word")
+                || c.contains("hey sync") || c.contains("hey nullverox")
+                || c.contains("hey null verox");
+        if (!mentionsWakeWord) return Result.none();
+
+        AppPreferences preferences = SyncRuntime.get(context).preferences();
+        boolean enabled = SyncAssistantService.isRunning();
+        boolean asksStatus = c.contains("status") || c.contains("is it on")
+                || c.contains("is it enabled") || c.contains("is wake word on")
+                || c.contains("is hey sync on");
+        if (asksStatus) {
+            return result("wake_word", "Wake-word detection is "
+                    + (enabled ? "on and listening locally." : "off."));
+        }
+
+        boolean asksToggle = c.contains("toggle") || c.contains("switch");
+        boolean asksEnable = c.contains("enable") || c.contains("turn on")
+                || c.contains("start listening") || c.contains("activate");
+        boolean asksDisable = c.contains("disable") || c.contains("turn off")
+                || c.contains("stop listening") || c.contains("deactivate");
+        if (!asksToggle && !asksEnable && !asksDisable) return Result.none();
+        boolean targetEnabled = asksToggle ? !enabled : asksEnable && !asksDisable;
+
+        if (targetEnabled && enabled) {
+            return result("wake_word", "Wake-word detection is already on.");
+        }
+        if (!targetEnabled && !enabled) {
+            preferences.setWakeWordEnabled(false);
+            return result("wake_word", "Wake-word detection is already off.");
+        }
+        if (!targetEnabled) {
+            preferences.setWakeWordEnabled(false);
+            SyncAssistantService.requestStop(context);
+            return result("wake_word", "Wake-word detection is off. The power button still opens voice mode.");
+        }
+
+        if (!VoskModelInstaller.isInstalled(context)) {
+            return new Result(true, false,
+                    "I can't enable wake-word detection yet, bro—the offline Vosk model isn't imported. Open Sync AI → Voice & Wake Word and import the Vosk ZIP first.",
+                    "wake_word", 0);
+        }
+        if (context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            return new Result(true, false,
+                    "Microphone permission is needed for wake-word detection. Enable it in Android Settings, then tell me to enable Hey Sync again.",
+                    "wake_word", 0, android.Manifest.permission.RECORD_AUDIO);
+        }
+
+        preferences.setWakeWordEnabled(true);
+        Intent service = new Intent(context, SyncAssistantService.class);
+        if (SyncAssistantService.isVoiceModeUiActive()) {
+            service.putExtra(SyncAssistantService.EXTRA_DEFER_UNTIL_VOICE_FINISHED, true);
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(service);
+            else context.startService(service);
+            return result("wake_word", SyncAssistantService.isVoiceModeUiActive()
+                    ? "Got you, bro. Wake-word detection will start after this voice session closes."
+                    : "Wake-word detection enabled. Say “Hey Sync” or “Hey Nullverox” to activate me.");
+        } catch (Exception error) {
+            preferences.setWakeWordEnabled(false);
+            return new Result(true, false,
+                    "I couldn't start wake-word detection: "
+                            + (error.getMessage() == null ? error.toString() : error.getMessage()),
+                    "wake_word", 0);
+        }
+    }
+
+    private static String normalizeAppName(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.US)
+                .replaceAll("[^a-z0-9]", "");
+    }
+
+    private static int appMatchScore(String wanted, String candidate) {
+        if (wanted.isEmpty() || candidate.isEmpty()) return 0;
+        if (wanted.equals(candidate)) return 1000;
+        if (candidate.contains(wanted) && wanted.length() >= 4) {
+            return 800 - Math.min(100, candidate.length() - wanted.length());
+        }
+        if (wanted.contains(candidate) && candidate.length() >= 4) {
+            return 760 - Math.min(100, wanted.length() - candidate.length());
+        }
+        if (wanted.length() < 5 || candidate.length() < 5) return 0;
+        int distance = editDistance(wanted, candidate);
+        int maxDistance = Math.max(1, Math.min(3, Math.max(wanted.length(), candidate.length()) / 4));
+        if (distance > maxDistance) return 0;
+        return 600 - distance * 80 - Math.abs(wanted.length() - candidate.length()) * 5;
+    }
+
+    private static int editDistance(String a, String b) {
+        int[] previous = new int[b.length() + 1];
+        int[] current = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) previous[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            current[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                current[j] = Math.min(Math.min(current[j - 1] + 1,
+                                previous[j] + 1), previous[j - 1] + cost);
+            }
+            int[] swap = previous;
+            previous = current;
+            current = swap;
+        }
+        return previous[b.length()];
+    }
+
     private Result launchApp(String query) {
         PackageManager pm = context.getPackageManager();
-        String wanted = query.toLowerCase(Locale.US).trim();
+        String wanted = normalizeAppName(query);
         if ("fb".equals(wanted)) wanted = "facebook";
         else if ("ig".equals(wanted)) wanted = "instagram";
         else if ("wa".equals(wanted)) wanted = "whatsapp";
         else if ("yt".equals(wanted)) wanted = "youtube";
         else if ("dc".equals(wanted)) wanted = "discord";
+        // Speech recognition commonly hears ChatGPT as “chat gbt” or “jack gbt”.
+        // Canonicalize these narrow, known variants before fuzzy matching.
+        if ("chatgbt".equals(wanted) || "jackgbt".equals(wanted)
+                || "jackgpt".equals(wanted) || "chatgptapp".equals(wanted)) {
+            wanted = "chatgpt";
+        }
+
         String packageName = null;
         CharSequence label = null;
-
-        Intent launcher = new Intent(Intent.ACTION_MAIN);
-        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+        int bestScore = 0;
         List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
         for (ApplicationInfo app : apps) {
             CharSequence appLabel = pm.getApplicationLabel(app);
             String name = appLabel == null ? "" : appLabel.toString();
-            if (name.equalsIgnoreCase(wanted) || name.toLowerCase(Locale.US).contains(wanted)) {
+            String normalizedName = normalizeAppName(name);
+            int score = appMatchScore(wanted, normalizedName);
+            if (score > bestScore) {
+                bestScore = score;
                 packageName = app.packageName;
                 label = appLabel;
-                break;
+            }
+        }
+
+        // If the app label was hidden from the launcher listing, try ChatGPT's
+        // known Android package as a final fallback. Package visibility is still
+        // respected by Android; this does not bypass platform restrictions.
+        if (packageName == null && "chatgpt".equals(wanted)) {
+            try {
+                ApplicationInfo app = pm.getApplicationInfo("com.openai.chatgpt", 0);
+                packageName = app.packageName;
+                label = pm.getApplicationLabel(app);
+            } catch (Exception ignored) {
             }
         }
 
         if (packageName == null) {
             try {
-                packageName = context.getPackageManager()
-                        .getApplicationInfo(wanted, 0).packageName;
+                packageName = pm.getApplicationInfo(query.trim(), 0).packageName;
             } catch (Exception ignored) {
             }
         }
