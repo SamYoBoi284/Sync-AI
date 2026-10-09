@@ -24,10 +24,10 @@ public final class VoskModelInstaller {
 
     public static boolean isInstalled(Context context) {
         File root = modelDirectory(context);
-        return new File(root, "am/final.mdl").isFile()
-                && new File(root, "conf/model.conf").isFile()
-                && new File(root, "graph/HCLr.fst").isFile()
-                && new File(root, "graph/Gr.fst").isFile();
+        return nonEmpty(new File(root, "am/final.mdl"))
+                && nonEmpty(new File(root, "conf/model.conf"))
+                && nonEmpty(new File(root, "graph/HCLr.fst"))
+                && nonEmpty(new File(root, "graph/Gr.fst"));
     }
 
     public static void importZip(Context context, Uri uri) throws Exception {
@@ -37,6 +37,7 @@ public final class VoskModelInstaller {
         File target = modelDirectory(app);
         File backup = new File(files, MODEL_DIR + ".backup");
         deleteRecursively(temp);
+        if (!target.exists() && backup.exists()) backup.renameTo(target);
         deleteRecursively(backup);
         if (!temp.mkdirs() && !temp.isDirectory()) {
             throw new IllegalStateException("Could not create the temporary Vosk model folder.");
@@ -110,10 +111,14 @@ public final class VoskModelInstaller {
     }
 
     private static boolean isValidModel(File root) {
-        return new File(root, "am/final.mdl").isFile()
-                && new File(root, "conf/model.conf").isFile()
-                && new File(root, "graph/HCLr.fst").isFile()
-                && new File(root, "graph/Gr.fst").isFile();
+        return nonEmpty(new File(root, "am/final.mdl"))
+                && nonEmpty(new File(root, "conf/model.conf"))
+                && nonEmpty(new File(root, "graph/HCLr.fst"))
+                && nonEmpty(new File(root, "graph/Gr.fst"));
+    }
+
+    private static boolean nonEmpty(File file) {
+        return file.isFile() && file.length() > 0L;
     }
 
     private static void deleteRecursively(File file) {
