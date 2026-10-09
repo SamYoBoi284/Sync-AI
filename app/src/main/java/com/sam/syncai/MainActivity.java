@@ -56,6 +56,7 @@ public final class MainActivity extends Activity {
     private String pendingChatExport;
     private String pendingLogExport;
     private boolean pendingWakeWordStart;
+    private SyncDialog voiceSettingsDialog;
 
     private static final int BG = Color.rgb(6, 8, 16);
     private static final int SURFACE = Color.rgb(14, 18, 31);
@@ -1320,11 +1321,15 @@ public final class MainActivity extends Activity {
         });
         content.addView(assistant);
 
-        new SyncDialog.Builder(this, accent)
+        if (voiceSettingsDialog != null && voiceSettingsDialog.isShowing()) {
+            voiceSettingsDialog.dismiss();
+        }
+        voiceSettingsDialog = new SyncDialog.Builder(this, accent)
                 .setTitle("VOICE MODE")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
-                .show();
+                .create();
+        voiceSettingsDialog.show();
     }
 
     private void showAbout() {
