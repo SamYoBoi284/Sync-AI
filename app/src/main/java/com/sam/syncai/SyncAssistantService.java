@@ -267,7 +267,7 @@ public final class SyncAssistantService extends Service implements RecognitionLi
                 .setContentIntent(openPending)
                 .setOngoing(true)
                 .addAction(new Notification.Action.Builder(
-                        null, "Stop listening", stopPending).build());
+                        android.R.drawable.ic_media_pause, "Stop listening", stopPending).build());
         return builder.build();
     }
 
