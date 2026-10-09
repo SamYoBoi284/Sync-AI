@@ -31,13 +31,13 @@ import java.util.List;
  * same motion system as the rest of the app instead of the stock Android popup.
  */
 public final class SyncDialog implements DialogInterface {
-    private static final int SURFACE = Color.rgb(14, 17, 27);
-    private static final int SURFACE_2 = Color.rgb(21, 25, 38);
-    private static final int BUTTON = Color.rgb(28, 33, 49);
-    private static final int BORDER = Color.rgb(34, 40, 60);
-    private static final int TEXT = Color.rgb(240, 242, 250);
-    private static final int BODY = Color.rgb(208, 213, 230);
-    private static final int MUTED = Color.rgb(145, 153, 177);
+    private static final int SURFACE = Color.rgb(14, 18, 31);
+    private static final int SURFACE_2 = Color.rgb(21, 27, 44);
+    private static final int BUTTON = Color.rgb(23, 30, 49);
+    private static final int BORDER = Color.rgb(42, 52, 78);
+    private static final int TEXT = Color.rgb(245, 247, 255);
+    private static final int BODY = Color.rgb(216, 223, 241);
+    private static final int MUTED = Color.rgb(151, 164, 190);
     private static final float DIM = 0.62f;
 
     private final Context ctx;
