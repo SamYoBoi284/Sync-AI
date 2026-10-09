@@ -362,6 +362,7 @@ public final class VoiceModeActivity extends Activity {
         String lower = clean.toLowerCase(Locale.US);
         if (lower.matches(".*\\b(?:stop listening|goodbye|exit|cancel|close sync|that's all|thats all)\\b.*")) {
             appendVoiceChat(clean, "Alright bro.", null);
+            showResponse("Alright bro.");
             speakAndMaybeListen("Alright bro.", true);
             return;
         }
