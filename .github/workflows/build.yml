@@ -2,7 +2,7 @@ name: Build Sync//AI APK
 
 on:
   push:
-    branches: [ "main", "native-gguf-chat-ui", "sync-ai-toolcore-voice-history", "sync-ai-context-visual-813e999-v2", "feat/hey-sync-vosk-visual-refresh", "latest-sync-ai-development-branch", "fix/external-voice-handoff-transcripts" ]
+    branches: [ "main", "native-gguf-chat-ui", "sync-ai-toolcore-voice-history", "sync-ai-context-visual-813e999-v2", "feat/hey-sync-vosk-visual-refresh", "latest-sync-ai-development-branch", "fix/external-voice-handoff-transcripts", "feat/fuzzy-app-launch-wake-toggle" ]
   pull_request:
     branches: [ "main", "sync-ai-context-visual-813e999-v2" ]
   workflow_dispatch:
