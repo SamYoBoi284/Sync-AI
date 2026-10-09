@@ -508,6 +508,30 @@ public final class VoiceModeActivity extends Activity {
         return model == null ? "" : model.name;
     }
 
+    private TextView addTranscriptEntry(String speaker, String message, boolean fromUser) {
+        LinearLayout bubble = new LinearLayout(this);
+        bubble.setOrientation(LinearLayout.VERTICAL);
+        bubble.setPadding(dp(10), dp(7), dp(10), dp(8));
+        bubble.setBackground(round(fromUser ? 0x443C6EA8 : 0x443D3266, 16));
+        TextView heading = text(speaker, 10, fromUser ? 0xFFB9D8FF : accent, true);
+        TextView body = text(message == null ? "" : message, 13, Color.WHITE, false);
+        body.setMaxWidth(dp(270));
+        bubble.addView(heading);
+        bubble.addView(body);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.gravity = fromUser ? Gravity.END : Gravity.START;
+        lp.bottomMargin = dp(7);
+        transcriptContainer.addView(bubble, lp);
+        scrollTranscriptToBottom();
+        return body;
+    }
+
+    private void scrollTranscriptToBottom() {
+        if (responseScroll != null) {
+            responseScroll.post(() -> responseScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
     private void showResponse(String text) {
         main.post(() -> {
             if (destroyed || responseView == null) return;
