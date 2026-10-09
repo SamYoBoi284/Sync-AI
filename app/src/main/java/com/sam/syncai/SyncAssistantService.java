@@ -17,6 +17,7 @@ import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.provider.Settings;
 
 import org.json.JSONObject;
 import org.vosk.Model;
@@ -58,11 +59,23 @@ public final class SyncAssistantService extends Service implements RecognitionLi
     private boolean receiverRegistered;
     private final Runnable launchTimeout = () -> {
         if (running && waitingForVoiceStart && !voiceModeActive) {
+            String assistantSettings = readAssistantSettings();
+            boolean syncIsDefault = assistantSettings.contains(getPackageName());
             SyncEventLogger.record(this, "SyncAssistantService",
                     "VOICE_MODE_START_TIMEOUT", "WARN",
-                    "assistant activity did not signal start; restarting wake listener");
+                    "assistant activity did not signal start; syncIsDefault=" + syncIsDefault
+                            + " settings=" + assistantSettings);
             waitingForVoiceStart = false;
             startWakeListening();
+            if (!syncIsDefault) {
+                main.postDelayed(() -> updateNotification(
+                        "Wake word works. Set Sync AI as default assistant in Voice & Wake Word settings."),
+                        300L);
+            } else {
+                main.postDelayed(() -> updateNotification(
+                        "Sync AI is default, but voice mode did not open. Export logs for diagnosis."),
+                        300L);
+            }
         }
     };
 
@@ -226,7 +239,14 @@ public final class SyncAssistantService extends Service implements RecognitionLi
     private void triggerAssistant() {
         SyncEventLogger.record(this, "SyncAssistantService", "WAKE_WORD_DETECTED",
                 "INFO", "phrase=hey sync; suspending Vosk before assistant handoff");
-        updateNotification("Hey Sync detected — opening voice mode.");
+        String assistantSettings = readAssistantSettings();
+        boolean syncIsDefault = assistantSettings.contains(getPackageName());
+        SyncEventLogger.record(this, "SyncAssistantService", "ASSISTANT_CONFIGURATION",
+                syncIsDefault ? "INFO" : "WARN",
+                "syncIsDefault=" + syncIsDefault + " settings=" + assistantSettings);
+        updateNotification(syncIsDefault
+                ? "Hey Sync detected — opening voice mode."
+                : "Hey Sync detected. Sync AI must be the default assistant to open voice mode.");
         stopSpeechPipeline();
         vibrate();
         waitingForVoiceStart = true;
@@ -245,6 +265,15 @@ public final class SyncAssistantService extends Service implements RecognitionLi
             updateNotification("Couldn't open voice mode — tap Sync AI to reopen.");
             main.postDelayed(this::startWakeListening, 1000L);
         }
+    }
+
+    private String readAssistantSettings() {
+        String voiceInteraction = Settings.Secure.getString(
+                getContentResolver(), Settings.Secure.VOICE_INTERACTION_SERVICE);
+        String assistant = Settings.Secure.getString(
+                getContentResolver(), Settings.Secure.ASSISTANT);
+        return "voiceInteractionService=" + String.valueOf(voiceInteraction)
+                + "; assistant=" + String.valueOf(assistant);
     }
 
     private void stopSpeechPipeline() {
