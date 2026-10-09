@@ -90,6 +90,11 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         return running;
     }
 
+    public static void requestStop(Context context) {
+        running = false;
+        context.stopService(new Intent(context, SyncAssistantService.class));
+    }
+
     @Override public void onCreate() {
         super.onCreate();
         SyncEventLogger.install(this);
@@ -111,6 +116,7 @@ public final class SyncAssistantService extends Service implements RecognitionLi
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            running = false;
             getPreferences().setWakeWordEnabled(false);
             stopSelf();
             return START_NOT_STICKY;
