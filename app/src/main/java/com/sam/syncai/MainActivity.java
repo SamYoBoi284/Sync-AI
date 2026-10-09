@@ -512,6 +512,21 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void bindWakeWordToggle(Switch toggle) {
+        toggle.setOnCheckedChangeListener((buttonView, enabled) -> {
+            boolean running = SyncAssistantService.isRunning();
+            if (enabled && !running) {
+                // Only show ON after the foreground listener actually starts.
+                toggle.setOnCheckedChangeListener(null);
+                toggle.setChecked(false);
+                bindWakeWordToggle(toggle);
+                toggleWakeWord();
+            } else if (!enabled && running) {
+                toggleWakeWord();
+            }
+        });
+    }
+
     private void toggleWakeWord() {
         if (SyncAssistantService.isRunning()) {
             runtime.preferences().setWakeWordEnabled(false);
@@ -1325,32 +1340,7 @@ public final class MainActivity extends Activity {
         Switch wakeWordToggle = new Switch(this);
         wakeWordToggle.setContentDescription("Enable Hey Sync wake-word listening");
         wakeWordToggle.setChecked(SyncAssistantService.isRunning());
-        wakeWordToggle.setOnCheckedChangeListener((buttonView, enabled) -> {
-            boolean currentlyRunning = SyncAssistantService.isRunning();
-            if (enabled && !currentlyRunning) {
-                // Keep the switch off until the service actually starts. The settings
-                // dialog is refreshed after startup and then reflects the real state.
-                wakeWordToggle.setOnCheckedChangeListener(null);
-                wakeWordToggle.setChecked(false);
-                wakeWordToggle.setOnCheckedChangeListener((view, checked) -> {
-                    boolean runningNow = SyncAssistantService.isRunning();
-                    if (checked && !runningNow) {
-                        view.setOnCheckedChangeListener(null);
-                        view.setChecked(false);
-                        view.setOnCheckedChangeListener((resetView, resetChecked) -> {
-                            boolean actualRunning = SyncAssistantService.isRunning();
-                            if (resetChecked != actualRunning) toggleWakeWord();
-                        });
-                        toggleWakeWord();
-                    } else if (!checked && runningNow) {
-                        toggleWakeWord();
-                    }
-                });
-                toggleWakeWord();
-            } else if (!enabled && currentlyRunning) {
-                toggleWakeWord();
-            }
-        });
+        bindWakeWordToggle(wakeWordToggle);
         wakeWordRow.addView(wakeWordToggle);
         LinearLayout.LayoutParams wakeRowLp =
                 new LinearLayout.LayoutParams(-1, -2);
