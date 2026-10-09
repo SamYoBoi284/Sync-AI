@@ -44,9 +44,10 @@ public final class VoskModelInstaller {
         }
 
         long unpacked = 0L;
-        try (InputStream raw = app.getContentResolver().openInputStream(uri);
-             ZipInputStream zip = new ZipInputStream(new BufferedInputStream(raw))) {
-            if (raw == null) throw new IllegalStateException("Could not open the selected ZIP file.");
+        InputStream raw = app.getContentResolver().openInputStream(uri);
+        if (raw == null) throw new IllegalStateException("Could not open the selected ZIP file.");
+        try (InputStream input = raw;
+             ZipInputStream zip = new ZipInputStream(new BufferedInputStream(input))) {
             ZipEntry entry;
             byte[] buffer = new byte[32 * 1024];
             while ((entry = zip.getNextEntry()) != null) {
