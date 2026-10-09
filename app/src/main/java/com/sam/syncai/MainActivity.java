@@ -561,6 +561,7 @@ public final class MainActivity extends Activity {
                 startWakeWordServiceNow();
             } else {
                 showToast("Microphone permission is required for Hey Sync.");
+                showVoiceSettings();
             }
         }
     }
@@ -1326,7 +1327,29 @@ public final class MainActivity extends Activity {
         wakeWordToggle.setChecked(SyncAssistantService.isRunning());
         wakeWordToggle.setOnCheckedChangeListener((buttonView, enabled) -> {
             boolean currentlyRunning = SyncAssistantService.isRunning();
-            if (enabled != currentlyRunning) toggleWakeWord();
+            if (enabled && !currentlyRunning) {
+                // Keep the switch off until the service actually starts. The settings
+                // dialog is refreshed after startup and then reflects the real state.
+                wakeWordToggle.setOnCheckedChangeListener(null);
+                wakeWordToggle.setChecked(false);
+                wakeWordToggle.setOnCheckedChangeListener((view, checked) -> {
+                    boolean runningNow = SyncAssistantService.isRunning();
+                    if (checked && !runningNow) {
+                        view.setOnCheckedChangeListener(null);
+                        view.setChecked(false);
+                        view.setOnCheckedChangeListener((resetView, resetChecked) -> {
+                            boolean actualRunning = SyncAssistantService.isRunning();
+                            if (resetChecked != actualRunning) toggleWakeWord();
+                        });
+                        toggleWakeWord();
+                    } else if (!checked && runningNow) {
+                        toggleWakeWord();
+                    }
+                });
+                toggleWakeWord();
+            } else if (!enabled && currentlyRunning) {
+                toggleWakeWord();
+            }
         });
         wakeWordRow.addView(wakeWordToggle);
         LinearLayout.LayoutParams wakeRowLp =
