@@ -171,7 +171,8 @@ public final class SyncAssistantService extends Service implements RecognitionLi
     private void inspectHypothesis(String hypothesis) {
         if (hypothesis == null || !running || voiceModeActive || waitingForVoiceStart) return;
         try {
-            String heard = new JSONObject(hypothesis).optString("text", "")
+            JSONObject result = new JSONObject(hypothesis);
+            String heard = result.optString("text", result.optString("partial", ""))
                     .trim().toLowerCase(Locale.US).replaceAll("\\s+", " ");
             if ("hey sync".equals(heard) && wakeTriggered.compareAndSet(false, true)) {
                 triggerAssistant();
