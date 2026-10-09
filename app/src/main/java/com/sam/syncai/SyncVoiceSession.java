@@ -58,7 +58,15 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         android.util.Log.d("SyncAI", "VoiceInteractionSession constructed");
         runtime = SyncRuntime.get(context);
         accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
+    }
+
+    @Override public void onCreate() {
+        super.onCreate();
+        // VoiceInteractionSession APIs that affect the active session are only
+        // valid after Android has completed the session's onCreate lifecycle.
         setKeepAwake(true);
+        SyncEventLogger.record(getContext(), "SyncVoiceSession",
+                "SESSION_CREATED", "INFO", "keep-awake enabled after session creation");
     }
 
     @Override public View onCreateContentView() {

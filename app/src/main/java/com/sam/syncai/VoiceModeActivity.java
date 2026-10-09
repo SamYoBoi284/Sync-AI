@@ -42,6 +42,7 @@ public final class VoiceModeActivity extends Activity {
     private TextView transcriptView;
     private TextView responseView;
     private ScrollView responseScroll;
+    private LinearLayout transcriptContainer;
     private View micButton;
     private View panelView;
     private android.animation.ValueAnimator micPulse;
@@ -126,25 +127,31 @@ public final class VoiceModeActivity extends Activity {
             if (processing.get()) return;
             startListening();
         });
-        LinearLayout.LayoutParams micLp = new LinearLayout.LayoutParams(dp(92), dp(92));
+        LinearLayout.LayoutParams micLp = new LinearLayout.LayoutParams(dp(76), dp(76));
         micLp.gravity = Gravity.CENTER_HORIZONTAL;
         micLp.topMargin = dp(8);
         micLp.bottomMargin = dp(10);
         panel.addView(micButton, micLp);
 
-        transcriptView = text("Say something…", 15, Color.WHITE, false);
+        transcriptView = text("Listening for your voice…", 12, Color.rgb(175, 185, 207), false);
         transcriptView.setGravity(Gravity.CENTER);
-        transcriptView.setPadding(dp(6), dp(4), dp(6), dp(10));
+        transcriptView.setMaxLines(2);
+        transcriptView.setPadding(dp(6), dp(4), dp(6), dp(8));
         panel.addView(transcriptView);
 
         responseScroll = new ScrollView(this);
-        responseView = text("", 14, Color.rgb(215, 219, 232), false);
-        responseView.setPadding(dp(4), dp(8), dp(4), dp(4));
-        responseScroll.addView(responseView);
-        panel.addView(responseScroll, new LinearLayout.LayoutParams(-1, dp(105)));
+        responseScroll.setFillViewport(false);
+        responseScroll.setClipToPadding(false);
+        transcriptContainer = new LinearLayout(this);
+        transcriptContainer.setOrientation(LinearLayout.VERTICAL);
+        transcriptContainer.setPadding(dp(2), dp(4), dp(2), dp(6));
+        responseScroll.addView(transcriptContainer,
+                new ScrollView.LayoutParams(-1, -2));
+        responseView = null;
+        panel.addView(responseScroll, new LinearLayout.LayoutParams(-1, dp(135)));
 
         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
-                dp(330), dp(355), Gravity.CENTER);
+                dp(330), dp(385), Gravity.CENTER);
         root.addView(panel, panelLp);
         panelView = panel;
         if (!Motion.reduced(this)) {
@@ -290,7 +297,7 @@ public final class VoiceModeActivity extends Activity {
                 main.post(() -> updateState("LISTENING"));
             }
             @Override public void onError(Exception error) {
-                main.post(() -> responseView.setText(
+                main.post(() -> showResponse(
                         "Model load failed; deterministic tools remain available."));
             }
         });
@@ -304,7 +311,7 @@ public final class VoiceModeActivity extends Activity {
             try {
                 startActivity(new Intent(this, MicPermissionActivity.class));
             } catch (Exception e) {
-                responseView.setText("Open Sync//AI once and enable microphone permission in Android Settings.");
+                showResponse("Open Sync AI once and enable microphone permission in Android Settings.");
             }
             main.postDelayed(() -> {
                 if (!destroyed && this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
@@ -336,7 +343,7 @@ public final class VoiceModeActivity extends Activity {
             recognizer.startListening(intent);
         } catch (Exception e) {
             updateState("MIC ERROR");
-            responseView.setText(e.getMessage() == null ? e.toString() : e.getMessage());
+            showResponse(e.getMessage() == null ? e.toString() : e.getMessage());
         }
     }
 
@@ -348,11 +355,14 @@ public final class VoiceModeActivity extends Activity {
         String clean = text.trim();
         SyncEventLogger.record(this, "VoiceModeActivity", "VOICE_TEXT_RECEIVED", "INFO",
                 "length=" + clean.length());
-        transcriptView.setText("“" + clean + "”");
+        transcriptView.setText("Processing your message…");
+        addTranscriptEntry("YOU", clean, true);
+        responseView = addTranscriptEntry("SYNC AI", "Thinking…", false);
 
         String lower = clean.toLowerCase(Locale.US);
         if (lower.matches(".*\\b(?:stop listening|goodbye|exit|cancel|close sync|that's all|thats all)\\b.*")) {
             appendVoiceChat(clean, "Alright bro.", null);
+            showResponse("Alright bro.");
             speakAndMaybeListen("Alright bro.", true);
             return;
         }
@@ -400,7 +410,10 @@ public final class VoiceModeActivity extends Activity {
         runtime.backend().generate(messages, new GenerationConfig(), new LocalModelBackend.GenerateCallback() {
             @Override public void onToken(String token) {
                 response.append(token);
-                main.post(() -> responseView.setText(response.toString()));
+                main.post(() -> {
+                    if (responseView != null) responseView.setText(response.toString());
+                    scrollTranscriptToBottom();
+                });
             }
             @Override public void onComplete() {
                 long total = System.currentTimeMillis() - started;
@@ -420,7 +433,8 @@ public final class VoiceModeActivity extends Activity {
                 main.post(() -> {
                     processing.set(false);
                     updateState("RESPONDING");
-                    responseView.setText(finalText);
+                    if (responseView != null) responseView.setText(finalText);
+                    scrollTranscriptToBottom();
                 });
                 speakAndMaybeListen(finalText, false);
             }
@@ -439,7 +453,8 @@ public final class VoiceModeActivity extends Activity {
                 main.post(() -> {
                     processing.set(false);
                     updateState("ERROR");
-                    responseView.setText(failure + "\n\n" + diag.format());
+                    if (responseView != null) responseView.setText(failure + "\n\n" + diag.format());
+                    scrollTranscriptToBottom();
                 });
                 speakAndMaybeListen(failure, false);
             }
@@ -499,11 +514,39 @@ public final class VoiceModeActivity extends Activity {
         return model == null ? "" : model.name;
     }
 
+    private TextView addTranscriptEntry(String speaker, String message, boolean fromUser) {
+        LinearLayout bubble = new LinearLayout(this);
+        bubble.setOrientation(LinearLayout.VERTICAL);
+        bubble.setPadding(dp(10), dp(7), dp(10), dp(8));
+        bubble.setBackground(round(fromUser ? 0x443C6EA8 : 0x443D3266, 16));
+        TextView heading = text(speaker, 10, fromUser ? 0xFFB9D8FF : accent, true);
+        TextView body = text(message == null ? "" : message, 13, Color.WHITE, false);
+        body.setMaxWidth(dp(270));
+        bubble.addView(heading);
+        bubble.addView(body);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.gravity = fromUser ? Gravity.END : Gravity.START;
+        lp.bottomMargin = dp(7);
+        transcriptContainer.addView(bubble, lp);
+        scrollTranscriptToBottom();
+        return body;
+    }
+
+    private void scrollTranscriptToBottom() {
+        if (responseScroll != null) {
+            responseScroll.post(() -> responseScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
     private void showResponse(String text) {
         main.post(() -> {
-            if (destroyed || responseView == null) return;
+            if (destroyed) return;
+            if (responseView == null && transcriptContainer != null) {
+                responseView = addTranscriptEntry("SYNC AI", "", false);
+            }
+            if (responseView == null) return;
             responseView.setText(text == null ? "" : text);
-            if (responseScroll != null) responseScroll.post(() -> responseScroll.fullScroll(View.FOCUS_DOWN));
+            scrollTranscriptToBottom();
         });
     }
 

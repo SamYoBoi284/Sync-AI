@@ -2,6 +2,7 @@ package com.sam.syncai;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.role.RoleManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -53,6 +54,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_EXPORT_LOGS = 1205;
     private static final int REQ_IMPORT_VOSK_MODEL = 1206;
     private static final int REQ_WAKE_MIC_PERMISSION = 1207;
+    private static final int REQ_ASSISTANT_ROLE = 1208;
 
     private String pendingChatExport;
     private String pendingLogExport;
@@ -445,6 +447,14 @@ public final class MainActivity extends Activity {
         SyncEventLogger.record(this, "MainActivity", "onActivityResult", "INFO",
                 "requestCode=" + requestCode + " resultCode=" + resultCode
                         + " hasData=" + (data != null));
+        if (requestCode == REQ_ASSISTANT_ROLE) {
+            if (resultCode == RESULT_OK) {
+                showToast("Sync AI selected. Set Samsung Side button → Press and hold → Digital assistant.");
+            } else {
+                showToast("Sync AI was not selected as the default assistant.");
+            }
+            return;
+        }
         if (requestCode == REQ_IMPORT_MODEL && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri != null) importModel(uri);
@@ -1279,6 +1289,37 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    private void requestDefaultAssistant() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                RoleManager roleManager = getSystemService(RoleManager.class);
+                if (roleManager != null
+                        && roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
+                    if (roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
+                        showToast("Sync AI is already selected as the default assistant. Check Samsung's Side button settings too.");
+                        startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+                    } else {
+                        startActivityForResult(
+                                roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT),
+                                REQ_ASSISTANT_ROLE);
+                    }
+                    return;
+                }
+            }
+            startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+        } catch (Exception primary) {
+            try {
+                startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
+            } catch (Exception fallback) {
+                SyncEventLogger.recordException(this, "MainActivity",
+                        "ASSISTANT_SETTINGS_LAUNCH_ERROR", fallback,
+                        "Role/default-app settings unavailable; primary="
+                                + primary.getClass().getSimpleName());
+                showError("Assistant settings unavailable", fallback);
+            }
+        }
+    }
+
     private void launchVoiceMode() {
         SyncEventLogger.record(this, "MainActivity", "VOICE_MODE_LAUNCH_REQUEST", "INFO",
                 "source=in-app");
@@ -1354,14 +1395,8 @@ public final class MainActivity extends Activity {
 
         Button assistant = sectionButton(
                 "ANDROID ASSISTANT SETTINGS",
-                "Select Sync AI as the default digital assistant");
-        assistant.setOnClickListener(v -> {
-            try {
-                startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
-            } catch (Exception e) {
-                showError("Assistant settings unavailable", e);
-            }
-        });
+                "Choose Sync AI, then set Samsung Side button hold to Digital assistant");
+        assistant.setOnClickListener(v -> requestDefaultAssistant());
         content.addView(assistant);
 
         if (voiceSettingsDialog != null && voiceSettingsDialog.isShowing()) {

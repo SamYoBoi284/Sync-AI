@@ -17,6 +17,7 @@ import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.provider.Settings;
 
 import org.json.JSONObject;
 import org.vosk.Model;
@@ -58,11 +59,23 @@ public final class SyncAssistantService extends Service implements RecognitionLi
     private boolean receiverRegistered;
     private final Runnable launchTimeout = () -> {
         if (running && waitingForVoiceStart && !voiceModeActive) {
+            String assistantSettings = readAssistantSettings();
+            boolean syncIsDefault = assistantSettings.contains(getPackageName());
             SyncEventLogger.record(this, "SyncAssistantService",
                     "VOICE_MODE_START_TIMEOUT", "WARN",
-                    "assistant activity did not signal start; restarting wake listener");
+                    "assistant activity did not signal start; syncIsDefault=" + syncIsDefault
+                            + " settings=" + assistantSettings);
             waitingForVoiceStart = false;
             startWakeListening();
+            if (!syncIsDefault) {
+                main.postDelayed(() -> updateNotification(
+                        "Wake word works. Set Sync AI as default assistant in Voice & Wake Word settings."),
+                        300L);
+            } else {
+                main.postDelayed(() -> updateNotification(
+                        "Sync AI is default, but voice mode did not open. Export logs for diagnosis."),
+                        300L);
+            }
         }
     };
 
@@ -100,7 +113,7 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         super.onCreate();
         SyncEventLogger.install(this);
         createNotificationChannel();
-        startForegroundCompat(buildNotification("Say “Hey Sync” to start voice mode."));
+        startForegroundCompat(buildNotification("Say “Hey Sync” or “Hey Nullverox” to start voice mode."));
         running = true;
         IntentFilter filter = new IntentFilter();
         filter.addAction(ACTION_VOICE_MODE_STARTED);
@@ -195,12 +208,12 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         if (!getPreferences().isWakeWordEnabled()) return;
         try {
             wakeTriggered.set(false);
-            recognizer = new Recognizer(model, 16000.0f, "[\"hey sync\"]");
+            recognizer = new Recognizer(model, 16000.0f, "[\"hey sync\", \"hey nullverox\", \"hey null verox\", \"[unk]\"]");
             speechService = new SpeechService(recognizer, 16000.0f);
             speechService.startListening(this);
-            updateNotification("Listening locally for “Hey Sync”. Tap to stop.");
+            updateNotification("Listening locally for “Hey Sync” or “Hey Nullverox”. Tap to stop.");
             SyncEventLogger.record(this, "SyncAssistantService", "WAKE_LISTENING",
-                    "INFO", "grammar=[hey sync]; local model; no LLM loaded by service");
+                    "INFO", "grammar=[hey sync, hey nullverox, hey null verox, [unk]]; local model; no LLM loaded by service");
         } catch (Exception error) {
             SyncEventLogger.recordException(this, "SyncAssistantService",
                     "WAKE_LISTEN_START_ERROR", error, "could not start Vosk");
@@ -215,36 +228,74 @@ public final class SyncAssistantService extends Service implements RecognitionLi
             JSONObject result = new JSONObject(hypothesis);
             String heard = result.optString("text", result.optString("partial", ""))
                     .trim().toLowerCase(Locale.US).replaceAll("\\s+", " ");
-            if ("hey sync".equals(heard) && wakeTriggered.compareAndSet(false, true)) {
-                triggerAssistant();
+            // Match only a complete wake phrase. The [unk] grammar alternative lets
+            // ordinary speech remain unrecognized instead of forcing every utterance
+            // into one of the wake-word phrases.
+            boolean isWakePhrase = "hey sync".equals(heard)
+                    || "hey nullverox".equals(heard)
+                    || "hey null verox".equals(heard);
+            if (isWakePhrase && wakeTriggered.compareAndSet(false, true)) {
+                triggerAssistant(heard);
             }
         } catch (Exception ignored) {
             // Vosk can emit an empty hypothesis while the recognizer is warming up.
         }
     }
 
-    private void triggerAssistant() {
+    private void triggerAssistant(String phrase) {
         SyncEventLogger.record(this, "SyncAssistantService", "WAKE_WORD_DETECTED",
-                "INFO", "phrase=hey sync; suspending Vosk before assistant handoff");
-        updateNotification("Hey Sync detected — opening voice mode.");
+                "INFO", "phrase=" + phrase + "; suspending Vosk before assistant handoff");
+        String assistantSettings = readAssistantSettings();
+        boolean syncIsDefault = assistantSettings.contains(getPackageName());
+        SyncEventLogger.record(this, "SyncAssistantService", "ASSISTANT_CONFIGURATION",
+                syncIsDefault ? "INFO" : "WARN",
+                "syncIsDefault=" + syncIsDefault + " settings=" + assistantSettings);
+        updateNotification(syncIsDefault
+                ? "Hey Sync detected — opening voice mode."
+                : "Hey Sync detected. Sync AI must be the default assistant to open voice mode.");
         stopSpeechPipeline();
         vibrate();
         waitingForVoiceStart = true;
         main.postDelayed(launchTimeout, 9000L);
+        SyncEventLogger.record(this, "SyncAssistantService", "MIC_HANDOFF_RELEASE_WAIT",
+                "INFO", "Vosk stopped; waiting briefly before requesting assistant session");
+        main.postDelayed(this::dispatchAssistantHandoff, 250L);
+    }
+
+    private void dispatchAssistantHandoff() {
+        if (!running || !waitingForVoiceStart || voiceModeActive) return;
         try {
-            Intent assist = new Intent(Intent.ACTION_ASSIST);
-            assist.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(assist);
-            SyncEventLogger.record(this, "SyncAssistantService", "ASSIST_HANDOFF",
-                    "INFO", "ACTION_ASSIST dispatched to Android default assistant");
+            // Wake-word activation already knows this is Sync AI. Do not send the
+            // implicit ACTION_ASSIST intent here: Android/Samsung can present an
+            // app chooser instead of opening the selected assistant session.
+            // Launch the same translucent voice Activity directly. The hardware
+            // assistant-button path remains owned by VoiceInteractionSession.
+            Intent voice = new Intent(this, VoiceModeActivity.class);
+            voice.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            SyncEventLogger.record(this, "SyncAssistantService",
+                    "WAKE_OVERLAY_LAUNCH_ATTEMPT", "INFO",
+                    "explicit VoiceModeActivity launch after Vosk shutdown");
+            startActivity(voice);
+            SyncEventLogger.record(this, "SyncAssistantService", "WAKE_OVERLAY_LAUNCH_DISPATCHED",
+                    "INFO", "explicit VoiceModeActivity launch dispatched");
         } catch (Exception error) {
             waitingForVoiceStart = false;
             main.removeCallbacks(launchTimeout);
             SyncEventLogger.recordException(this, "SyncAssistantService",
-                    "ASSIST_HANDOFF_ERROR", error, "ACTION_ASSIST launch failed");
-            updateNotification("Couldn't open voice mode — tap Sync AI to reopen.");
+                    "WAKE_OVERLAY_LAUNCH_ERROR", error,
+                    "explicit VoiceModeActivity launch failed");
+            updateNotification("Couldn't open voice mode — export logs for diagnosis.");
             main.postDelayed(this::startWakeListening, 1000L);
         }
+    }
+
+    private String readAssistantSettings() {
+        String voiceInteraction = Settings.Secure.getString(
+                getContentResolver(), "voice_interaction_service");
+        String assistant = Settings.Secure.getString(
+                getContentResolver(), "assistant");
+        return "voiceInteractionService=" + String.valueOf(voiceInteraction)
+                + "; assistant=" + String.valueOf(assistant);
     }
 
     private void stopSpeechPipeline() {
