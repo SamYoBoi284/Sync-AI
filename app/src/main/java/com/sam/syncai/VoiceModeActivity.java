@@ -127,25 +127,31 @@ public final class VoiceModeActivity extends Activity {
             if (processing.get()) return;
             startListening();
         });
-        LinearLayout.LayoutParams micLp = new LinearLayout.LayoutParams(dp(92), dp(92));
+        LinearLayout.LayoutParams micLp = new LinearLayout.LayoutParams(dp(76), dp(76));
         micLp.gravity = Gravity.CENTER_HORIZONTAL;
         micLp.topMargin = dp(8);
         micLp.bottomMargin = dp(10);
         panel.addView(micButton, micLp);
 
-        transcriptView = text("Say something…", 15, Color.WHITE, false);
+        transcriptView = text("Listening for your voice…", 12, Color.rgb(175, 185, 207), false);
         transcriptView.setGravity(Gravity.CENTER);
-        transcriptView.setPadding(dp(6), dp(4), dp(6), dp(10));
+        transcriptView.setMaxLines(2);
+        transcriptView.setPadding(dp(6), dp(4), dp(6), dp(8));
         panel.addView(transcriptView);
 
         responseScroll = new ScrollView(this);
-        responseView = text("", 14, Color.rgb(215, 219, 232), false);
-        responseView.setPadding(dp(4), dp(8), dp(4), dp(4));
-        responseScroll.addView(responseView);
-        panel.addView(responseScroll, new LinearLayout.LayoutParams(-1, dp(105)));
+        responseScroll.setFillViewport(false);
+        responseScroll.setClipToPadding(false);
+        transcriptContainer = new LinearLayout(this);
+        transcriptContainer.setOrientation(LinearLayout.VERTICAL);
+        transcriptContainer.setPadding(dp(2), dp(4), dp(2), dp(6));
+        responseScroll.addView(transcriptContainer,
+                new ScrollView.LayoutParams(-1, -2));
+        responseView = null;
+        panel.addView(responseScroll, new LinearLayout.LayoutParams(-1, dp(135)));
 
         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
-                dp(330), dp(355), Gravity.CENTER);
+                dp(330), dp(385), Gravity.CENTER);
         root.addView(panel, panelLp);
         panelView = panel;
         if (!Motion.reduced(this)) {
