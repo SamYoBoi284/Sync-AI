@@ -32,6 +32,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -50,15 +51,19 @@ public final class MainActivity extends Activity {
     private static final int REQ_PERMISSIONS = 1203;
     private static final int REQ_EXPORT_CHAT = 1204;
     private static final int REQ_EXPORT_LOGS = 1205;
+    private static final int REQ_IMPORT_VOSK_MODEL = 1206;
+    private static final int REQ_WAKE_MIC_PERMISSION = 1207;
 
     private String pendingChatExport;
     private String pendingLogExport;
+    private boolean pendingWakeWordStart;
+    private SyncDialog voiceSettingsDialog;
 
-    private static final int BG = Color.rgb(7, 8, 14);
-    private static final int SURFACE = Color.rgb(15, 18, 28);
-    private static final int SURFACE_2 = Color.rgb(21, 25, 38);
-    private static final int TEXT = Color.rgb(240, 242, 250);
-    private static final int MUTED = Color.rgb(145, 153, 177);
+    private static final int BG = Color.rgb(6, 8, 16);
+    private static final int SURFACE = Color.rgb(14, 18, 31);
+    private static final int SURFACE_2 = Color.rgb(21, 27, 44);
+    private static final int TEXT = Color.rgb(245, 247, 255);
+    private static final int MUTED = Color.rgb(151, 164, 190);
     private static final int ERROR = Color.rgb(255, 130, 145);
 
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
@@ -372,7 +377,10 @@ public final class MainActivity extends Activity {
     private LinearLayout card() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setBackground(round(SURFACE, dp(16)));
+        GradientDrawable surface = round(SURFACE, dp(18));
+        surface.setStroke(dp(1), Color.rgb(35, 43, 65));
+        layout.setBackground(surface);
+        layout.setElevation(dp(2));
         return layout;
     }
 
@@ -394,7 +402,9 @@ public final class MainActivity extends Activity {
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         b.setAllCaps(false);
         b.setPadding(dp(7), 0, dp(7), 0);
-        b.setBackground(round(Color.rgb(28, 33, 49), dp(13)));
+        GradientDrawable buttonSurface = round(Color.rgb(23, 30, 49), dp(13));
+        buttonSurface.setStroke(dp(1), Color.rgb(42, 52, 78));
+        b.setBackground(buttonSurface);
         Motion.pressable(b);
         return b;
     }
@@ -440,6 +450,11 @@ public final class MainActivity extends Activity {
             if (uri != null) importModel(uri);
             return;
         }
+        if (requestCode == REQ_IMPORT_VOSK_MODEL && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) importVoskModel(uri);
+            return;
+        }
         if (requestCode == REQ_IMPORT_MEMORY && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri != null) importMemory(uri);
@@ -463,6 +478,106 @@ public final class MainActivity extends Activity {
                 writeChatExport(uri, pendingLogExport);
             }
             pendingLogExport = null;
+        }
+    }
+
+    private void openVoskModelPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/x-zip-compressed"});
+        startActivityForResult(intent, REQ_IMPORT_VOSK_MODEL);
+    }
+
+    private void importVoskModel(Uri uri) {
+        showProgress(true);
+        ioExecutor.execute(() -> {
+            try {
+                VoskModelInstaller.importZip(this, uri);
+                SyncEventLogger.record(this, "VoskModelInstaller", "MODEL_IMPORT_SUCCESS",
+                        "INFO", "offline Vosk model installed in app-private storage");
+                runOnUiThread(() -> {
+                    showProgress(false);
+                    showToast("Vosk model installed. Hey Sync is ready to enable.");
+                    showVoiceSettings();
+                });
+            } catch (Exception error) {
+                SyncEventLogger.recordException(this, "VoskModelInstaller", "MODEL_IMPORT_ERROR",
+                        error, "uri=" + uri);
+                runOnUiThread(() -> {
+                    showProgress(false);
+                    showError("Vosk model import failed", error);
+                });
+            }
+        });
+    }
+
+    private void bindWakeWordToggle(Switch toggle) {
+        toggle.setOnCheckedChangeListener((buttonView, enabled) -> {
+            boolean running = SyncAssistantService.isRunning();
+            if (enabled && !running) {
+                // Only show ON after the foreground listener actually starts.
+                toggle.setOnCheckedChangeListener(null);
+                toggle.setChecked(false);
+                bindWakeWordToggle(toggle);
+                toggleWakeWord();
+            } else if (!enabled && running) {
+                toggleWakeWord();
+            }
+        });
+    }
+
+    private void toggleWakeWord() {
+        if (SyncAssistantService.isRunning()) {
+            runtime.preferences().setWakeWordEnabled(false);
+            SyncAssistantService.requestStop(this);
+            showToast("Hey Sync wake word disabled.");
+            showVoiceSettings();
+            return;
+        }
+        if (!VoskModelInstaller.isInstalled(this)) {
+            showToast("Import the Vosk model ZIP first.");
+            openVoskModelPicker();
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            pendingWakeWordStart = true;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_WAKE_MIC_PERMISSION);
+            return;
+        }
+        startWakeWordServiceNow();
+    }
+
+    private void startWakeWordServiceNow() {
+        pendingWakeWordStart = false;
+        runtime.preferences().setWakeWordEnabled(true);
+        Intent service = new Intent(this, SyncAssistantService.class);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
+            else startService(service);
+            showToast("Hey Sync enabled. The foreground notification stays visible while listening.");
+            new android.os.Handler(android.os.Looper.getMainLooper())
+                    .postDelayed(this::showVoiceSettings, 700L);
+        } catch (Exception error) {
+            runtime.preferences().setWakeWordEnabled(false);
+            SyncEventLogger.recordException(this, "MainActivity", "WAKE_SERVICE_START_ERROR",
+                    error, "starting Hey Sync foreground service");
+            showError("Could not enable Hey Sync", error);
+        }
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                                     int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_WAKE_MIC_PERMISSION && pendingWakeWordStart) {
+            pendingWakeWordStart = false;
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startWakeWordServiceNow();
+            } else {
+                showToast("Microphone permission is required for Hey Sync.");
+                showVoiceSettings();
+            }
         }
     }
 
@@ -538,7 +653,7 @@ public final class MainActivity extends Activity {
                     showProgress(false);
                     setBusy(false);
                     refreshStatus();
-                    SyncEventLogger.record(this, "ModelManager", "MODEL_LOAD_COMPLETE", "INFO",
+                    SyncEventLogger.record(MainActivity.this, "ModelManager", "MODEL_LOAD_COMPLETE", "INFO",
                             "model=" + model.name + " id=" + model.id);
                     showToast("Loaded " + model.name);
                 });
@@ -550,7 +665,7 @@ public final class MainActivity extends Activity {
                     showProgress(false);
                     setBusy(false);
                     refreshStatus();
-                    SyncEventLogger.recordException(this, "ModelManager", "MODEL_LOAD_ERROR",
+                    SyncEventLogger.recordException(MainActivity.this, "ModelManager", "MODEL_LOAD_ERROR",
                             error, "model=" + model.name + " id=" + model.id);
                     showError("Model load failed", error);
                 });
@@ -886,7 +1001,7 @@ public final class MainActivity extends Activity {
             out.append("PID: ").append(android.os.Process.myPid()).append('\n');
             out.append("Active Chat ID: ").append(runtime.preferences().getActiveChatId()).append('\n');
             out.append("Accent: ").append(AppPreferences.ACCENT_NAMES[
-                    runtime.preferences().getAccent()]).append('\n\n');
+                    runtime.preferences().getAccent()]).append("\n\n");
 
             out.append("=== PERSONALIZATION MEMORY ===\n");
             out.append(runtime.preferences().getMemory()).append("\n\n");
@@ -1060,6 +1175,10 @@ public final class MainActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
 
+        Button voice = sectionButton("VOICE & WAKE WORD", "Voice output, Hey Sync, assistant setup");
+        voice.setOnClickListener(v -> showVoiceSettings());
+        content.addView(voice);
+
         Button personalization = sectionButton("PERSONALIZATION", "Memory + 8 accent colors");
         personalization.setOnClickListener(v -> showPersonalization());
         content.addView(personalization);
@@ -1179,9 +1298,9 @@ public final class MainActivity extends Activity {
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
 
         TextView info = text(
-                "Voice mode is entered explicitly through Android's assistant entry point. "
-                        + "Sync does not run a wake word or background speech listener. "
-                        + "Microphone use starts only inside the active voice session.",
+                "Voice Mode still uses Android's assistant route. Hey Sync is optional and runs "
+                        + "only while its visible foreground notification is active. Import the "
+                        + "offline Vosk ZIP once; wake-word spotting does not load the GGUF model.",
                 13, MUTED, false);
         info.setPadding(0, 0, 0, dp(12));
         content.addView(info);
@@ -1196,6 +1315,43 @@ public final class MainActivity extends Activity {
         });
         content.addView(output);
 
+        LinearLayout wakeWordRow = new LinearLayout(this);
+        wakeWordRow.setGravity(Gravity.CENTER_VERTICAL);
+        wakeWordRow.setPadding(dp(14), dp(9), dp(10), dp(9));
+        wakeWordRow.setBackground(round(SURFACE_2, dp(14)));
+
+        LinearLayout wakeWordLabels = new LinearLayout(this);
+        wakeWordLabels.setOrientation(LinearLayout.VERTICAL);
+        TextView wakeWordTitle = text("HEY SYNC WAKE WORD", 13, TEXT, true);
+        TextView wakeWordStatus = text(
+                SyncAssistantService.isRunning()
+                        ? "Listening locally • tap to turn off"
+                        : (VoskModelInstaller.isInstalled(this)
+                                ? "Off • tap to start listening"
+                                : "Import the Vosk ZIP first"),
+                11, MUTED, false);
+        wakeWordLabels.addView(wakeWordTitle);
+        LinearLayout.LayoutParams wakeStatusLp =
+                new LinearLayout.LayoutParams(-1, -2);
+        wakeStatusLp.topMargin = dp(3);
+        wakeWordLabels.addView(wakeWordStatus, wakeStatusLp);
+        wakeWordRow.addView(wakeWordLabels, new LinearLayout.LayoutParams(0, -2, 1));
+
+        Switch wakeWordToggle = new Switch(this);
+        wakeWordToggle.setContentDescription("Enable Hey Sync wake-word listening");
+        wakeWordToggle.setChecked(SyncAssistantService.isRunning());
+        bindWakeWordToggle(wakeWordToggle);
+        wakeWordRow.addView(wakeWordToggle);
+        LinearLayout.LayoutParams wakeRowLp =
+                new LinearLayout.LayoutParams(-1, -2);
+        wakeRowLp.bottomMargin = dp(8);
+        content.addView(wakeWordRow, wakeRowLp);
+
+        Button importVosk = sectionButton("IMPORT VOSK MODEL ZIP",
+                VoskModelInstaller.isInstalled(this) ? "Offline speech model installed" : "Choose vosk-model-small-en-us-0.15.zip");
+        importVosk.setOnClickListener(v -> openVoskModelPicker());
+        content.addView(importVosk);
+
         Button assistant = sectionButton(
                 "ANDROID ASSISTANT SETTINGS",
                 "Select Sync AI as the default digital assistant");
@@ -1208,11 +1364,15 @@ public final class MainActivity extends Activity {
         });
         content.addView(assistant);
 
-        new SyncDialog.Builder(this, accent)
+        if (voiceSettingsDialog != null && voiceSettingsDialog.isShowing()) {
+            voiceSettingsDialog.dismiss();
+        }
+        voiceSettingsDialog = new SyncDialog.Builder(this, accent)
                 .setTitle("VOICE MODE")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
-                .show();
+                .create();
+        voiceSettingsDialog.show();
     }
 
     private void showAbout() {

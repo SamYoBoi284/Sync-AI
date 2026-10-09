@@ -79,15 +79,15 @@ public final class SyncEventLogger {
         long now = System.currentTimeMillis();
         long uptime = android.os.SystemClock.elapsedRealtime();
         String line = "{"
-                + ""id":" + id
-                + ","time":"" + escape(timestamp(now)) + """
-                + ","uptimeMs":" + uptime
-                + ","pid":" + Process.myPid()
-                + ","thread":"" + escape(Thread.currentThread().getName()) + """
-                + ","component":"" + escape(component) + """
-                + ","event":"" + escape(event) + """
-                + ","severity":"" + escape(severity) + """
-                + ","details":"" + escape(details == null ? "" : details) + """
+                + "\"id\":" + id
+                + ",\"time\":\"" + escape(timestamp(now)) + "\""
+                + ",\"uptimeMs\":" + uptime
+                + ",\"pid\":" + Process.myPid()
+                + ",\"thread\":\"" + escape(Thread.currentThread().getName()) + "\""
+                + ",\"component\":\"" + escape(component) + "\""
+                + ",\"event\":\"" + escape(event) + "\""
+                + ",\"severity\":\"" + escape(severity) + "\""
+                + ",\"details\":\"" + escape(details == null ? "" : details) + "\""
                 + "}";
         append(app, line);
         if ("ERROR".equalsIgnoreCase(severity) || "FATAL".equalsIgnoreCase(severity)) {
@@ -245,7 +245,7 @@ public final class SyncEventLogger {
     private static String escape(String value) {
         return value
                 .replace("\\", "\\\\")
-                .replace(""", "\\"")
+                .replace("\"", "\\\"")
                 .replace("\r", "\\r")
                 .replace("\n", "\\n")
                 .replace("\t", "\\t");

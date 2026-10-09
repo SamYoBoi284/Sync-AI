@@ -1,7 +1,7 @@
 # Sync AI — Context Tracker
 
 > Living handoff/context document for the Sync AI project.
-> Updated: 2026-09-30
+> Updated: 2026-10-09
 > Latest verified source branch: `sync-ai-context-visual-813e999-v2`
 > This tracker records implemented work and known verification status. Source code / CI remains authoritative.
 
@@ -105,11 +105,14 @@ Implemented components include:
 - explicit voice exit controls
 - voice-mode chat persistence
 
-### Wake word — intentionally removed
+### Wake word — opt-in Vosk implementation added in this branch
 
-There is **no wake-word detector** and no background hotword loop.
-
-Microphone use is intended to occur only while an explicit voice session is active. `RECORD_AUDIO` exists because SpeechRecognizer needs it; Sync does not intentionally keep a background speech listener running outside voice mode.
+- The new `SyncAssistantService` is an opt-in foreground microphone service using Vosk's local `vosk-model-small-en-us-0.15` model and strict `["hey sync"]` grammar.
+- Wake-word listening is disabled by default and is controlled from Settings → Voice & Wake Word. A visible ongoing notification includes a Stop action.
+- `VoskModelInstaller` imports the ZIP through Android's document picker, validates expected model files, extracts into app-private storage, and preserves an existing installed model if replacement fails.
+- The service does not initialize the GGUF/LLM while idle. On wake, it stops the Vosk recognizer before handing off through `Intent.ACTION_ASSIST`; voice-mode start/finish broadcasts pause and resume the wake listener to avoid microphone contention.
+- The Vosk ZIP is **not bundled in the APK or committed as a binary in this branch**; it must be imported once on-device. The archive supplied in ChatGPT Library was inspected and has the expected `vosk-model-small-en-us-0.15/` root structure.
+- This is source/CI work pending a successful build and real-device validation. Android microphone foreground-service and background activity launch rules may affect wake-to-overlay handoff; no auto-start-after-reboot behavior is added.
 
 ### Voice overlay — implemented
 

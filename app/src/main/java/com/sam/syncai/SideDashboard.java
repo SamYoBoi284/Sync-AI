@@ -79,7 +79,9 @@ public final class SideDashboard extends FrameLayout {
         panel = new LinearLayout(activity);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(18), dp(22), dp(14), dp(18));
-        panel.setBackground(round(Color.rgb(14, 17, 27), dp(24)));
+        GradientDrawable panelSurface = round(Color.rgb(14, 18, 31), dp(24));
+        panelSurface.setStroke(dp(1), Color.rgb(42, 52, 78));
+        panel.setBackground(panelSurface);
         panel.setElevation(dp(16));
 
         FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(dp(320), -1, Gravity.START);
@@ -110,7 +112,7 @@ public final class SideDashboard extends FrameLayout {
         mainContent = new LinearLayout(activity);
         mainContent.setOrientation(LinearLayout.VERTICAL);
 
-        TextView brand = label("SYNC AI", 24, Color.rgb(240,242,250), true);
+        TextView brand = label("SYNC AI", 24, Color.rgb(245,247,255), true);
         mainContent.addView(brand, new LinearLayout.LayoutParams(-1, dp(46)));
 
         TextView subtitle = label("LOCAL AGENT", 10, Color.rgb(80,215,255), true);
@@ -128,7 +130,7 @@ public final class SideDashboard extends FrameLayout {
         item(mainContent, "⚙  Settings", v -> showSettings(), false);
 
         TextView hint = label("Everything stays local unless a tool explicitly opens another Android app.", 11,
-                Color.rgb(145,153,177), false);
+                Color.rgb(151,164,190), false);
         hint.setPadding(0, dp(16), dp(8), 0);
         mainContent.addView(hint, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -142,14 +144,14 @@ public final class SideDashboard extends FrameLayout {
         LinearLayout titleRow = new LinearLayout(activity);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView back = label("‹", 30, Color.rgb(240,242,250), true);
+        TextView back = label("‹", 30, Color.rgb(245,247,255), true);
         back.setGravity(Gravity.CENTER);
-        back.setBackground(round(Color.rgb(21,25,38), dp(13)));
+        back.setBackground(round(Color.rgb(21,27,44), dp(13)));
         back.setOnClickListener(v -> showMain());
         Motion.pressable(back);
         titleRow.addView(back, new LinearLayout.LayoutParams(dp(48), dp(46)));
 
-        TextView title = label("SETTINGS", 18, Color.rgb(240,242,250), true);
+        TextView title = label("SETTINGS", 18, Color.rgb(245,247,255), true);
         title.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, dp(46), 1);
         titleLp.leftMargin = dp(10);
@@ -173,7 +175,7 @@ public final class SideDashboard extends FrameLayout {
         item(settingsContent, "ⓘ  About & diagnostics", v -> actions.about(), true);
 
         TextView hint = label("Local models, memory, and preferences are kept on this phone.", 11,
-                Color.rgb(145,153,177), false);
+                Color.rgb(151,164,190), false);
         hint.setPadding(0, dp(16), dp(8), 0);
         settingsContent.addView(hint, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -181,9 +183,9 @@ public final class SideDashboard extends FrameLayout {
     }
 
     private void addCloseButton(LinearLayout target) {
-        TextView close = label("CLOSE", 11, Color.rgb(240,242,250), true);
+        TextView close = label("CLOSE", 11, Color.rgb(245,247,255), true);
         close.setGravity(Gravity.CENTER);
-        close.setBackground(round(Color.rgb(28,33,49), dp(13)));
+        close.setBackground(round(Color.rgb(23,30,49), dp(13)));
         close.setOnClickListener(v -> close());
         Motion.pressable(close);
         target.addView(close, new LinearLayout.LayoutParams(-1, dp(46)));
@@ -249,16 +251,16 @@ public final class SideDashboard extends FrameLayout {
     // ---------------------------------------------------------------- Layout helpers
 
     private void section(LinearLayout target, String title) {
-        TextView t = label(title, 9, Color.rgb(145,153,177), true);
+        TextView t = label(title, 9, Color.rgb(151,164,190), true);
         t.setPadding(0, dp(16), 0, dp(6));
         target.addView(t, new LinearLayout.LayoutParams(-1, dp(28)));
     }
 
     private void item(LinearLayout target, String title, View.OnClickListener listener, boolean closeAfter) {
-        TextView t = label(title, 14, Color.rgb(240,242,250), false);
+        TextView t = label(title, 14, Color.rgb(245,247,255), false);
         t.setGravity(Gravity.CENTER_VERTICAL);
         t.setPadding(dp(12), 0, dp(8), 0);
-        t.setBackground(round(Color.rgb(21,25,38), dp(13)));
+        t.setBackground(round(Color.rgb(21,27,44), dp(13)));
         t.setOnClickListener(v -> {
             listener.onClick(v);
             if (closeAfter) close();

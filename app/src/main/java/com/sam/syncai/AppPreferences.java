@@ -9,6 +9,7 @@ public final class AppPreferences {
     private static final String KEY_MEMORY = "memory";
     private static final String KEY_VOICE_OUTPUT = "voice_output";
     private static final String KEY_ACTIVE_CHAT = "active_chat";
+    private static final String KEY_WAKE_WORD = "wake_word_enabled";
 
     public static final int[] ACCENTS = {
             0xFF9A60FF, 0xFF4B8BFF, 0xFF50D7FF, 0xFF35C987,
@@ -57,5 +58,13 @@ public final class AppPreferences {
 
     public void setActiveChatId(String id) {
         prefs.edit().putString(KEY_ACTIVE_CHAT, id).apply();
+    }
+
+    public boolean isWakeWordEnabled() {
+        return prefs.getBoolean(KEY_WAKE_WORD, false);
+    }
+
+    public void setWakeWordEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_WAKE_WORD, enabled).apply();
     }
 }
