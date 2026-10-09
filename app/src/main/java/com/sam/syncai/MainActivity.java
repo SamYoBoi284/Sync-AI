@@ -32,6 +32,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -1298,12 +1299,40 @@ public final class MainActivity extends Activity {
         });
         content.addView(output);
 
-        String wakeStatus = SyncAssistantService.isRunning()
-                ? "Active • tap to stop"
-                : (VoskModelInstaller.isInstalled(this) ? "Off • tap to enable" : "Model needed • tap to import");
-        Button wakeWord = sectionButton("HEY SYNC WAKE WORD", wakeStatus);
-        wakeWord.setOnClickListener(v -> toggleWakeWord());
-        content.addView(wakeWord);
+        LinearLayout wakeWordRow = new LinearLayout(this);
+        wakeWordRow.setGravity(Gravity.CENTER_VERTICAL);
+        wakeWordRow.setPadding(dp(14), dp(9), dp(10), dp(9));
+        wakeWordRow.setBackground(round(SURFACE_2, dp(14)));
+
+        LinearLayout wakeWordLabels = new LinearLayout(this);
+        wakeWordLabels.setOrientation(LinearLayout.VERTICAL);
+        TextView wakeWordTitle = text("HEY SYNC WAKE WORD", 13, TEXT, true);
+        TextView wakeWordStatus = text(
+                SyncAssistantService.isRunning()
+                        ? "Listening locally • tap to turn off"
+                        : (VoskModelInstaller.isInstalled(this)
+                                ? "Off • tap to start listening"
+                                : "Import the Vosk ZIP first"),
+                11, MUTED, false);
+        wakeWordLabels.addView(wakeWordTitle);
+        LinearLayout.LayoutParams wakeStatusLp =
+                new LinearLayout.LayoutParams(-1, -2);
+        wakeStatusLp.topMargin = dp(3);
+        wakeWordLabels.addView(wakeWordStatus, wakeStatusLp);
+        wakeWordRow.addView(wakeWordLabels, new LinearLayout.LayoutParams(0, -2, 1));
+
+        Switch wakeWordToggle = new Switch(this);
+        wakeWordToggle.setContentDescription("Enable Hey Sync wake-word listening");
+        wakeWordToggle.setChecked(SyncAssistantService.isRunning());
+        wakeWordToggle.setOnCheckedChangeListener((buttonView, enabled) -> {
+            boolean currentlyRunning = SyncAssistantService.isRunning();
+            if (enabled != currentlyRunning) toggleWakeWord();
+        });
+        wakeWordRow.addView(wakeWordToggle);
+        LinearLayout.LayoutParams wakeRowLp =
+                new LinearLayout.LayoutParams(-1, -2);
+        wakeRowLp.bottomMargin = dp(8);
+        content.addView(wakeWordRow, wakeRowLp);
 
         Button importVosk = sectionButton("IMPORT VOSK MODEL ZIP",
                 VoskModelInstaller.isInstalled(this) ? "Offline speech model installed" : "Choose vosk-model-small-en-us-0.15.zip");
