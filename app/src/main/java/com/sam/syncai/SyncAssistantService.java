@@ -228,17 +228,23 @@ public final class SyncAssistantService extends Service implements RecognitionLi
             JSONObject result = new JSONObject(hypothesis);
             String heard = result.optString("text", result.optString("partial", ""))
                     .trim().toLowerCase(Locale.US).replaceAll("\\s+", " ");
-            if ("hey sync".equals(heard) && wakeTriggered.compareAndSet(false, true)) {
-                triggerAssistant();
+            // Match only a complete wake phrase. The [unk] grammar alternative lets
+            // ordinary speech remain unrecognized instead of forcing every utterance
+            // into one of the wake-word phrases.
+            boolean isWakePhrase = "hey sync".equals(heard)
+                    || "hey nullverox".equals(heard)
+                    || "hey null verox".equals(heard);
+            if (isWakePhrase && wakeTriggered.compareAndSet(false, true)) {
+                triggerAssistant(heard);
             }
         } catch (Exception ignored) {
             // Vosk can emit an empty hypothesis while the recognizer is warming up.
         }
     }
 
-    private void triggerAssistant() {
+    private void triggerAssistant(String phrase) {
         SyncEventLogger.record(this, "SyncAssistantService", "WAKE_WORD_DETECTED",
-                "INFO", "phrase=hey sync; suspending Vosk before assistant handoff");
+                "INFO", "phrase=" + phrase + "; suspending Vosk before assistant handoff");
         String assistantSettings = readAssistantSettings();
         boolean syncIsDefault = assistantSettings.contains(getPackageName());
         SyncEventLogger.record(this, "SyncAssistantService", "ASSISTANT_CONFIGURATION",
