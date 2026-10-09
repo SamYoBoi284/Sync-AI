@@ -984,7 +984,7 @@ public final class MainActivity extends Activity {
             out.append("PID: ").append(android.os.Process.myPid()).append('\n');
             out.append("Active Chat ID: ").append(runtime.preferences().getActiveChatId()).append('\n');
             out.append("Accent: ").append(AppPreferences.ACCENT_NAMES[
-                    runtime.preferences().getAccent()]).append('\n\n');
+                    runtime.preferences().getAccent()]).append("\n\n");
 
             out.append("=== PERSONALIZATION MEMORY ===\n");
             out.append(runtime.preferences().getMemory()).append("\n\n");
