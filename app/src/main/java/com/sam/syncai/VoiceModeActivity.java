@@ -159,23 +159,29 @@ public final class VoiceModeActivity extends Activity {
         super.onStart();
         SyncEventLogger.record(this, "VoiceModeActivity", "onStart", "INFO",
                 "taskId=" + getTaskId());
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onStart taskId=" + getTaskId()
+                + " intent=" + getIntent());
     }
 
     @Override protected void onResume() {
         super.onResume();
         SyncEventLogger.record(this, "VoiceModeActivity", "onResume", "INFO",
                 "taskId=" + getTaskId());
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onResume taskId=" + getTaskId());
     }
 
     @Override protected void onPause() {
         SyncEventLogger.record(this, "VoiceModeActivity", "onPause", "INFO",
                 "taskId=" + getTaskId());
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onPause taskId=" + getTaskId());
         super.onPause();
     }
 
     @Override protected void onStop() {
         SyncEventLogger.record(this, "VoiceModeActivity", "onStop", "INFO",
                 "taskId=" + getTaskId());
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onStop finishing=" + isFinishing()
+                + " taskId=" + getTaskId());
         super.onStop();
     }
 
@@ -183,6 +189,7 @@ public final class VoiceModeActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         SyncEventLogger.recordIntent(this, "VoiceModeActivity", "onNewIntent", intent);
+        android.util.Log.d("SyncAI", "VoiceModeActivity.onNewIntent intent=" + intent);
     }
 
     private void initSpeech() {
@@ -502,14 +509,7 @@ public final class VoiceModeActivity extends Activity {
 
     private void speakAndMaybeListen(String text, boolean exitAfter) {
         if (exitAfter) {
-            if (exitAfter) {
-                main.postDelayed(this::exit, 450);
-            } else {
-                main.postDelayed(() -> {
-                    processing.set(false);
-                    if (!destroyed) startListening();
-                }, 650);
-            }
+            main.postDelayed(this::exit, 450);
             return;
         }
         if (!ttsReady) {
@@ -521,34 +521,6 @@ public final class VoiceModeActivity extends Activity {
         }
         String utteranceId = "sync-" + System.currentTimeMillis();
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
-    }
-
-    @Override protected void onStart() {
-        super.onStart();
-        android.util.Log.d("SyncAI", "VoiceModeActivity.onStart taskId=" + getTaskId()
-                + " intent=" + getIntent());
-    }
-
-    @Override protected void onStop() {
-        android.util.Log.d("SyncAI", "VoiceModeActivity.onStop finishing=" + isFinishing()
-                + " taskId=" + getTaskId());
-        super.onStop();
-    }
-
-    @Override protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        android.util.Log.d("SyncAI", "VoiceModeActivity.onNewIntent intent=" + intent);
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        android.util.Log.d("SyncAI", "VoiceModeActivity.onResume taskId=" + getTaskId());
-    }
-
-    @Override protected void onPause() {
-        android.util.Log.d("SyncAI", "VoiceModeActivity.onPause taskId=" + getTaskId());
-        super.onPause();
     }
 
     private void exit() {
