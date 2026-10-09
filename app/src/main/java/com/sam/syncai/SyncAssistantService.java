@@ -113,7 +113,7 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         super.onCreate();
         SyncEventLogger.install(this);
         createNotificationChannel();
-        startForegroundCompat(buildNotification("Say “Hey Sync” to start voice mode."));
+        startForegroundCompat(buildNotification("Say “Hey Sync” or “Hey Nullverox” to start voice mode."));
         running = true;
         IntentFilter filter = new IntentFilter();
         filter.addAction(ACTION_VOICE_MODE_STARTED);
@@ -208,12 +208,12 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         if (!getPreferences().isWakeWordEnabled()) return;
         try {
             wakeTriggered.set(false);
-            recognizer = new Recognizer(model, 16000.0f, "[\"hey sync\"]");
+            recognizer = new Recognizer(model, 16000.0f, "[\"hey sync\", \"hey nullverox\", \"hey null verox\", \"[unk]\"]");
             speechService = new SpeechService(recognizer, 16000.0f);
             speechService.startListening(this);
-            updateNotification("Listening locally for “Hey Sync”. Tap to stop.");
+            updateNotification("Listening locally for “Hey Sync” or “Hey Nullverox”. Tap to stop.");
             SyncEventLogger.record(this, "SyncAssistantService", "WAKE_LISTENING",
-                    "INFO", "grammar=[hey sync]; local model; no LLM loaded by service");
+                    "INFO", "grammar=[hey sync, hey nullverox, hey null verox, [unk]]; local model; no LLM loaded by service");
         } catch (Exception error) {
             SyncEventLogger.recordException(this, "SyncAssistantService",
                     "WAKE_LISTEN_START_ERROR", error, "could not start Vosk");
