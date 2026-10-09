@@ -278,7 +278,7 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         String voiceInteraction = Settings.Secure.getString(
                 getContentResolver(), "voice_interaction_service");
         String assistant = Settings.Secure.getString(
-                getContentResolver(), Settings.Secure.ASSISTANT);
+                getContentResolver(), "assistant");
         return "voiceInteractionService=" + String.valueOf(voiceInteraction)
                 + "; assistant=" + String.valueOf(assistant);
     }
