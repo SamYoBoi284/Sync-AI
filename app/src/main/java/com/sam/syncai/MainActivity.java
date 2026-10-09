@@ -653,7 +653,7 @@ public final class MainActivity extends Activity {
                     showProgress(false);
                     setBusy(false);
                     refreshStatus();
-                    SyncEventLogger.record(this, "ModelManager", "MODEL_LOAD_COMPLETE", "INFO",
+                    SyncEventLogger.record(MainActivity.this, "ModelManager", "MODEL_LOAD_COMPLETE", "INFO",
                             "model=" + model.name + " id=" + model.id);
                     showToast("Loaded " + model.name);
                 });
@@ -665,7 +665,7 @@ public final class MainActivity extends Activity {
                     showProgress(false);
                     setBusy(false);
                     refreshStatus();
-                    SyncEventLogger.recordException(this, "ModelManager", "MODEL_LOAD_ERROR",
+                    SyncEventLogger.recordException(MainActivity.this, "ModelManager", "MODEL_LOAD_ERROR",
                             error, "model=" + model.name + " id=" + model.id);
                     showError("Model load failed", error);
                 });
