@@ -259,17 +259,26 @@ public final class SyncAssistantService extends Service implements RecognitionLi
     private void dispatchAssistantHandoff() {
         if (!running || !waitingForVoiceStart || voiceModeActive) return;
         try {
-            Intent assist = new Intent(Intent.ACTION_ASSIST);
-            assist.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(assist);
-            SyncEventLogger.record(this, "SyncAssistantService", "ASSIST_HANDOFF",
-                    "INFO", "ACTION_ASSIST dispatched after Vosk shutdown");
+            // Wake-word activation already knows this is Sync AI. Do not send the
+            // implicit ACTION_ASSIST intent here: Android/Samsung can present an
+            // app chooser instead of opening the selected assistant session.
+            // Launch the same translucent voice Activity directly. The hardware
+            // assistant-button path remains owned by VoiceInteractionSession.
+            Intent voice = new Intent(this, VoiceModeActivity.class);
+            voice.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            SyncEventLogger.record(this, "SyncAssistantService",
+                    "WAKE_OVERLAY_LAUNCH_ATTEMPT", "INFO",
+                    "explicit VoiceModeActivity launch after Vosk shutdown");
+            startActivity(voice);
+            SyncEventLogger.record(this, "SyncAssistantService", "WAKE_OVERLAY_LAUNCH_DISPATCHED",
+                    "INFO", "explicit VoiceModeActivity launch dispatched");
         } catch (Exception error) {
             waitingForVoiceStart = false;
             main.removeCallbacks(launchTimeout);
             SyncEventLogger.recordException(this, "SyncAssistantService",
-                    "ASSIST_HANDOFF_ERROR", error, "ACTION_ASSIST launch failed");
-            updateNotification("Couldn't open voice mode — check default assistant settings.");
+                    "WAKE_OVERLAY_LAUNCH_ERROR", error,
+                    "explicit VoiceModeActivity launch failed");
+            updateNotification("Couldn't open voice mode — export logs for diagnosis.");
             main.postDelayed(this::startWakeListening, 1000L);
         }
     }
