@@ -55,6 +55,7 @@ public final class VoiceModeActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         SyncEventLogger.install(this);
         super.onCreate(state);
+        SyncAssistantService.setVoiceModeUiActive(true);
         SyncEventLogger.record(this, "VoiceModeActivity", "onCreate", "INFO",
                 "savedState=" + (state != null) + " taskId=" + getTaskId()
                         + " intent=" + getIntent());
@@ -662,6 +663,7 @@ public final class VoiceModeActivity extends Activity {
     }
 
     @Override public void onDestroy() {
+        SyncAssistantService.setVoiceModeUiActive(false);
         SyncEventLogger.record(this, "VoiceModeActivity", "onDestroy", "INFO",
                 "finishing=" + isFinishing() + " changingConfigurations="
                         + isChangingConfigurations() + " taskId=" + getTaskId());

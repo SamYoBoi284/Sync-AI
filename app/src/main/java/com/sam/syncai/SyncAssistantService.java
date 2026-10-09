@@ -41,11 +41,22 @@ public final class SyncAssistantService extends Service implements RecognitionLi
             "com.sam.syncai.action.VOICE_MODE_STARTED";
     public static final String ACTION_VOICE_MODE_FINISHED =
             "com.sam.syncai.action.VOICE_MODE_FINISHED";
+    public static final String EXTRA_DEFER_UNTIL_VOICE_FINISHED =
+            "com.sam.syncai.extra.DEFER_WAKE_UNTIL_VOICE_FINISHED";
 
     private static final String TAG = "SyncAI";
     private static final String CHANNEL_ID = "sync_wake_word";
     private static final int NOTIFICATION_ID = 2840;
     private static volatile boolean running;
+    private static volatile boolean voiceModeUiActive;
+
+    public static boolean isVoiceModeUiActive() {
+        return voiceModeUiActive;
+    }
+
+    public static void setVoiceModeUiActive(boolean active) {
+        voiceModeUiActive = active;
+    }
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AtomicBoolean wakeTriggered = new AtomicBoolean(false);
@@ -134,6 +145,16 @@ public final class SyncAssistantService extends Service implements RecognitionLi
             getPreferences().setWakeWordEnabled(false);
             stopSelf();
             return START_NOT_STICKY;
+        }
+        if (intent != null && intent.getBooleanExtra(
+                EXTRA_DEFER_UNTIL_VOICE_FINISHED, false)) {
+            // The toggle was requested from inside the active voice overlay.
+            // Load the model if needed, but don't take the microphone until the
+            // overlay announces that it has finished.
+            waitingForVoiceStart = true;
+            SyncEventLogger.record(this, "SyncAssistantService",
+                    "WAKE_START_DEFERRED", "INFO",
+                    "waiting for active voice overlay to release microphone");
         }
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
