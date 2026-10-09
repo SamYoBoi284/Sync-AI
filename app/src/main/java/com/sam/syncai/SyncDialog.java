@@ -282,11 +282,17 @@ public final class SyncDialog implements DialogInterface {
 
     public void setOnShowListener(DialogInterface.OnShowListener l) { showListener = l; }
 
+    /** Mirrors AlertDialog.isShowing() for callers using this custom dialog wrapper. */
+    public boolean isShowing() {
+        return dialog.isShowing();
+    }
+
     public void show() {
         if (ctx instanceof Activity) {
             Activity a = (Activity) ctx;
             if (a.isFinishing() || a.isDestroyed()) return;
         }
+        dismissing = false;
         card.setAlpha(0f);
         try {
             dialog.show();
@@ -299,9 +305,8 @@ public final class SyncDialog implements DialogInterface {
     }
 
     @Override public void dismiss() {
-        if (dismissing) return;
+        if (dismissing || !dialog.isShowing()) return;
         dismissing = true;
-        if (!dialog.isShowing()) return;
         if (Motion.reduced(ctx) || (ctx instanceof Activity && ((Activity) ctx).isFinishing())) {
             finishDismiss();
             return;
