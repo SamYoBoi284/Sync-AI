@@ -137,6 +137,7 @@ public final class SyncAssistantService extends Service implements RecognitionLi
         }
         getPreferences().setWakeWordEnabled(true);
         if (model == null) {
+            updateNotification("Loading the offline wake-word model…");
             loadVoskModelAsync();
         } else {
             startWakeListening();
