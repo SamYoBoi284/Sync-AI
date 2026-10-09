@@ -355,7 +355,9 @@ public final class VoiceModeActivity extends Activity {
         String clean = text.trim();
         SyncEventLogger.record(this, "VoiceModeActivity", "VOICE_TEXT_RECEIVED", "INFO",
                 "length=" + clean.length());
-        transcriptView.setText("“" + clean + "”");
+        transcriptView.setText("Processing your message…");
+        appendTranscriptBubble("YOU", clean, true);
+        responseView = appendTranscriptBubble("SYNC AI", "Thinking…", false);
 
         String lower = clean.toLowerCase(Locale.US);
         if (lower.matches(".*\\b(?:stop listening|goodbye|exit|cancel|close sync|that's all|thats all)\\b.*")) {
