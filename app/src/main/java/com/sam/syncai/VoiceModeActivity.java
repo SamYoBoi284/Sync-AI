@@ -42,6 +42,7 @@ public final class VoiceModeActivity extends Activity {
     private TextView transcriptView;
     private TextView responseView;
     private ScrollView responseScroll;
+    private LinearLayout transcriptContainer;
     private View micButton;
     private View panelView;
     private android.animation.ValueAnimator micPulse;
