@@ -534,9 +534,13 @@ public final class VoiceModeActivity extends Activity {
 
     private void showResponse(String text) {
         main.post(() -> {
-            if (destroyed || responseView == null) return;
+            if (destroyed) return;
+            if (responseView == null && transcriptContainer != null) {
+                responseView = addTranscriptEntry("SYNC AI", "", false);
+            }
+            if (responseView == null) return;
             responseView.setText(text == null ? "" : text);
-            if (responseScroll != null) responseScroll.post(() -> responseScroll.fullScroll(View.FOCUS_DOWN));
+            scrollTranscriptToBottom();
         });
     }
 
