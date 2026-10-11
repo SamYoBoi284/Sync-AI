@@ -124,6 +124,7 @@ public final class SyncUpdater {
         Context app = context.getApplicationContext();
         IO.execute(() -> {
             HttpURLConnection apkConnection = null;
+            File partial = null;
             try {
                 if (!isNetworkAllowed(app)) {
                     throw new IllegalStateException("The current network is blocked by your update download policy.");
@@ -133,7 +134,7 @@ public final class SyncUpdater {
                 if (!directory.exists() && !directory.mkdirs()) {
                     throw new IllegalStateException("Could not create the update cache directory.");
                 }
-                File partial = new File(directory, "sync-ai-release.apk.part");
+                partial = new File(directory, "sync-ai-release.apk.part");
                 File apk = new File(directory, APK_ASSET);
                 apkConnection = open(release.apkUrl);
                 int response = apkConnection.getResponseCode();
@@ -148,6 +149,9 @@ public final class SyncUpdater {
                     int count;
                     int lastPercent = -1;
                     while ((count = in.read(buffer)) != -1) {
+                        if (!isNetworkAllowed(app)) {
+                            throw new IllegalStateException("The active network changed to one blocked by the update download policy.");
+                        }
                         out.write(buffer, 0, count);
                         downloaded += count;
                         int percent = total > 0 ? (int) Math.min(100, downloaded * 100 / total) : -1;
@@ -174,6 +178,7 @@ public final class SyncUpdater {
                 }
                 MAIN.post(() -> callback.onComplete(apk));
             } catch (Exception error) {
+                if (partial != null && partial.exists()) partial.delete();
                 MAIN.post(() -> callback.onError(error));
             } finally {
                 if (apkConnection != null) apkConnection.disconnect();
