@@ -322,7 +322,10 @@ static void native_generate_impl(
     const uint32_t contextSize = static_cast<uint32_t>(
             std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
-    ctxParams.n_batch = 256;
+    // The prompt is prefilled as one logical batch and can exceed 256 tokens.
+    // Keep n_batch large enough for the bounded context while retaining a small
+    // physical micro-batch to limit temporary memory on 4 GB devices.
+    ctxParams.n_batch = contextSize;
     ctxParams.n_ubatch = 256;
     LOGI("GENERATION_CONTEXT context=%u trained=%d maxTokens=%d %s",
          contextSize, trainedCtx, static_cast<int>(maxTokens), process_memory_snapshot().c_str());
