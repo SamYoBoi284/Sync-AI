@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.media.AudioManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.hardware.camera2.CameraManager;
@@ -66,6 +67,10 @@ public final class ToolEngine {
             Pattern.compile("(?i)\\bremind\\s+me\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+to\\s+(.+))?");
     private static final Pattern REMINDER_AT =
             Pattern.compile("(?i)\\bremind\\s+me\\s+(tomorrow\\s+)?at\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?(?:\\s+to\\s+(.+))?");
+    private static final Pattern VOLUME_PERCENT =
+            Pattern.compile("(?i)\\b(?:set|change|turn)\\s+(?:the\\s+)?volume\\s+(?:to\\s+)?(\\d{1,3})\\s*%?\\b");
+    private static final Pattern BRIGHTNESS_PERCENT =
+            Pattern.compile("(?i)\\b(?:set|change|turn)\\s+(?:the\\s+)?(?:screen\\s+)?brightness\\s+(?:to\\s+)?(\\d{1,3})\\s*%?\\b");
     private static final Pattern ALARM =
             Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
