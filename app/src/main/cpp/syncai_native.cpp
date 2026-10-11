@@ -34,19 +34,114 @@ static llama_model *g_model = nullptr;
 static std::string g_last_diagnostics = "No inference request recorded yet.";
 static std::string g_last_load_error = "";
 
+static void append_utf8(std::string &out, uint32_t cp) {
+    if (cp <= 0x7F) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else if (cp <= 0xFFFF) {
+        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    }
+}
+
 static std::string jstring_to_string(JNIEnv *env, jstring value) {
     if (!value) return {};
-    const char *chars = env->GetStringUTFChars(value, nullptr);
-    std::string result = chars ? chars : "";
-    if (chars) env->ReleaseStringUTFChars(value, chars);
+    const jsize length = env->GetStringLength(value);
+    const jchar *chars = env->GetStringChars(value, nullptr);
+    if (!chars) return {};
+    std::string result;
+    result.reserve(static_cast<size_t>(length) * 3);
+    for (jsize i = 0; i < length; ++i) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length
+                && chars[i + 1] >= 0xDC00 && chars[i + 1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (chars[++i] - 0xDC00);
+        } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+            cp = 0xFFFD;
+        }
+        append_utf8(result, cp);
+    }
+    env->ReleaseStringChars(value, chars);
     return result;
 }
 
-static void emit(JNIEnv *env, jobject callback, jmethodID tokenMethod, const std::string &text) {
-    if (text.empty()) return;
-    jstring value = env->NewStringUTF(text.c_str());
+static jstring utf8_to_jstring(JNIEnv *env, const std::string &value) {
+    std::vector<jchar> utf16;
+    utf16.reserve(value.size());
+    size_t i = 0;
+    while (i < value.size()) {
+        const unsigned char first = static_cast<unsigned char>(value[i]);
+        uint32_t cp = 0xFFFD;
+        size_t count = 1;
+        if (first <= 0x7F) {
+            cp = first;
+        } else if ((first & 0xE0) == 0xC0 && i + 1 < value.size()) {
+            const unsigned char b1 = static_cast<unsigned char>(value[i + 1]);
+            if ((b1 & 0xC0) == 0x80) {
+                cp = ((first & 0x1F) << 6) | (b1 & 0x3F);
+                count = cp >= 0x80 ? 2 : 1;
+                if (count == 1) cp = 0xFFFD;
+            }
+        } else if ((first & 0xF0) == 0xE0 && i + 2 < value.size()) {
+            const unsigned char b1 = static_cast<unsigned char>(value[i + 1]);
+            const unsigned char b2 = static_cast<unsigned char>(value[i + 2]);
+            if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80) {
+                uint32_t candidate = ((first & 0x0F) << 12)
+                        | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
+                if (candidate >= 0x800 && !(candidate >= 0xD800 && candidate <= 0xDFFF)) {
+                    cp = candidate;
+                    count = 3;
+                }
+            }
+        } else if ((first & 0xF8) == 0xF0 && i + 3 < value.size()) {
+            const unsigned char b1 = static_cast<unsigned char>(value[i + 1]);
+            const unsigned char b2 = static_cast<unsigned char>(value[i + 2]);
+            const unsigned char b3 = static_cast<unsigned char>(value[i + 3]);
+            if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80
+                    && (b3 & 0xC0) == 0x80) {
+                uint32_t candidate = ((first & 0x07) << 18)
+                        | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
+                if (candidate >= 0x10000 && candidate <= 0x10FFFF) {
+                    cp = candidate;
+                    count = 4;
+                }
+            }
+        }
+        i += count;
+        if (cp <= 0xFFFF) {
+            utf16.push_back(static_cast<jchar>(cp));
+        } else {
+            cp -= 0x10000;
+            utf16.push_back(static_cast<jchar>(0xD800 + (cp >> 10)));
+            utf16.push_back(static_cast<jchar>(0xDC00 + (cp & 0x3FF)));
+        }
+    }
+    return env->NewString(utf16.empty() ? nullptr : utf16.data(),
+                          static_cast<jsize>(utf16.size()));
+}
+
+static bool emit(JNIEnv *env, jobject callback, jmethodID tokenMethod, const std::string &text) {
+    if (text.empty()) return true;
+    jstring value = utf8_to_jstring(env, text);
+    if (!value) {
+        LOGE("JNI token conversion failed");
+        return false;
+    }
     env->CallVoidMethod(callback, tokenMethod, value);
     env->DeleteLocalRef(value);
+    if (env->ExceptionCheck()) {
+        LOGE("JNI token callback raised an exception; aborting generation safely");
+        return false;
+    }
+    return true;
 }
 
 static std::string model_info_text_locked() {
@@ -417,7 +512,12 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
             }
             if (emitLen == 0 && pendingUtf8.size() < 4) continue;
             if (emitLen == 0) emitLen = pendingUtf8.size();
-            emit(env, callback, tokenMethod, pendingUtf8.substr(0, emitLen));
+            if (!emit(env, callback, tokenMethod, pendingUtf8.substr(0, emitLen))) {
+                llama_sampler_free(sampler);
+                llama_free(ctx);
+                set_error_diagnostics(startedMs, "jni-callback", "Token callback failed; see Android logcat.");
+                return;
+            }
             pendingUtf8.erase(0, emitLen);
         }
 
@@ -434,7 +534,12 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         }
     }
 
-    if (!pendingUtf8.empty()) emit(env, callback, tokenMethod, pendingUtf8);
+    if (!pendingUtf8.empty() && !emit(env, callback, tokenMethod, pendingUtf8)) {
+        llama_sampler_free(sampler);
+        llama_free(ctx);
+        set_error_diagnostics(startedMs, "jni-callback", "Final token callback failed; see Android logcat.");
+        return;
+    }
     llama_sampler_free(sampler);
     llama_free(ctx);
 
