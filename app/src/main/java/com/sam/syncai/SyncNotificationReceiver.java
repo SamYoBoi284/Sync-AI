@@ -15,13 +15,16 @@ public final class SyncNotificationReceiver extends BroadcastReceiver {
         SyncEventLogger.install(context);
         SyncEventLogger.recordIntent(context, "SyncNotificationReceiver",
                 "onReceive", intent);
+        if (intent.getBooleanExtra("persistent_reminder", false)) {
+            ReminderScheduler.consume(context, intent.getIntExtra("id", 1));
+        }
         NotificationManager manager =
                 (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
 
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL, "Sync//AI tools", NotificationManager.IMPORTANCE_HIGH);
+                    CHANNEL, "Sync AI reminders", NotificationManager.IMPORTANCE_HIGH);
             manager.createNotificationChannel(channel);
         }
 

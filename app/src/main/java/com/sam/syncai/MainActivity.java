@@ -20,6 +20,8 @@ import android.provider.Settings;
 import android.graphics.Rect;
 import android.view.Gravity;
 import android.service.voice.VoiceInteractionService;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
@@ -40,6 +42,7 @@ import android.widget.Toast;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -61,12 +64,17 @@ public final class MainActivity extends Activity {
     private boolean pendingWakeWordStart;
     private SyncDialog voiceSettingsDialog;
 
-    private static final int BG = Color.rgb(6, 8, 16);
-    private static final int SURFACE = Color.rgb(14, 18, 31);
-    private static final int SURFACE_2 = Color.rgb(21, 27, 44);
-    private static final int TEXT = Color.rgb(245, 247, 255);
-    private static final int MUTED = Color.rgb(151, 164, 190);
-    private static final int ERROR = Color.rgb(255, 130, 145);
+    private int BG;
+    private int SURFACE;
+    private int SURFACE_2;
+    private int TEXT;
+    private int MUTED;
+    private int ERROR = Color.rgb(255, 130, 145);
+    private AppTheme palette;
+    private String appliedThemeId;
+    private int appliedAccentIndex;
+    private String appliedMotionIntensity;
+    private SyncCoreView coreOrb;
 
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private SyncRuntime runtime;
@@ -102,7 +110,16 @@ public final class MainActivity extends Activity {
                 "savedState=" + (state != null) + " taskId=" + getTaskId());
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         runtime = SyncRuntime.get(this);
-        accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
+        palette = AppTheme.from(this);
+        BG = palette.background;
+        SURFACE = palette.surface;
+        SURFACE_2 = palette.surface2;
+        TEXT = palette.text;
+        MUTED = palette.muted;
+        accent = palette.primary;
+        appliedThemeId = runtime.preferences().getTheme();
+        appliedAccentIndex = runtime.preferences().getAccent();
+        appliedMotionIntensity = runtime.preferences().getMotionIntensity();
         activeChat = getActiveChat();
         buildUi();
         renderChat();
@@ -119,7 +136,15 @@ public final class MainActivity extends Activity {
         super.onResume();
         SyncEventLogger.record(this, "MainActivity", "onResume", "INFO",
                 "taskId=" + getTaskId());
-        if (runtime != null) refreshStatus();
+        if (runtime != null) {
+            if (!appliedThemeId.equals(runtime.preferences().getTheme())
+                    || appliedAccentIndex != runtime.preferences().getAccent()
+                    || !appliedMotionIntensity.equals(runtime.preferences().getMotionIntensity())) {
+                recreate();
+                return;
+            }
+            refreshStatus();
+        }
     }
 
     @Override protected void onPause() {
@@ -167,7 +192,13 @@ public final class MainActivity extends Activity {
         });
         header.addView(menuButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        TextView title = text("SYNC AI", 25, TEXT, true);
+        coreOrb = makeCoreOrb();
+        LinearLayout.LayoutParams coreLp = new LinearLayout.LayoutParams(dp(30), dp(30));
+        coreLp.leftMargin = dp(3);
+        coreLp.rightMargin = dp(8);
+        header.addView(coreOrb, coreLp);
+
+        TextView title = text("SYNC AI", 23, TEXT, true);
         title.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         contentRoot.addView(header);
@@ -274,6 +305,10 @@ public final class MainActivity extends Activity {
             }
             @Override public void canvas() { showSettings(); }
             @Override public void toggleVoiceOutput() { showSettings(); }
+            @Override public void appearance() { showAppearance(); }
+            @Override public void personality() { showAssistantStyle(); }
+            @Override public void commands() { showCommandTimeline(); }
+            @Override public void health() { showPerformanceHealth(); }
         });
 
         rootFrame = frame;
@@ -380,7 +415,7 @@ public final class MainActivity extends Activity {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable surface = round(SURFACE, dp(18));
-        surface.setStroke(dp(1), Color.rgb(35, 43, 65));
+        surface.setStroke(dp(1), palette.border);
         layout.setBackground(surface);
         layout.setElevation(dp(2));
         return layout;
@@ -404,8 +439,8 @@ public final class MainActivity extends Activity {
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         b.setAllCaps(false);
         b.setPadding(dp(7), 0, dp(7), 0);
-        GradientDrawable buttonSurface = round(Color.rgb(23, 30, 49), dp(13));
-        buttonSurface.setStroke(dp(1), Color.rgb(42, 52, 78));
+        GradientDrawable buttonSurface = round(palette.button, dp(13));
+        buttonSurface.setStroke(dp(1), palette.border);
         b.setBackground(buttonSurface);
         Motion.pressable(b);
         return b;
@@ -701,15 +736,18 @@ public final class MainActivity extends Activity {
         Motion.setEnabledAnimated(importButton, false);
 
         long started = System.currentTimeMillis();
+        if (coreOrb != null) coreOrb.setState(SyncCoreView.State.EXECUTING);
         ToolEngine.Result tool = runtime.tools().handle(message);
         SyncEventLogger.record(this, "ToolEngine", "ROUTE_RESULT", "INFO",
                 "handled=" + tool.handled + " tool=" + tool.toolName
                         + " success=" + tool.success + " durationMs=" + tool.durationMs);
         if (tool.handled) {
+            if (coreOrb != null) coreOrb.setState(tool.success
+                    ? SyncCoreView.State.SUCCESS : SyncCoreView.State.ERROR);
             DiagnosticRecord diag = new DiagnosticRecord(
                     started, tool.durationMs, "DETERMINISTIC TOOL",
-                    tool.toolName, tool.durationMs, "", "", "",
-                    tool.success ? "" : tool.response);
+                    tool.toolName, tool.durationMs, "", "",
+                    tool.success ? "" : "tool", tool.success ? "" : tool.response);
             ChatMessage assistant = new ChatMessage(
                     ChatMessage.Role.ASSISTANT, tool.response,
                     System.currentTimeMillis(), diag.format());
@@ -720,6 +758,8 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        if (coreOrb != null) coreOrb.setState(runtime.backend().isLoaded()
+                ? SyncCoreView.State.THINKING : SyncCoreView.State.IDLE);
         String fallback = casualFallback(message);
         if (!runtime.backend().isLoaded()) {
             DiagnosticRecord diag = new DiagnosticRecord(
@@ -778,6 +818,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     replaceStreamingBubble(streamingBubble, assistant);
+                    if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
                     Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
                     Motion.setEnabledAnimated(sendButton, !modelBusy);
@@ -802,6 +843,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     replaceStreamingBubble(streamingBubble, assistant);
+                    if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
                     activeGenerations = Math.max(0, activeGenerations - 1);
                     Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
                     Motion.setEnabledAnimated(sendButton, !modelBusy);
@@ -826,7 +868,8 @@ public final class MainActivity extends Activity {
                 + "Do not insult the user or make random assumptions about them. "
                 + "Do not produce canned replies when the user's question needs a real answer. "
                 + "Do not volunteer robotic identity disclaimers unless identity is relevant. "
-                + "Deterministic Android tools handle device actions before the model.";
+                + "Deterministic Android tools handle device actions before the model. "
+                + runtime.preferences().getPersonalityInstruction();
         if (!memory.trim().isEmpty()) {
             String memoryText = memory.trim();
             if (memoryText.length() > 6000) {
@@ -886,10 +929,22 @@ public final class MainActivity extends Activity {
         LinearLayout bubble = new LinearLayout(this);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(14), dp(10), dp(14), dp(10));
-        bubble.setBackground(round(user ? Color.rgb(48, 31, 76) : Color.rgb(18, 22, 33), dp(16)));
+        boolean deterministic = !user && message.hasDiagnostics()
+                && message.diagnostics.contains("Route: DETERMINISTIC TOOL");
+        boolean actionFailed = deterministic && message.diagnostics.contains("\nERROR\n");
+        int bubbleColor = user ? palette.userBubble
+                : deterministic ? palette.surface2 : palette.assistantBubble;
+        bubble.setBackground(round(bubbleColor, dp(16)));
+        if (deterministic) {
+            GradientDrawable actionSurface = round(bubbleColor, dp(16));
+            actionSurface.setStroke(dp(1), actionFailed ? ERROR : palette.primary);
+            bubble.setBackground(actionSurface);
+        }
 
-        TextView label = text(user ? "YOU" : "SYNC//AI", 10,
-                user ? Color.rgb(210, 176, 255) : accent, true);
+        TextView label = text(user ? "YOU" : deterministic
+                        ? (actionFailed ? "SYNC CORE • ACTION NEEDS ATTENTION" : "SYNC CORE • ACTION")
+                        : "SYNC AI", 10,
+                user ? palette.secondary : actionFailed ? ERROR : accent, true);
         bubble.addView(label);
 
         TextView body = text(message.text, 15, TEXT, false);
@@ -1184,29 +1239,51 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
+        final SyncDialog[] settingsDialog = new SyncDialog[1];
+        Runnable closeSettings = () -> {
+            if (settingsDialog[0] != null) settingsDialog[0].dismiss();
+        };
+
+        Button appearance = sectionButton("APPEARANCE",
+                AppTheme.displayName(runtime.preferences().getTheme()) + " • themes, accents, animation");
+        appearance.setOnClickListener(v -> { closeSettings.run(); showAppearance(); });
+        content.addView(appearance);
+
+        Button style = sectionButton("PERSONALITY & VOICE",
+                runtime.preferences().getPersonalityName() + " • response style and speech rate");
+        style.setOnClickListener(v -> { closeSettings.run(); showAssistantStyle(); });
+        content.addView(style);
 
         Button voice = sectionButton("VOICE & WAKE WORD", "Voice output, Hey Sync, assistant setup");
-        voice.setOnClickListener(v -> showVoiceSettings());
+        voice.setOnClickListener(v -> { closeSettings.run(); showVoiceSettings(); });
         content.addView(voice);
 
-        Button personalization = sectionButton("PERSONALIZATION", "Memory + 8 accent colors");
-        personalization.setOnClickListener(v -> showPersonalization());
+        Button personalization = sectionButton("PERSONALIZATION", "On-device memory and import");
+        personalization.setOnClickListener(v -> { closeSettings.run(); showPersonalization(); });
         content.addView(personalization);
 
         Button about = sectionButton("ABOUT & DIAGNOSTICS", "Version, creators, runtime evidence");
-        about.setOnClickListener(v -> showAbout());
+        about.setOnClickListener(v -> { closeSettings.run(); showAbout(); });
         content.addView(about);
 
         Button models = sectionButton("LOCAL MODELS", "Import, load, inspect, remove");
-        models.setOnClickListener(v -> showModelsDialog());
+        models.setOnClickListener(v -> { closeSettings.run(); showModelsDialog(); });
         content.addView(models);
 
-        SyncDialog dialog = new SyncDialog.Builder(this, accent)
+        Button health = sectionButton("PERFORMANCE & HEALTH", "Loaded model, memory, listener status");
+        health.setOnClickListener(v -> { closeSettings.run(); showPerformanceHealth(); });
+        content.addView(health);
+
+        Button commands = sectionButton("COMMAND HISTORY", "Recent deterministic actions and diagnostics");
+        commands.setOnClickListener(v -> { closeSettings.run(); showCommandTimeline(); });
+        content.addView(commands);
+
+        settingsDialog[0] = new SyncDialog.Builder(this, accent)
                 .setTitle("SETTINGS")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
                 .create();
-        dialog.show();
+        settingsDialog[0].show();
     }
 
     private Button sectionButton(String title, String subtitle) {
@@ -1221,8 +1298,10 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
+        final SyncDialog[] personalizationDialog = new SyncDialog[1];
 
-        TextView summary = text("Memory is kept on-device and is used as optional context for local generation.", 13, MUTED, false);
+        TextView summary = text("Memory is kept on-device and is used as optional context for local generation.",
+                13, MUTED, false);
         summary.setPadding(0, dp(4), 0, dp(12));
         content.addView(summary);
 
@@ -1239,15 +1318,20 @@ public final class MainActivity extends Activity {
         });
         content.addView(importMemory);
 
-        Button colors = sectionButton("ACCENT COLOR", AppPreferences.ACCENT_NAMES[runtime.preferences().getAccent()]);
-        colors.setOnClickListener(v -> showAccentPicker());
+        Button colors = sectionButton("APPEARANCE", AppTheme.displayName(runtime.preferences().getTheme())
+                + " • theme, accent and motion");
+        colors.setOnClickListener(v -> {
+            if (personalizationDialog[0] != null) personalizationDialog[0].dismiss();
+            showAppearance();
+        });
         content.addView(colors);
 
-        new SyncDialog.Builder(this, accent)
+        personalizationDialog[0] = new SyncDialog.Builder(this, accent)
                 .setTitle("PERSONALIZATION")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
-                .show();
+                .create();
+        personalizationDialog[0].show();
     }
 
     private void editMemory() {
@@ -1278,7 +1362,7 @@ public final class MainActivity extends Activity {
 
     private void showAccentPicker() {
         new SyncDialog.Builder(this, accent)
-                .setTitle("SYNC//AI ACCENT")
+                .setTitle("SYNC AI ACCENT")
                 .setSingleChoiceItems(AppPreferences.ACCENT_NAMES,
                         runtime.preferences().getAccent(), (d, which) -> {
                             runtime.preferences().setAccent(which);
@@ -1287,6 +1371,197 @@ public final class MainActivity extends Activity {
                         })
                 .setNegativeButton("CLOSE", null)
                 .show();
+    }
+
+    private void showAppearance() {
+        try { startActivity(new Intent(this, AppearanceActivity.class)); }
+        catch (Exception error) { showError("Appearance unavailable", error); }
+    }
+
+    private void showAssistantStyle() {
+        final SyncDialog[] styleDialog = new SyncDialog[1];
+        Button personality = sectionButton("RESPONSE PERSONALITY", runtime.preferences().getPersonalityName());
+        personality.setOnClickListener(v -> {
+            if (styleDialog[0] != null) styleDialog[0].dismiss();
+            showPersonalityPicker();
+        });
+        Button speech = sectionButton("SPOKEN RESPONSE SPEED",
+                String.format(Locale.US, "%.2fx", runtime.preferences().getSpeechRate()));
+        speech.setOnClickListener(v -> {
+            if (styleDialog[0] != null) styleDialog[0].dismiss();
+            showSpeechRatePicker();
+        });
+        String savedVoice = runtime.preferences().getSpeechVoiceName();
+        Button voice = sectionButton("SPEECH VOICE",
+                savedVoice.isEmpty() ? "System default" : savedVoice);
+        voice.setOnClickListener(v -> {
+            if (styleDialog[0] != null) styleDialog[0].dismiss();
+            showSpeechVoicePicker();
+        });
+        Button output = sectionButton("VOICE OUTPUT",
+                runtime.preferences().isVoiceOutputEnabled() ? "Spoken replies enabled" : "Spoken replies disabled");
+        output.setOnClickListener(v -> {
+            boolean enabled = !runtime.preferences().isVoiceOutputEnabled();
+            runtime.preferences().setVoiceOutputEnabled(enabled);
+            output.setText("VOICE OUTPUT\n" + (enabled ? "Spoken replies enabled" : "Spoken replies disabled"));
+            showToast(enabled ? "Spoken replies enabled." : "Spoken replies disabled.");
+        });
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(4), dp(18), dp(4));
+        TextView note = text("Personality changes response style only. Theme, tools, permissions, and wake-word behavior stay independent.",
+                12, MUTED, false);
+        note.setPadding(0, 0, 0, dp(10));
+        content.addView(note);
+        content.addView(personality);
+        content.addView(speech);
+        content.addView(voice);
+        content.addView(output);
+        styleDialog[0] = new SyncDialog.Builder(this, accent)
+                .setTitle("PERSONALITY & VOICE")
+                .setView(content)
+                .setNegativeButton("CLOSE", null)
+                .create();
+        styleDialog[0].show();
+    }
+
+    private void showPersonalityPicker() {
+        int selected=0;
+        for(int i=0;i<AppPreferences.PERSONALITY_IDS.length;i++)
+            if(AppPreferences.PERSONALITY_IDS[i].equals(runtime.preferences().getPersonality()))selected=i;
+        new SyncDialog.Builder(this,accent).setTitle("RESPONSE PERSONALITY")
+                .setMessage("Choose how Sync communicates. Visual theme and action permissions are separate.")
+                .setSingleChoiceItems(AppPreferences.PERSONALITY_NAMES,selected,(d,which)->{
+                    runtime.preferences().setPersonality(AppPreferences.PERSONALITY_IDS[which]);
+                    d.dismiss();
+                    showToast("Personality set to "+AppPreferences.PERSONALITY_NAMES[which]+".");
+                }).setNegativeButton("CLOSE",null).show();
+    }
+
+    private void showSpeechRatePicker() {
+        String[] labels={"0.85× · Relaxed","1.00× · Natural","1.03× · Current","1.15× · Brisk","1.25× · Fast"};
+        float[] rates={0.85f,1.0f,1.03f,1.15f,1.25f};
+        int selected=2;float best=Float.MAX_VALUE;float current=runtime.preferences().getSpeechRate();
+        for(int i=0;i<rates.length;i++){float delta=Math.abs(current-rates[i]);if(delta<best){best=delta;selected=i;}}
+        new SyncDialog.Builder(this,accent).setTitle("SPOKEN RESPONSE SPEED")
+                .setSingleChoiceItems(labels,selected,(d,which)->{
+                    runtime.preferences().setSpeechRate(rates[which]);
+                    d.dismiss();
+                    showToast("Speech rate set to "+labels[which].split(" · ")[0]+".");
+                }).setNegativeButton("CLOSE",null).show();
+    }
+
+    private void showSpeechVoicePicker() {
+        final TextToSpeech[] probe = new TextToSpeech[1];
+        probe[0] = new TextToSpeech(this, status -> {
+            if (status != TextToSpeech.SUCCESS) {
+                if (probe[0] != null) { probe[0].shutdown(); probe[0] = null; }
+                runOnUiThread(() -> showToast("Android couldn't load the available speech voices."));
+                return;
+            }
+
+            ArrayList<Voice> voices = new ArrayList<>();
+            try {
+                if (probe[0].getVoices() != null) voices.addAll(probe[0].getVoices());
+            } catch (Exception ignored) {}
+            Locale deviceLocale = Locale.getDefault();
+            java.util.Collections.sort(voices, (a, b) -> {
+                int aMatch = a.getLocale().getLanguage().equals(deviceLocale.getLanguage()) ? 0 : 1;
+                int bMatch = b.getLocale().getLanguage().equals(deviceLocale.getLanguage()) ? 0 : 1;
+                if (aMatch != bMatch) return Integer.compare(aMatch, bMatch);
+                int localeOrder = a.getLocale().getDisplayName(deviceLocale)
+                        .compareToIgnoreCase(b.getLocale().getDisplayName(deviceLocale));
+                return localeOrder != 0 ? localeOrder : a.getName().compareToIgnoreCase(b.getName());
+            });
+
+            ArrayList<String> names = new ArrayList<>();
+            ArrayList<String> labels = new ArrayList<>();
+            labels.add("System default · chosen by Android");
+            names.add("");
+            for (Voice item : voices) {
+                if (item == null || item.getName() == null || item.getLocale() == null) continue;
+                names.add(item.getName());
+                labels.add(item.getLocale().getDisplayName(deviceLocale) + " · " + item.getName()
+                        + (item.isNetworkConnectionRequired() ? " · network voice" : " · on-device voice"));
+            }
+            String[] labelArray = labels.toArray(new String[0]);
+            String[] voiceNames = names.toArray(new String[0]);
+            int selected = 0;
+            String current = runtime.preferences().getSpeechVoiceName();
+            for (int i = 0; i < voiceNames.length; i++) {
+                if (voiceNames[i].equals(current)) { selected = i; break; }
+            }
+            if (probe[0] != null) { probe[0].shutdown(); probe[0] = null; }
+            final int selectedIndex = selected;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                new SyncDialog.Builder(this, accent).setTitle("SPEECH VOICE")
+                        .setMessage("Voice availability depends on the installed Android speech engine. Network voices may require connectivity; on-device voices work offline when installed.")
+                        .setSingleChoiceItems(labelArray, selectedIndex, (dialog, which) -> {
+                            runtime.preferences().setSpeechVoiceName(voiceNames[which]);
+                            dialog.dismiss();
+                            showToast(which == 0 ? "Using Android's default speech voice."
+                                    : "Speech voice saved. It will apply to the next voice session.");
+                        }).setNegativeButton("CLOSE", null).show();
+            });
+        });
+    }
+
+    private void showPerformanceHealth() {
+        android.app.ActivityManager manager=(android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE);
+        android.app.ActivityManager.MemoryInfo info=new android.app.ActivityManager.MemoryInfo();
+        if(manager!=null)manager.getMemoryInfo(info);
+        ModelInfo model=runtime.modelManager().getLoadedModel();
+        String details="Appearance: "+AppTheme.displayName(runtime.preferences().getTheme())+"\n"
+                +"Personality: "+runtime.preferences().getPersonalityName()+"\n"
+                +"Wake-word listener: "+(SyncAssistantService.isRunning()?"running":"not running")+"\n"
+                +"Model: "+(model==null?"none selected":model.name)+"\n"
+                +"Backend loaded: "+runtime.backend().isLoaded()+"\n"
+                +"System memory available: "+(info.availMem/(1024L*1024L))+" MB\n"
+                +"Low-memory state: "+info.lowMemory+"\n"
+                +"Wake preference: "+runtime.preferences().isWakeWordEnabled()+"\n"
+                +"Model size: "+(model==null?"n/a":model.sizeLabel());
+        new SyncDialog.Builder(this,accent).setTitle("PERFORMANCE & HEALTH").setMessage(details)
+                .setPositiveButton("COPY",(d,w)->copyDiagnostics(details)).setNegativeButton("CLOSE",null).show();
+    }
+
+    private void showCommandTimeline() {
+        java.util.ArrayList<ChatMessage> items=new java.util.ArrayList<>();
+        for(ChatRecord chat:runtime.chatStore().all())for(ChatMessage message:chat.messages)
+            if(message.role==ChatMessage.Role.ASSISTANT&&message.hasDiagnostics()
+                    &&message.diagnostics.contains("Route: DETERMINISTIC TOOL"))items.add(message);
+        java.util.Collections.sort(items,(a,b)->Long.compare(b.timestamp,a.timestamp));
+        if(items.isEmpty()){
+            new SyncDialog.Builder(this,accent).setTitle("COMMAND HISTORY")
+                    .setMessage("No deterministic actions have been recorded in chat history yet.")
+                    .setNegativeButton("CLOSE",null).show();return;
+        }
+        LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(18),dp(4),dp(18),dp(4));
+        final SyncDialog[] timelineDialog = new SyncDialog[1];
+        for(int i=0;i<Math.min(30,items.size());i++){
+            ChatMessage item=items.get(i);
+            String timestamp=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(new Date(item.timestamp));
+            String text=item.text.length()>100?item.text.substring(0,97)+"…":item.text;
+            Button row=sectionButton(item.diagnostics.contains("\nERROR\n")
+                    ?"SYNC CORE • ACTION NEEDS ATTENTION":"SYNC CORE • ACTION",timestamp+"\n"+text);
+            row.setOnClickListener(v -> {
+                if (timelineDialog[0] != null) timelineDialog[0].dismiss();
+                showDiagnostic(item.diagnostics);
+            });
+            list.addView(row);
+        }
+        timelineDialog[0] = new SyncDialog.Builder(this,accent).setTitle("COMMAND HISTORY")
+                .setMessage("Latest deterministic tool actions across supported modes.")
+                .setView(list).setNegativeButton("CLOSE",null).create();
+        timelineDialog[0].show();
+    }
+
+    private SyncCoreView makeCoreOrb() {
+        SyncCoreView core = new SyncCoreView(this);
+        core.setState(runtime.backend().isLoaded()
+                ? SyncCoreView.State.READY : SyncCoreView.State.IDLE);
+        return core;
     }
 
     private void requestDefaultAssistant() {

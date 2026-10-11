@@ -45,9 +45,12 @@ public final class VoiceModeActivity extends Activity {
     private LinearLayout transcriptContainer;
     private View micButton;
     private View panelView;
+    private SyncCoreView coreOrb;
     private android.animation.ValueAnimator micPulse;
     private boolean exiting;
     private int accent;
+    private AppTheme palette;
+    private TextView responseHeading;
     private boolean ttsReady;
     private boolean destroyed;
     private final AtomicBoolean processing = new AtomicBoolean(false);
@@ -77,7 +80,8 @@ public final class VoiceModeActivity extends Activity {
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         runtime = SyncRuntime.get(this);
-        accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
+        palette = AppTheme.from(this);
+        accent = palette.primary;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         View content = onCreateContentView();
         setContentView(content);
@@ -95,17 +99,22 @@ public final class VoiceModeActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(22), dp(18), dp(22), dp(18));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xB30A0E1A);
+        bg.setColor(Color.argb(224, Color.red(palette.surface), Color.green(palette.surface), Color.blue(palette.surface)));
         bg.setCornerRadius(dp(28));
-        bg.setStroke(dp(1), (accent & 0x00FFFFFF) | 0xCC000000);
+        bg.setStroke(dp(1), palette.secondary);
         panel.setBackground(bg);
         panel.setElevation(dp(20));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
 
+        coreOrb = new SyncCoreView(this);
+        coreOrb.setState(SyncCoreView.State.READY);
+        top.addView(coreOrb, new LinearLayout.LayoutParams(dp(30), dp(30)));
         TextView title = text("SYNC AI", 18, Color.WHITE, true);
-        top.addView(title, new LinearLayout.LayoutParams(0, dp(35), 1));
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, dp(35), 1);
+        titleLp.leftMargin = dp(10);
+        top.addView(title, titleLp);
 
         Button close = smallButton("×");
         close.setOnClickListener(v -> exit());
@@ -265,7 +274,7 @@ public final class VoiceModeActivity extends Activity {
                     "status=" + status);
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
-                tts.setSpeechRate(1.03f);
+                SpeechPreferences.apply(tts, VoiceModeActivity.this);
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {}
                     @Override public void onDone(String id) {
@@ -386,9 +395,13 @@ public final class VoiceModeActivity extends Activity {
                     tool.success ? "" : "tool",
                     tool.success ? "" : tool.response
             ).format());
+            if (responseHeading != null) responseHeading.setText(tool.success
+                    ? "SYNC CORE • ACTION" : "SYNC CORE • ACTION NEEDS ATTENTION");
             processing.set(false);
             updateState("RESPONDING");
             showResponse(tool.response);
+            if (responseHeading != null) responseHeading.setText(tool.success
+                    ? "SYNC CORE • ACTION" : "SYNC CORE • ACTION NEEDS ATTENTION");
             speakAndMaybeListen(tool.response, false);
             return;
         }
@@ -465,10 +478,11 @@ public final class VoiceModeActivity extends Activity {
     private List<ChatMessage> buildModelContext(String current) {
         ArrayList<ChatMessage> messages = new ArrayList<>();
         String memory = runtime.preferences().getMemory();
-        String system = "You are Sync//AI, a concise offline Android companion. "
+        String system = "You are Sync AI, a concise offline Android companion. "
                 + "Talk naturally and casually. Avoid robotic disclaimers. "
                 + "The phone's deterministic tools handle device commands. "
-                + "User language may include slang, typos, shorthand, and bro/bfam wording.";
+                + "User language may include slang, typos, shorthand, and bro/bfam wording. "
+                + runtime.preferences().getPersonalityInstruction();
         if (!memory.trim().isEmpty()) system += "\nRelevant user memory:\n" + memory.trim();
         messages.add(new ChatMessage(ChatMessage.Role.SYSTEM, system));
         ChatRecord active = activeChat();
@@ -519,9 +533,12 @@ public final class VoiceModeActivity extends Activity {
         LinearLayout bubble = new LinearLayout(this);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(10), dp(7), dp(10), dp(8));
-        bubble.setBackground(round(fromUser ? 0x443C6EA8 : 0x443D3266, 16));
-        TextView heading = text(speaker, 10, fromUser ? 0xFFB9D8FF : accent, true);
-        TextView body = text(message == null ? "" : message, 13, Color.WHITE, false);
+        GradientDrawable bubbleBg = round(fromUser ? palette.userBubble : palette.assistantBubble, 16);
+        bubbleBg.setStroke(dp(1), fromUser ? palette.border : palette.primary);
+        bubble.setBackground(bubbleBg);
+        TextView heading = text(speaker, 10, fromUser ? palette.secondary : accent, true);
+        if (!fromUser && (speaker.startsWith("SYNC AI") || speaker.startsWith("SYNC CORE"))) responseHeading = heading;
+        TextView body = text(message == null ? "" : message, 13, palette.body, false);
         body.setMaxWidth(dp(270));
         bubble.addView(heading);
         bubble.addView(body);
@@ -554,6 +571,11 @@ public final class VoiceModeActivity extends Activity {
     private void speakAndMaybeListen(String text, boolean exitAfter) {
         if (exitAfter) {
             main.postDelayed(this::exit, 450);
+            return;
+        }
+        if (!runtime.preferences().isVoiceOutputEnabled()) {
+            processing.set(false);
+            main.postDelayed(() -> { if (!destroyed) startListening(); }, 350);
             return;
         }
         if (!ttsReady) {
@@ -592,6 +614,7 @@ public final class VoiceModeActivity extends Activity {
     private void updateState(String text) {
         main.post(() -> {
             if (destroyed || stateView == null) return;
+            if (coreOrb != null) coreOrb.setStateFromLabel(text);
             Motion.swapText(stateView, text);
             applyStateMotion(text);
         });

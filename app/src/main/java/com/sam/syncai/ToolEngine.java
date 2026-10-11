@@ -1,12 +1,8 @@
 package com.sam.syncai;
 
-import android.app.AlarmManager;
-import android.app.PendingIntent;
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -15,6 +11,11 @@ import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.media.AudioManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.hardware.camera2.CameraManager;
+import android.provider.AlarmClock;
 import android.os.StatFs;
 import android.provider.ContactsContract;
 import android.provider.Settings;
@@ -29,7 +30,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,7 +62,15 @@ public final class ToolEngine {
     }
 
     private static final Pattern TIMER =
-            Pattern.compile("(?i)(?:timer(?:\\s+(?:for|of))?|remind me in)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)");
+            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|of))?|(?:start|begin)\\s+(?:a\\s+)?timer(?:\\s+for)?|countdown(?:\\s+for)?)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+    private static final Pattern REMINDER_IN =
+            Pattern.compile("(?i)\\bremind\\s+me\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+to\\s+(.+))?");
+    private static final Pattern REMINDER_AT =
+            Pattern.compile("(?i)\\bremind\\s+me\\s+(tomorrow\\s+)?at\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?(?:\\s+to\\s+(.+))?");
+    private static final Pattern VOLUME_PERCENT =
+            Pattern.compile("(?i)\\b(?:set|change|turn)\\s+(?:the\\s+)?volume\\s+(?:to\\s+)?(\\d{1,3})\\s*%?\\b");
+    private static final Pattern BRIGHTNESS_PERCENT =
+            Pattern.compile("(?i)\\b(?:set|change|turn)\\s+(?:the\\s+)?(?:screen\\s+)?brightness\\s+(?:to\\s+)?(\\d{1,3})\\s*%?\\b");
     private static final Pattern ALARM =
             Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
@@ -75,10 +83,41 @@ public final class ToolEngine {
     private String lastTool = "";
     private String lastApp = "";
     private String lastContact = "";
-    private boolean flashlightOn;
+    private volatile boolean flashlightOn;
+    private String flashlightCameraId;
 
     public ToolEngine(Context context) {
         this.context = context.getApplicationContext();
+        observeFlashlightState();
+    }
+
+    private void observeFlashlightState() {
+        try {
+            CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            if (manager == null) return;
+            for (String id : manager.getCameraIdList()) {
+                android.hardware.camera2.CameraCharacteristics c = manager.getCameraCharacteristics(id);
+                Boolean flash = c.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                Integer facing = c.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+                if (Boolean.TRUE.equals(flash) && (facing == null
+                        || facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK)) {
+                    flashlightCameraId = id;
+                    break;
+                }
+            }
+            if (flashlightCameraId == null) return;
+            manager.registerTorchCallback(new CameraManager.TorchCallback() {
+                @Override public void onTorchModeChanged(String cameraId, boolean enabled) {
+                    if (cameraId.equals(flashlightCameraId)) flashlightOn = enabled;
+                }
+                @Override public void onTorchModeUnavailable(String cameraId) {
+                    if (cameraId.equals(flashlightCameraId)) flashlightOn = false;
+                }
+            }, new Handler(Looper.getMainLooper()));
+        } catch (Exception error) {
+            SyncEventLogger.record(context, "ToolEngine", "FLASHLIGHT_STATE_OBSERVER_UNAVAILABLE",
+                    "WARN", error.getClass().getSimpleName());
+        }
     }
 
     public synchronized Result handle(String raw) {
@@ -99,8 +138,13 @@ public final class ToolEngine {
             return withDuration(result, started);
         } catch (Exception e) {
             if (e instanceof SecurityException) {
-                String permission = e.getMessage() != null && e.getMessage().contains("READ_CONTACTS")
+                String message = e.getMessage() == null ? "" : e.getMessage();
+                String permission = message.contains("READ_CONTACTS")
                         ? android.Manifest.permission.READ_CONTACTS
+                        : message.contains("CALL_PHONE")
+                        ? android.Manifest.permission.CALL_PHONE
+                        : message.contains("BLUETOOTH_CONNECT")
+                        ? android.Manifest.permission.BLUETOOTH_CONNECT
                         : android.Manifest.permission.CAMERA;
                 return new Result(true, false,
                         "Android permission is required for that action. Allow it and try again.",
@@ -208,57 +252,117 @@ public final class ToolEngine {
         }
 
         if (command.contains("wifi") || command.contains("wi-fi")) {
-            ConnectivityManager cm = (ConnectivityManager)
-                    context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            boolean connected = false;
-            if (cm != null && Build.VERSION.SDK_INT >= 23) {
-                NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
-                connected = nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+            if (asksForDeviceToggle(command)) return openConnectivityPanel("Wi-Fi", command);
+            ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            boolean connected=false;
+            if(cm!=null&&Build.VERSION.SDK_INT>=23){
+                NetworkCapabilities nc=cm.getNetworkCapabilities(cm.getActiveNetwork());
+                connected=nc!=null&&nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
             }
-            return result("wifi", "Wi-Fi is " + (connected ? "connected." : "not connected."));
+            return result("wifi","Wi-Fi is "+(connected?"connected.":"not connected."));
         }
 
-        if (command.contains("network") || command.contains("internet")) {
-            ConnectivityManager cm = (ConnectivityManager)
-                    context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            boolean connected = false;
-            if (cm != null && Build.VERSION.SDK_INT >= 23) {
-                NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
-                connected = nc != null && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+        if (command.contains("network") || command.contains("internet") || command.contains("mobile data")) {
+            if (asksForDeviceToggle(command)) return openConnectivityPanel("network connectivity", command);
+            ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            boolean connected=false;
+            if(cm!=null&&Build.VERSION.SDK_INT>=23){
+                NetworkCapabilities nc=cm.getNetworkCapabilities(cm.getActiveNetwork());
+                connected=nc!=null&&nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
             }
-            return result("network", "Internet/network status: " + (connected ? "connected." : "offline."));
+            return result("network","Internet/network status: "+(connected?"connected.":"offline."));
         }
 
         if (command.contains("bluetooth")) {
-            if (Build.VERSION.SDK_INT >= 31 &&
-                    context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
-                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                return new Result(true, false,
-                        "Bluetooth status needs Android's nearby-devices permission.",
-                        "bluetooth", 0, android.Manifest.permission.BLUETOOTH_CONNECT);
+            android.bluetooth.BluetoothAdapter adapter=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if(adapter==null)return result("bluetooth","Bluetooth is not available on this device.");
+            if(Build.VERSION.SDK_INT>=31&&context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                    !=android.content.pm.PackageManager.PERMISSION_GRANTED)
+                return new Result(true,false,"Bluetooth status and control need Android's Nearby devices permission. Enable it in Sync AI's app permissions, then try again.","bluetooth",0,android.Manifest.permission.BLUETOOTH_CONNECT);
+            if(asksForDeviceToggle(command)){
+                boolean wantsOn=command.contains("enable")||command.contains("activate")
+                        ||command.contains("turn on")||command.contains("switch on")||command.matches(".*\\bon\\b.*");
+                try{
+                    boolean currentlyOn = adapter.isEnabled();
+                    if (wantsOn && currentlyOn) return result("bluetooth","Bluetooth is already on.");
+                    if (!wantsOn && !currentlyOn) return result("bluetooth","Bluetooth is already off.");
+                    if(wantsOn&&!currentlyOn){
+                        Intent request=new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                        request.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(request);
+                        return new Result(true,false,"Android's Bluetooth confirmation is open. Approve it to enable Bluetooth.","bluetooth",0);
+                    }
+                    Intent settings=new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
+                    settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(settings);
+                    return new Result(true,false,"Android requires system controls to change Bluetooth. I opened Bluetooth settings so you can finish the change.","bluetooth",0);
+                }catch(Exception error){
+                    return new Result(true,false,"I couldn't open Android's Bluetooth controls: "+error.getClass().getSimpleName(),"bluetooth",0);
+                }
             }
-            android.bluetooth.BluetoothAdapter adapter =
-                    android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            if (adapter == null) return result("bluetooth", "Bluetooth is not available on this device.");
-            return result("bluetooth", "Bluetooth is " +
-                    (adapter.isEnabled() ? "on." : "off."));
+            return result("bluetooth","Bluetooth is "+(adapter.isEnabled()?"on.":"off."));
         }
 
         if (command.contains("volume")) {
-            android.media.AudioManager am = (android.media.AudioManager)
-                    context.getSystemService(Context.AUDIO_SERVICE);
-            if (am == null) return result("volume", "I couldn't read the volume.");
-            int current = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-            int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
-            return result("volume", "Media volume is " + current + " of " + max + ".");
+            AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
+            if(am==null)return new Result(true,false,"Android's audio service is unavailable.","volume",0);
+            int current=am.getStreamVolume(AudioManager.STREAM_MUSIC);
+            int max=am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            Matcher target=VOLUME_PERCENT.matcher(command);
+            if(target.find()){
+                int percent=Integer.parseInt(target.group(1));
+                if(percent>100)return new Result(true,false,"Volume must be between 0% and 100%.","volume",0);
+                am.setStreamVolume(AudioManager.STREAM_MUSIC,Math.round(max*percent/100f),0);
+                return result("volume","Media volume set to "+percent+"%.");
+            }
+            if(command.contains("unmute")){
+                am.setStreamVolume(AudioManager.STREAM_MUSIC,Math.max(1,current),0);
+                return result("volume","Media audio unmuted.");
+            }
+            if(command.contains("mute")){
+                am.setStreamVolume(AudioManager.STREAM_MUSIC,0,0);
+                return result("volume","Media audio muted.");
+            }
+            if(command.matches(".*\\b(?:volume up|turn it up|turn (?:the )?volume up|increase (?:the )?volume|raise (?:the )?volume|louder)\\b.*")){
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_RAISE,0);
+                return result("volume","Media volume increased.");
+            }
+            if(command.matches(".*\\b(?:volume down|turn it down|turn (?:the )?volume down|decrease (?:the )?volume|lower (?:the )?volume|quieter)\\b.*")){
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_LOWER,0);
+                return result("volume","Media volume decreased.");
+            }
+            return result("volume","Media volume is "+am.getStreamVolume(AudioManager.STREAM_MUSIC)+" of "+max+".");
         }
 
         if (command.contains("brightness")) {
-            int brightness = Settings.System.getInt(
-                    context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, -1);
-            if (brightness < 0) return result("brightness", "I couldn't read screen brightness.");
-            return result("brightness", "Screen brightness is about " +
-                    Math.round(brightness * 100f / 255f) + "%.");
+            int brightness=Settings.System.getInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS,-1);
+            Matcher target=BRIGHTNESS_PERCENT.matcher(command);
+            boolean explicit=target.find();
+            boolean up=command.matches(".*\\b(?:increase|raise|brighten|brightness up)\\b.*");
+            boolean down=command.matches(".*\\b(?:decrease|lower|dim|brightness down)\\b.*");
+            if(explicit||up||down){
+                int percent;
+                if(explicit){
+                    percent=Integer.parseInt(target.group(1));
+                    if(percent>100)return new Result(true,false,"Brightness must be between 0% and 100%.","brightness",0);
+                }else{
+                    if(brightness<0)return result("brightness","I couldn't read screen brightness.");
+                    percent=Math.max(0,Math.min(100,Math.round(brightness*100f/255f)+(up?15:-15)));
+                }
+                if(!Settings.System.canWrite(context)){
+                    try{
+                        Intent permission=new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,Uri.parse("package:"+context.getPackageName()));
+                        permission.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(permission);
+                        return new Result(true,false,"Android needs Modify system settings permission before Sync AI can change brightness. I opened that settings page; grant it and repeat the command.","brightness",0);
+                    }catch(Exception error){
+                        return new Result(true,false,"Brightness control needs Modify system settings permission in Android Settings.","brightness",0);
+                    }
+                }
+                boolean saved=Settings.System.putInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS,Math.round(percent*255f/100f));
+                if(!saved)return new Result(true,false,"Android rejected the brightness change.","brightness",0);
+                Settings.System.putInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS_MODE,Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                return result("brightness","Screen brightness set to about "+percent+"%.");
+            }
+            if(brightness<0)return result("brightness","I couldn't read screen brightness.");
+            return result("brightness","Screen brightness is about "+Math.round(brightness*100f/255f)+"%.");
         }
 
         if (command.matches(".*\\b(?:ram|ram usage|ram usage right now|memory usage|how much ram|how much memory is being used)\\b.*")) {
@@ -286,43 +390,92 @@ public final class ToolEngine {
                     " • Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
         }
 
-        Matcher timer = TIMER.matcher(command);
-        if (timer.find()) {
-            double amount = Double.parseDouble(timer.group(1));
-            String unit = timer.group(2);
-            long seconds = unit.startsWith("hour") || unit.startsWith("hr")
-                    ? Math.round(amount * 3600)
-                    : unit.startsWith("min")
-                    ? Math.round(amount * 60)
-                    : Math.round(amount);
-            if (seconds <= 0) throw new IllegalArgumentException("Timer duration must be positive.");
-            scheduleNotification(seconds * 1000L, "Sync//AI timer",
-                    "Timer finished: " + formatDuration(seconds) + ".");
-            return result("timer", "Done bro, timer set for " + formatDuration(seconds) + ".");
+        Matcher reminderIn = REMINDER_IN.matcher(command);
+        if (reminderIn.find()) {
+            double amount = Double.parseDouble(reminderIn.group(1));
+            long seconds = durationSeconds(amount, reminderIn.group(2).toLowerCase(Locale.US));
+            if (seconds <= 0) throw new IllegalArgumentException("Reminder delay must be positive.");
+            String reminderText = reminderIn.group(3) == null ? "Your reminder is due." : reminderIn.group(3).trim();
+            ReminderScheduler.schedule(context, seconds * 1000L, "Sync AI reminder", "Reminder: " + reminderText);
+            return result("reminder", "Reminder scheduled in " + formatDuration(seconds) + ": " + reminderText
+                    + ". I'll notify you even if Sync AI is closed.");
         }
 
-        Matcher alarm = ALARM.matcher(command);
-        if (alarm.find()) {
-            int hour = Integer.parseInt(alarm.group(1));
-            int minute = alarm.group(2) == null ? 0 : Integer.parseInt(alarm.group(2));
-            String ampm = alarm.group(3);
+        Matcher reminderAt = REMINDER_AT.matcher(command);
+        if (reminderAt.find()) {
+            boolean tomorrow = reminderAt.group(1) != null;
+            int hour = Integer.parseInt(reminderAt.group(2));
+            int minute = reminderAt.group(3) == null ? 0 : Integer.parseInt(reminderAt.group(3));
+            String ampm = reminderAt.group(4);
+            String reminderText = reminderAt.group(5) == null ? "Your reminder is due." : reminderAt.group(5).trim();
             if (ampm != null) {
+                if (hour < 1 || hour > 12) throw new IllegalArgumentException("That is not a valid reminder time.");
                 if ("pm".equals(ampm) && hour < 12) hour += 12;
                 if ("am".equals(ampm) && hour == 12) hour = 0;
             }
-            if (hour > 23 || minute > 59) throw new IllegalArgumentException("That is not a valid alarm time.");
+            if (hour > 23 || minute > 59) throw new IllegalArgumentException("That is not a valid reminder time.");
             Calendar cal = Calendar.getInstance();
-            cal.set(Calendar.HOUR_OF_DAY, hour);
-            cal.set(Calendar.MINUTE, minute);
-            cal.set(Calendar.SECOND, 0);
-            cal.set(Calendar.MILLISECOND, 0);
-            if (cal.getTimeInMillis() <= System.currentTimeMillis()) {
-                cal.add(Calendar.DAY_OF_YEAR, 1);
+            if (tomorrow) cal.add(Calendar.DAY_OF_YEAR, 1);
+            cal.set(Calendar.HOUR_OF_DAY,hour);cal.set(Calendar.MINUTE,minute);
+            cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);
+            if(!tomorrow&&cal.getTimeInMillis()<=System.currentTimeMillis())cal.add(Calendar.DAY_OF_YEAR,1);
+            long delay=Math.max(1000L,cal.getTimeInMillis()-System.currentTimeMillis());
+            ReminderScheduler.schedule(context,delay,"Sync AI reminder","Reminder: "+reminderText);
+            return result("reminder","Reminder scheduled for "
+                    +DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(cal.getTime())
+                    +": "+reminderText+".");
+        }
+
+        Matcher timer = TIMER.matcher(command);
+        if (timer.find()) {
+            double amount = Double.parseDouble(timer.group(1));
+            long seconds = durationSeconds(amount, timer.group(2).toLowerCase(Locale.US));
+            if (seconds <= 0) throw new IllegalArgumentException("Timer duration must be positive.");
+            if (seconds > 86400L) return new Result(true,false,
+                    "Android's Clock timer supports up to 24 hours. Use a reminder for a longer delay.","timer",0);
+            Intent timerIntent=new Intent(AlarmClock.ACTION_SET_TIMER);
+            timerIntent.putExtra(AlarmClock.EXTRA_LENGTH,(int)seconds);
+            timerIntent.putExtra(AlarmClock.EXTRA_MESSAGE,"Sync AI timer");
+            timerIntent.putExtra(AlarmClock.EXTRA_SKIP_UI,true);
+            timerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                context.startActivity(timerIntent);
+                return result("timer","Sent a timer request to your Clock app for "+formatDuration(seconds)
+                        +". Check Clock if your installed app asks for confirmation.");
+            } catch(ActivityNotFoundException error) {
+                return new Result(true,false,"No installed Clock app accepted Android's timer action. I did not substitute a Sync AI notification.","timer",0);
             }
-            scheduleAt(cal.getTimeInMillis(), "Sync//AI alarm",
-                    "Alarm for " + DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime()) + ".");
-            return result("alarm", "Alarm set for " +
-                    DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime()) + ".");
+        }
+
+        Matcher alarm=ALARM.matcher(command);
+        if(alarm.find()) {
+            int hour=Integer.parseInt(alarm.group(1));
+            int minute=alarm.group(2)==null?0:Integer.parseInt(alarm.group(2));
+            String ampm=alarm.group(3);
+            if(ampm!=null) {
+                if(hour<1||hour>12)throw new IllegalArgumentException("That is not a valid alarm time.");
+                if("pm".equals(ampm)&&hour<12)hour+=12;
+                if("am".equals(ampm)&&hour==12)hour=0;
+            }
+            if(hour>23||minute>59)throw new IllegalArgumentException("That is not a valid alarm time.");
+            Calendar cal=Calendar.getInstance();
+            cal.set(Calendar.HOUR_OF_DAY,hour);cal.set(Calendar.MINUTE,minute);
+            cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);
+            if(cal.getTimeInMillis()<=System.currentTimeMillis())cal.add(Calendar.DAY_OF_YEAR,1);
+            Intent alarmIntent=new Intent(AlarmClock.ACTION_SET_ALARM);
+            alarmIntent.putExtra(AlarmClock.EXTRA_HOUR,hour);
+            alarmIntent.putExtra(AlarmClock.EXTRA_MINUTES,minute);
+            alarmIntent.putExtra(AlarmClock.EXTRA_MESSAGE,"Sync AI alarm");
+            alarmIntent.putExtra(AlarmClock.EXTRA_SKIP_UI,true);
+            alarmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            String timeText=DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime());
+            try {
+                context.startActivity(alarmIntent);
+                return result("alarm","Sent a Clock app request to set an alarm for "+timeText
+                        +". Check Clock to confirm it appears if your installed app asks for confirmation.");
+            } catch(ActivityNotFoundException error) {
+                return new Result(true,false,"No installed Clock app accepted Android's alarm action. I did not create a Sync AI notification instead.","alarm",0);
+            }
         }
 
         if (looksLikeCalculator(command)) {
@@ -546,7 +699,10 @@ public final class ToolEngine {
     }
 
     private Result callContact(String name) {
-        String wanted = name.trim();
+        String wanted = name == null ? "" : name.trim();
+        if (wanted.isEmpty()) {
+            return new Result(true, false, "Tell me which contact to call.", "contact_call", 0);
+        }
         Cursor cursor = null;
         try {
             cursor = context.getContentResolver().query(
@@ -555,23 +711,111 @@ public final class ToolEngine {
                             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME},
                     ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
                     new String[]{"%" + wanted + "%"},
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-            );
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
             if (cursor == null || !cursor.moveToFirst()) {
                 return new Result(true, false,
                         "I couldn't find a contact named \"" + wanted + "\".",
                         "contact_call", 0);
             }
-            String number = cursor.getString(0);
-            String display = cursor.getString(1);
-            Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
+
+            Map<String, String> matches = new java.util.LinkedHashMap<>();
+            do {
+                String display = cursor.getString(1);
+                String number = cursor.getString(0);
+                if (display != null && number != null && !number.trim().isEmpty()
+                        && !matches.containsKey(display)) {
+                    matches.put(display, number);
+                }
+            } while (cursor.moveToNext());
+
+            String display = null;
+            String number = null;
+            for (Map.Entry<String, String> entry : matches.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(wanted)) {
+                    display = entry.getKey();
+                    number = entry.getValue();
+                    break;
+                }
+            }
+            if (display == null && matches.size() == 1) {
+                Map.Entry<String, String> only = matches.entrySet().iterator().next();
+                display = only.getKey();
+                number = only.getValue();
+            }
+            if (display == null || number == null) {
+                StringBuilder names = new StringBuilder();
+                int count = 0;
+                for (String candidate : matches.keySet()) {
+                    if (count++ >= 4) break;
+                    if (names.length() > 0) names.append(", ");
+                    names.append(candidate);
+                }
+                String response = matches.isEmpty()
+                        ? "I couldn't find a phone number for " + wanted + "."
+                        : "I found multiple contacts matching \"" + wanted + "\" (" + names
+                            + "). Say the full contact name so I don't call the wrong person.";
+                return new Result(true, false, response, "contact_call", 0);
+            }
+
+            if (context.checkSelfPermission(android.Manifest.permission.CALL_PHONE)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                try {
+                    Intent call = new Intent(Intent.ACTION_CALL, Uri.fromParts("tel", number, null));
+                    call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(call);
+                    lastContact = display;
+                    return result("contact_call", "Calling " + display + ".");
+                } catch (SecurityException denied) {
+                    return launchCallPermissionBridge(number, display);
+                } catch (ActivityNotFoundException unavailable) {
+                    return new Result(true, false, "Android couldn't find a phone app to call "
+                            + display + ".", "contact_call", 0);
+                }
+            }
             lastContact = display;
-            return result("contact_call", "Opening the dialer for " + display + ".");
+            return launchCallPermissionBridge(number, display);
         } finally {
             if (cursor != null) cursor.close();
         }
+    }
+
+    private Result launchCallPermissionBridge(String number,String display) {
+        try {
+            Intent permission=new Intent(context,CallPermissionActivity.class);
+            permission.putExtra(CallPermissionActivity.EXTRA_NUMBER,number);
+            permission.putExtra(CallPermissionActivity.EXTRA_CONTACT,display);
+            permission.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(permission);
+            return new Result(true,false,"Android will ask for permission before calling "+display
+                    +". If permission is denied, the dialer will open instead.","contact_call",0);
+        } catch(Exception error) {
+            return new Result(true,false,"I couldn't start the direct-call permission flow: "
+                    +error.getClass().getSimpleName(),"contact_call",0);
+        }
+    }
+
+    private static boolean asksForDeviceToggle(String command) {
+        return command.matches(".*\\b(?:turn|switch|enable|disable|activate|deactivate|set)\\b.*\\b(?:wi-?fi|wireless|bluetooth|internet|network|mobile data)\\b.*")
+                || command.matches(".*\\b(?:increase|decrease|turn on|turn off)\\b.*\\b(?:wi-?fi|wireless|bluetooth|internet|network|mobile data)\\b.*");
+    }
+
+    private Result openConnectivityPanel(String target,String command) {
+        try {
+            Intent panel=Build.VERSION.SDK_INT>=29?new Intent("android.settings.panel.action.INTERNET_CONNECTIVITY")
+                    :new Intent(Settings.ACTION_WIFI_SETTINGS);
+            panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(panel);
+            return new Result(true,false,"Android doesn't allow Sync AI to silently toggle "+target
+                    +". I opened the system connectivity controls so you can finish the change.","connectivity_settings",0);
+        }catch(Exception error){
+            return new Result(true,false,"I couldn't open system connectivity controls: "
+                    +error.getClass().getSimpleName(),"connectivity_settings",0);
+        }
+    }
+
+    private static long durationSeconds(double amount,String unit) {
+        if(amount<=0)return 0L;
+        if(unit.startsWith("hour")||unit.startsWith("hr"))return Math.round(amount*3600);
+        if(unit.startsWith("min"))return Math.round(amount*60);
+        return Math.round(amount);
     }
 
     private void setFlashlight(boolean on) throws Exception {
@@ -591,32 +835,9 @@ public final class ToolEngine {
             }
         }
         if (target == null) throw new IllegalStateException("No controllable flashlight was found.");
+        flashlightCameraId = target;
         cm.setTorchMode(target, on);
         flashlightOn = on;
-    }
-
-    private void scheduleNotification(long delayMs, String title, String text) {
-        scheduleAt(System.currentTimeMillis() + Math.max(1000, delayMs), title, text);
-    }
-
-    private void scheduleAt(long when, String title, String text) {
-        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarms == null) throw new IllegalStateException("Alarm service is unavailable.");
-
-        String id = UUID.randomUUID().toString();
-        Intent intent = new Intent(context, SyncNotificationReceiver.class);
-        intent.putExtra("title", title);
-        intent.putExtra("text", text);
-        intent.putExtra("id", id.hashCode());
-        PendingIntent pending = PendingIntent.getBroadcast(
-                context, id.hashCode(), intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-        if (Build.VERSION.SDK_INT >= 31 && !alarms.canScheduleExactAlarms()) {
-            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
-        } else {
-            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
-        }
     }
 
     private static String normalize(String input) {
