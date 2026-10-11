@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <exception>
+#include <new>
 #include <mutex>
 #include <unistd.h>
 #include <string>
