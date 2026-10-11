@@ -471,6 +471,7 @@ public final class ToolEngine {
                 ? originalCommand : command;
         Matcher labelMatcher = ALARM_LABEL.matcher(labelSource);
         String alarmLabel = labelMatcher.find() ? labelMatcher.group(1).trim() : "Sync AI alarm";
+        alarmLabel = alarmLabel.replaceAll("[.!?]+$", "").trim();
         String alarmCommand = ALARM_LABEL.matcher(command).replaceAll("").trim();
         Matcher alarm=ALARM.matcher(alarmCommand);
         if(alarm.find()) {
