@@ -147,9 +147,11 @@ public final class SyncEventLogger {
 
     public static String captureLogcat() {
         StringBuilder out = new StringBuilder();
+        final int maxChars = 1_500_000;
+        final int maxLines = 7000;
+        int lines = 0;
         String[] commands = {
-                "logcat -d -v threadtime -s SyncAI:D SyncAI:I SyncAI:W SyncAI:E",
-                "logcat -d -v threadtime"
+                "logcat -b main -b system -b crash -d -v threadtime"
         };
         for (String command : commands) {
             try {
@@ -158,19 +160,40 @@ public final class SyncEventLogger {
                         process.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        if (line.contains("SyncAI") || out.length() == 0) {
-                            out.append(line).append('\n');
+                        String lower = line.toLowerCase(Locale.US);
+                        boolean relevant = line.contains("SyncAI")
+                                || lower.contains("fatal exception")
+                                || lower.contains("fatal signal")
+                                || lower.contains("tombstone")
+                                || lower.contains("crash_dump")
+                                || lower.contains("outofmemoryerror")
+                                || lower.contains("lowmemorykiller")
+                                || lower.contains("lmkd")
+                                || lower.contains("am_kill")
+                                || lower.contains("killing ")
+                                || lower.contains("signal 6")
+                                || lower.contains("signal 11")
+                                || lower.contains("native crash")
+                                || lower.contains("debuggerd");
+                        if (!relevant) continue;
+                        if (out.length() + line.length() + 1 > maxChars || lines >= maxLines) {
+                            out.append("[Logcat capture truncated to protect export size.]\\n");
+                            break;
                         }
+                        out.append(line).append('\\n');
+                        lines++;
                     }
                 }
                 process.waitFor();
                 if (out.length() > 0) return out.toString();
-            } catch (Exception ignored) {
-                // Android may deny third-party access to global logcat.
+            } catch (Exception error) {
+                out.append("[Unable to read Android logcat: ")
+                        .append(error.getClass().getSimpleName()).append("]\\n");
             }
         }
-        return "[Android did not expose readable logcat output to Sync AI. "
-                + "The persistent Sync AI flight recorder is included above.]\n";
+        return out.length() > 0 ? out.toString()
+                : "[Android did not expose readable logcat output to Sync AI. "
+                + "The persistent Sync AI flight recorder is included above.]\\n";
     }
 
     public static String fileName() {
