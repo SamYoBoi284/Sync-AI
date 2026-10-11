@@ -1393,7 +1393,6 @@ public final class MainActivity extends Activity {
                 getSharedPreferences("sync-update-runtime", MODE_PRIVATE);
         long last = state.getLong("last_auto_check", 0L);
         if (System.currentTimeMillis() - last < 12L * 60L * 60L * 1000L) return;
-        state.edit().putLong("last_auto_check", System.currentTimeMillis()).apply();
         checkForUpdates(false);
     }
 
@@ -1408,6 +1407,10 @@ public final class MainActivity extends Activity {
         SyncUpdater.checkLatest(this, new SyncUpdater.CheckCallback() {
             @Override public void onResult(SyncUpdater.ReleaseInfo release, boolean available) {
                 updateCheckInProgress = false;
+                if (!manual) {
+                    getSharedPreferences("sync-update-runtime", MODE_PRIVATE).edit()
+                            .putLong("last_auto_check", System.currentTimeMillis()).apply();
+                }
                 SyncEventLogger.record(MainActivity.this, "SyncUpdater", "UPDATE_CHECK_RESULT", "INFO",
                         "version=" + release.version + " available=" + available);
                 if (!available) {
@@ -1431,6 +1434,14 @@ public final class MainActivity extends Activity {
 
             @Override public void onError(Exception error) {
                 updateCheckInProgress = false;
+                if (!manual) {
+                    // Retry an unsuccessful automatic check after 30 minutes instead of
+                    // suppressing retries for half a day when the phone was offline.
+                    getSharedPreferences("sync-update-runtime", MODE_PRIVATE).edit()
+                            .putLong("last_auto_check",
+                                    System.currentTimeMillis() - 11L * 60L * 60L * 1000L - 30L * 60L * 1000L)
+                            .apply();
+                }
                 SyncEventLogger.recordException(MainActivity.this, "SyncUpdater",
                         "UPDATE_CHECK_ERROR", error, "manual=" + manual);
                 if (manual) showError("Could not check for updates", error);
