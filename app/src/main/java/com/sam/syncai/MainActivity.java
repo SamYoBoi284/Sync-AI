@@ -1343,7 +1343,7 @@ public final class MainActivity extends Activity {
 
     private void showAccentPicker() {
         new SyncDialog.Builder(this, accent)
-                .setTitle("SYNC//AI ACCENT")
+                .setTitle("SYNC AI ACCENT")
                 .setSingleChoiceItems(AppPreferences.ACCENT_NAMES,
                         runtime.preferences().getAccent(), (d, which) -> {
                             runtime.preferences().setAccent(which);
@@ -1368,8 +1368,10 @@ public final class MainActivity extends Activity {
         Button output = sectionButton("VOICE OUTPUT",
                 runtime.preferences().isVoiceOutputEnabled() ? "Spoken replies enabled" : "Spoken replies disabled");
         output.setOnClickListener(v -> {
-            runtime.preferences().setVoiceOutputEnabled(!runtime.preferences().isVoiceOutputEnabled());
-            showAssistantStyle();
+            boolean enabled = !runtime.preferences().isVoiceOutputEnabled();
+            runtime.preferences().setVoiceOutputEnabled(enabled);
+            output.setText("VOICE OUTPUT\n" + (enabled ? "Spoken replies enabled" : "Spoken replies disabled"));
+            showToast(enabled ? "Spoken replies enabled." : "Spoken replies disabled.");
         });
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -1421,7 +1423,9 @@ public final class MainActivity extends Activity {
                 +"Model: "+(model==null?"none selected":model.name)+"\n"
                 +"Backend loaded: "+runtime.backend().isLoaded()+"\n"
                 +"System memory available: "+(info.availMem/(1024L*1024L))+" MB\n"
-                +"Low-memory state: "+info.lowMemory+"\n\n"+runtime.backend().diagnostics();
+                +"Low-memory state: "+info.lowMemory+"\n"
+                +"Wake preference: "+runtime.preferences().isWakeWordEnabled()+"\n"
+                +"Model size: "+(model==null?"n/a":model.sizeLabel());
         new SyncDialog.Builder(this,accent).setTitle("PERFORMANCE & HEALTH").setMessage(details)
                 .setPositiveButton("COPY",(d,w)->copyDiagnostics(details)).setNegativeButton("CLOSE",null).show();
     }
@@ -1439,18 +1443,23 @@ public final class MainActivity extends Activity {
         }
         LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(dp(18),dp(4),dp(18),dp(4));
+        final SyncDialog[] timelineDialog = new SyncDialog[1];
         for(int i=0;i<Math.min(30,items.size());i++){
             ChatMessage item=items.get(i);
             String timestamp=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(new Date(item.timestamp));
             String text=item.text.length()>100?item.text.substring(0,97)+"…":item.text;
             Button row=sectionButton(item.diagnostics.contains("\nERROR\n")
                     ?"SYNC CORE • ACTION NEEDS ATTENTION":"SYNC CORE • ACTION",timestamp+"\n"+text);
-            row.setOnClickListener(v->showDiagnostic(item.diagnostics));
+            row.setOnClickListener(v -> {
+                if (timelineDialog[0] != null) timelineDialog[0].dismiss();
+                showDiagnostic(item.diagnostics);
+            });
             list.addView(row);
         }
-        new SyncDialog.Builder(this,accent).setTitle("COMMAND HISTORY")
+        timelineDialog[0] = new SyncDialog.Builder(this,accent).setTitle("COMMAND HISTORY")
                 .setMessage("Latest deterministic tool actions across supported modes.")
-                .setView(list).setNegativeButton("CLOSE",null).show();
+                .setView(list).setNegativeButton("CLOSE",null).create();
+        timelineDialog[0].show();
     }
 
     private View makeCoreOrb() {

@@ -11,6 +11,9 @@ import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.hardware.camera2.CameraManager;
 import android.provider.AlarmClock;
 import android.os.StatFs;
 import android.provider.ContactsContract;
@@ -75,10 +78,41 @@ public final class ToolEngine {
     private String lastTool = "";
     private String lastApp = "";
     private String lastContact = "";
-    private boolean flashlightOn;
+    private volatile boolean flashlightOn;
+    private String flashlightCameraId;
 
     public ToolEngine(Context context) {
         this.context = context.getApplicationContext();
+        observeFlashlightState();
+    }
+
+    private void observeFlashlightState() {
+        try {
+            CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            if (manager == null) return;
+            for (String id : manager.getCameraIdList()) {
+                android.hardware.camera2.CameraCharacteristics c = manager.getCameraCharacteristics(id);
+                Boolean flash = c.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                Integer facing = c.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+                if (Boolean.TRUE.equals(flash) && (facing == null
+                        || facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK)) {
+                    flashlightCameraId = id;
+                    break;
+                }
+            }
+            if (flashlightCameraId == null) return;
+            manager.registerTorchCallback(new CameraManager.TorchCallback() {
+                @Override public void onTorchModeChanged(String cameraId, boolean enabled) {
+                    if (cameraId.equals(flashlightCameraId)) flashlightOn = enabled;
+                }
+                @Override public void onTorchModeUnavailable(String cameraId) {
+                    if (cameraId.equals(flashlightCameraId)) flashlightOn = false;
+                }
+            }, new Handler(Looper.getMainLooper()));
+        } catch (Exception error) {
+            SyncEventLogger.record(context, "ToolEngine", "FLASHLIGHT_STATE_OBSERVER_UNAVAILABLE",
+                    "WARN", error.getClass().getSimpleName());
+        }
     }
 
     public synchronized Result handle(String raw) {
@@ -223,7 +257,7 @@ public final class ToolEngine {
             return result("wifi","Wi-Fi is "+(connected?"connected.":"not connected."));
         }
 
-        if (command.contains("network") || command.contains("internet")) {
+        if (command.contains("network") || command.contains("internet") || command.contains("mobile data")) {
             if (asksForDeviceToggle(command)) return openConnectivityPanel("network connectivity", command);
             ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
             boolean connected=false;
@@ -237,11 +271,17 @@ public final class ToolEngine {
         if (command.contains("bluetooth")) {
             android.bluetooth.BluetoothAdapter adapter=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if(adapter==null)return result("bluetooth","Bluetooth is not available on this device.");
+            if(Build.VERSION.SDK_INT>=31&&context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                    !=android.content.pm.PackageManager.PERMISSION_GRANTED)
+                return new Result(true,false,"Bluetooth status and control need Android's Nearby devices permission. Enable it in Sync AI's app permissions, then try again.","bluetooth",0,android.Manifest.permission.BLUETOOTH_CONNECT);
             if(asksForDeviceToggle(command)){
                 boolean wantsOn=command.contains("enable")||command.contains("activate")
                         ||command.contains("turn on")||command.contains("switch on")||command.matches(".*\\bon\\b.*");
                 try{
-                    if(wantsOn&&!adapter.isEnabled()){
+                    boolean currentlyOn = adapter.isEnabled();
+                    if (wantsOn && currentlyOn) return result("bluetooth","Bluetooth is already on.");
+                    if (!wantsOn && !currentlyOn) return result("bluetooth","Bluetooth is already off.");
+                    if(wantsOn&&!currentlyOn){
                         Intent request=new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE);
                         request.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(request);
                         return new Result(true,false,"Android's Bluetooth confirmation is open. Approve it to enable Bluetooth.","bluetooth",0);
@@ -253,9 +293,6 @@ public final class ToolEngine {
                     return new Result(true,false,"I couldn't open Android's Bluetooth controls: "+error.getClass().getSimpleName(),"bluetooth",0);
                 }
             }
-            if(Build.VERSION.SDK_INT>=31&&context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
-                    !=android.content.pm.PackageManager.PERMISSION_GRANTED)
-                return new Result(true,false,"Bluetooth status needs Android's Nearby devices permission. Enable it in Sync AI's app permissions, then try again.","bluetooth",0,android.Manifest.permission.BLUETOOTH_CONNECT);
             return result("bluetooth","Bluetooth is "+(adapter.isEnabled()?"on.":"off."));
         }
 
@@ -279,11 +316,11 @@ public final class ToolEngine {
                 am.setStreamVolume(AudioManager.STREAM_MUSIC,0,0);
                 return result("volume","Media audio muted.");
             }
-            if(command.matches(".*\\b(?:volume up|turn it up|increase (?:the )?volume|raise (?:the )?volume|louder)\\b.*")){
+            if(command.matches(".*\\b(?:volume up|turn it up|turn (?:the )?volume up|increase (?:the )?volume|raise (?:the )?volume|louder)\\b.*")){
                 am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_RAISE,0);
                 return result("volume","Media volume increased.");
             }
-            if(command.matches(".*\\b(?:volume down|turn it down|decrease (?:the )?volume|lower (?:the )?volume|quieter)\\b.*")){
+            if(command.matches(".*\\b(?:volume down|turn it down|turn (?:the )?volume down|decrease (?:the )?volume|lower (?:the )?volume|quieter)\\b.*")){
                 am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_LOWER,0);
                 return result("volume","Media volume decreased.");
             }
@@ -686,7 +723,7 @@ public final class ToolEngine {
             }
             if(context.checkSelfPermission(android.Manifest.permission.CALL_PHONE)==android.content.pm.PackageManager.PERMISSION_GRANTED){
                 try {
-                    Intent call=new Intent(Intent.ACTION_CALL,Uri.parse("tel:"+Uri.encode(number)));
+                    Intent call=new Intent(Intent.ACTION_CALL,Uri.fromParts("tel",number,null));
                     call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(call);
                     lastContact=display;return result("contact_call","Calling "+display+".");
                 } catch(SecurityException denied){return launchCallPermissionBridge(number,display);}
@@ -752,6 +789,7 @@ public final class ToolEngine {
             }
         }
         if (target == null) throw new IllegalStateException("No controllable flashlight was found.");
+        flashlightCameraId = target;
         cm.setTorchMode(target, on);
         flashlightOn = on;
     }
