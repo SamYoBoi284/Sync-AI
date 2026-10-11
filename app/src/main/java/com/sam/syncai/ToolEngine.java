@@ -76,7 +76,7 @@ public final class ToolEngine {
     private static final Pattern BRIGHTNESS_PERCENT =
             Pattern.compile("(?i)\\b(?:set|change|turn)\\s+(?:the\\s+)?(?:screen\\s+)?brightness\\s+(?:to\\s+)?(\\d{1,3})\\s*%?\\b");
     private static final Pattern ALARM =
-            Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::?(\\d{2}))?(?!\\d)\\s*(am|pm)?");
+            Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,4})(?::(\\d{2}))?(?!\\d)\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
             Pattern.compile("(?i)^(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+)$");
     private static final Pattern CALL =
@@ -475,8 +475,22 @@ public final class ToolEngine {
         String alarmCommand = ALARM_LABEL.matcher(command).replaceAll("").trim();
         Matcher alarm=ALARM.matcher(alarmCommand);
         if(alarm.find()) {
-            int hour=Integer.parseInt(alarm.group(1));
-            int minute=alarm.group(2)==null?0:Integer.parseInt(alarm.group(2));
+            String hourDigits = alarm.group(1);
+            String minuteDigits = alarm.group(2);
+            int hour;
+            int minute;
+            if (minuteDigits != null) {
+                hour = Integer.parseInt(hourDigits);
+                minute = Integer.parseInt(minuteDigits);
+            } else if (hourDigits.length() == 3 || hourDigits.length() == 4) {
+                // Voice often reads 6:30 as "630" and 12:30 as "1230".
+                // Split the final two digits as minutes instead of treating 630 as hour 63.
+                hour = Integer.parseInt(hourDigits.substring(0, hourDigits.length() - 2));
+                minute = Integer.parseInt(hourDigits.substring(hourDigits.length() - 2));
+            } else {
+                hour = Integer.parseInt(hourDigits);
+                minute = 0;
+            }
             String ampm=alarm.group(3);
             if(ampm!=null) {
                 if(hour<1||hour>12)throw new IllegalArgumentException("That is not a valid alarm time.");
