@@ -99,8 +99,13 @@ public final class ToolEngine {
             return withDuration(result, started);
         } catch (Exception e) {
             if (e instanceof SecurityException) {
-                String permission = e.getMessage() != null && e.getMessage().contains("READ_CONTACTS")
+                String message = e.getMessage() == null ? "" : e.getMessage();
+                String permission = message.contains("READ_CONTACTS")
                         ? android.Manifest.permission.READ_CONTACTS
+                        : message.contains("CALL_PHONE")
+                        ? android.Manifest.permission.CALL_PHONE
+                        : message.contains("BLUETOOTH_CONNECT")
+                        ? android.Manifest.permission.BLUETOOTH_CONNECT
                         : android.Manifest.permission.CAMERA;
                 return new Result(true, false,
                         "Android permission is required for that action. Allow it and try again.",
@@ -208,57 +213,114 @@ public final class ToolEngine {
         }
 
         if (command.contains("wifi") || command.contains("wi-fi")) {
-            ConnectivityManager cm = (ConnectivityManager)
-                    context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            boolean connected = false;
-            if (cm != null && Build.VERSION.SDK_INT >= 23) {
-                NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
-                connected = nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+            if (asksForDeviceToggle(command)) return openConnectivityPanel("Wi-Fi", command);
+            ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            boolean connected=false;
+            if(cm!=null&&Build.VERSION.SDK_INT>=23){
+                NetworkCapabilities nc=cm.getNetworkCapabilities(cm.getActiveNetwork());
+                connected=nc!=null&&nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
             }
-            return result("wifi", "Wi-Fi is " + (connected ? "connected." : "not connected."));
+            return result("wifi","Wi-Fi is "+(connected?"connected.":"not connected."));
         }
 
         if (command.contains("network") || command.contains("internet")) {
-            ConnectivityManager cm = (ConnectivityManager)
-                    context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            boolean connected = false;
-            if (cm != null && Build.VERSION.SDK_INT >= 23) {
-                NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
-                connected = nc != null && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+            if (asksForDeviceToggle(command)) return openConnectivityPanel("network connectivity", command);
+            ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            boolean connected=false;
+            if(cm!=null&&Build.VERSION.SDK_INT>=23){
+                NetworkCapabilities nc=cm.getNetworkCapabilities(cm.getActiveNetwork());
+                connected=nc!=null&&nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
             }
-            return result("network", "Internet/network status: " + (connected ? "connected." : "offline."));
+            return result("network","Internet/network status: "+(connected?"connected.":"offline."));
         }
 
         if (command.contains("bluetooth")) {
-            if (Build.VERSION.SDK_INT >= 31 &&
-                    context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
-                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                return new Result(true, false,
-                        "Bluetooth status needs Android's nearby-devices permission.",
-                        "bluetooth", 0, android.Manifest.permission.BLUETOOTH_CONNECT);
+            android.bluetooth.BluetoothAdapter adapter=android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if(adapter==null)return result("bluetooth","Bluetooth is not available on this device.");
+            if(asksForDeviceToggle(command)){
+                boolean wantsOn=command.contains("enable")||command.contains("activate")
+                        ||command.contains("turn on")||command.contains("switch on")||command.matches(".*\\bon\\b.*");
+                try{
+                    if(wantsOn&&!adapter.isEnabled()){
+                        Intent request=new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                        request.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(request);
+                        return new Result(true,false,"Android's Bluetooth confirmation is open. Approve it to enable Bluetooth.","bluetooth",0);
+                    }
+                    Intent settings=new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
+                    settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(settings);
+                    return new Result(true,false,"Android requires system controls to change Bluetooth. I opened Bluetooth settings so you can finish the change.","bluetooth",0);
+                }catch(Exception error){
+                    return new Result(true,false,"I couldn't open Android's Bluetooth controls: "+error.getClass().getSimpleName(),"bluetooth",0);
+                }
             }
-            android.bluetooth.BluetoothAdapter adapter =
-                    android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            if (adapter == null) return result("bluetooth", "Bluetooth is not available on this device.");
-            return result("bluetooth", "Bluetooth is " +
-                    (adapter.isEnabled() ? "on." : "off."));
+            if(Build.VERSION.SDK_INT>=31&&context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                    !=android.content.pm.PackageManager.PERMISSION_GRANTED)
+                return new Result(true,false,"Bluetooth status needs Android's Nearby devices permission. Enable it in Sync AI's app permissions, then try again.","bluetooth",0,android.Manifest.permission.BLUETOOTH_CONNECT);
+            return result("bluetooth","Bluetooth is "+(adapter.isEnabled()?"on.":"off."));
         }
 
         if (command.contains("volume")) {
-            android.media.AudioManager am = (android.media.AudioManager)
-                    context.getSystemService(Context.AUDIO_SERVICE);
-            if (am == null) return result("volume", "I couldn't read the volume.");
-            int current = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-            int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
-            return result("volume", "Media volume is " + current + " of " + max + ".");
+            AudioManager am=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
+            if(am==null)return new Result(true,false,"Android's audio service is unavailable.","volume",0);
+            int current=am.getStreamVolume(AudioManager.STREAM_MUSIC);
+            int max=am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            Matcher target=VOLUME_PERCENT.matcher(command);
+            if(target.find()){
+                int percent=Integer.parseInt(target.group(1));
+                if(percent>100)return new Result(true,false,"Volume must be between 0% and 100%.","volume",0);
+                am.setStreamVolume(AudioManager.STREAM_MUSIC,Math.round(max*percent/100f),0);
+                return result("volume","Media volume set to "+percent+"%.");
+            }
+            if(command.contains("unmute")){
+                am.setStreamVolume(AudioManager.STREAM_MUSIC,Math.max(1,current),0);
+                return result("volume","Media audio unmuted.");
+            }
+            if(command.contains("mute")){
+                am.setStreamVolume(AudioManager.STREAM_MUSIC,0,0);
+                return result("volume","Media audio muted.");
+            }
+            if(command.matches(".*\\b(?:volume up|turn it up|increase (?:the )?volume|raise (?:the )?volume|louder)\\b.*")){
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_RAISE,0);
+                return result("volume","Media volume increased.");
+            }
+            if(command.matches(".*\\b(?:volume down|turn it down|decrease (?:the )?volume|lower (?:the )?volume|quieter)\\b.*")){
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC,AudioManager.ADJUST_LOWER,0);
+                return result("volume","Media volume decreased.");
+            }
+            return result("volume","Media volume is "+am.getStreamVolume(AudioManager.STREAM_MUSIC)+" of "+max+".");
         }
 
         if (command.contains("brightness")) {
-            int brightness = Settings.System.getInt(
-                    context.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, -1);
-            if (brightness < 0) return result("brightness", "I couldn't read screen brightness.");
-            return result("brightness", "Screen brightness is about " +
-                    Math.round(brightness * 100f / 255f) + "%.");
+            int brightness=Settings.System.getInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS,-1);
+            Matcher target=BRIGHTNESS_PERCENT.matcher(command);
+            boolean explicit=target.find();
+            boolean up=command.matches(".*\\b(?:increase|raise|brighten|brightness up)\\b.*");
+            boolean down=command.matches(".*\\b(?:decrease|lower|dim|brightness down)\\b.*");
+            if(explicit||up||down){
+                int percent;
+                if(explicit){
+                    percent=Integer.parseInt(target.group(1));
+                    if(percent>100)return new Result(true,false,"Brightness must be between 0% and 100%.","brightness",0);
+                }else{
+                    if(brightness<0)return result("brightness","I couldn't read screen brightness.");
+                    percent=Math.max(0,Math.min(100,Math.round(brightness*100f/255f)+(up?15:-15)));
+                }
+                if(!Settings.System.canWrite(context)){
+                    try{
+                        Intent permission=new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,Uri.parse("package:"+context.getPackageName()));
+                        permission.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(permission);
+                        return new Result(true,false,"Android needs Modify system settings permission before Sync AI can change brightness. I opened that settings page; grant it and repeat the command.","brightness",0);
+                    }catch(Exception error){
+                        return new Result(true,false,"Brightness control needs Modify system settings permission in Android Settings.","brightness",0);
+                    }
+                }
+                boolean saved=Settings.System.putInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS,Math.round(percent*255f/100f));
+                if(!saved)return new Result(true,false,"Android rejected the brightness change.","brightness",0);
+                Settings.System.putInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS_MODE,Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                return result("brightness","Screen brightness set to about "+percent+"%.");
+            }
+            if(brightness<0)return result("brightness","I couldn't read screen brightness.");
+            return result("brightness","Screen brightness is about "+Math.round(brightness*100f/255f)+"%.");
         }
 
         if (command.matches(".*\\b(?:ram|ram usage|ram usage right now|memory usage|how much ram|how much memory is being used)\\b.*")) {
@@ -645,6 +707,24 @@ public final class ToolEngine {
         } catch(Exception error) {
             return new Result(true,false,"I couldn't start the direct-call permission flow: "
                     +error.getClass().getSimpleName(),"contact_call",0);
+        }
+    }
+
+    private static boolean asksForDeviceToggle(String command) {
+        return command.matches(".*\\b(?:turn|switch|enable|disable|activate|deactivate|set)\\b.*\\b(?:wi-?fi|wireless|bluetooth|internet|network|mobile data)\\b.*")
+                || command.matches(".*\\b(?:increase|decrease|turn on|turn off)\\b.*\\b(?:wi-?fi|wireless|bluetooth|internet|network|mobile data)\\b.*");
+    }
+
+    private Result openConnectivityPanel(String target,String command) {
+        try {
+            Intent panel=Build.VERSION.SDK_INT>=29?new Intent("android.settings.panel.action.INTERNET_CONNECTIVITY")
+                    :new Intent(Settings.ACTION_WIFI_SETTINGS);
+            panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(panel);
+            return new Result(true,false,"Android doesn't allow Sync AI to silently toggle "+target
+                    +". I opened the system connectivity controls so you can finish the change.","connectivity_settings",0);
+        }catch(Exception error){
+            return new Result(true,false,"I couldn't open system connectivity controls: "
+                    +error.getClass().getSimpleName(),"connectivity_settings",0);
         }
     }
 
