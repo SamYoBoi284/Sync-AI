@@ -177,10 +177,10 @@ public final class SyncEventLogger {
                                 || lower.contains("debuggerd");
                         if (!relevant) continue;
                         if (out.length() + line.length() + 1 > maxChars || lines >= maxLines) {
-                            out.append("[Logcat capture truncated to protect export size.]\\n");
+                            out.append("[Logcat capture truncated to protect export size.]\n");
                             break;
                         }
-                        out.append(line).append('\\n');
+                        out.append(line).append('\n');
                         lines++;
                     }
                 }
@@ -188,12 +188,12 @@ public final class SyncEventLogger {
                 if (out.length() > 0) return out.toString();
             } catch (Exception error) {
                 out.append("[Unable to read Android logcat: ")
-                        .append(error.getClass().getSimpleName()).append("]\\n");
+                        .append(error.getClass().getSimpleName()).append("]\n");
             }
         }
         return out.length() > 0 ? out.toString()
                 : "[Android did not expose readable logcat output to Sync AI. "
-                + "The persistent Sync AI flight recorder is included above.]\\n";
+                + "The persistent Sync AI flight recorder is included above.]\n";
     }
 
     public static String fileName() {
