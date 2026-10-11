@@ -264,9 +264,7 @@ Java_com_sam_syncai_GgufNative_nativeDiagnostics(JNIEnv *env, jclass) {
     return env->NewStringUTF(result.c_str());
 }
 
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_sam_syncai_GgufNative_nativeGenerate(
+static void native_generate_impl(
         JNIEnv *env, jclass,
         jobjectArray roles,
         jobjectArray texts,
@@ -570,3 +568,65 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     env->CallVoidMethod(callback, completeMethod, diagnosticsValue);
     env->DeleteLocalRef(diagnosticsValue);
 }
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sam_syncai_GgufNative_nativeGenerate(
+        JNIEnv *env, jclass clazz,
+        jobjectArray roles,
+        jobjectArray texts,
+        jint maxTokens,
+        jfloat temperature,
+        jfloat topP,
+        jobject callback) {
+    try {
+        native_generate_impl(env, clazz, roles, texts, maxTokens, temperature, topP, callback);
+    } catch (const std::bad_alloc &) {
+        LOGE("GENERATION_CPP_ALLOCATION_FAILURE %s", process_memory_snapshot().c_str());
+        if (!env->ExceptionCheck() && callback) {
+            jclass callbackClass = env->GetObjectClass(callback);
+            jmethodID errorMethod = callbackClass
+                    ? env->GetMethodID(callbackClass, "onError", "(Ljava/lang/String;)V") : nullptr;
+            if (errorMethod) {
+                jstring message = env->NewStringUTF(
+                        "Native inference ran out of memory while preparing or generating the response.");
+                if (message) {
+                    env->CallVoidMethod(callback, errorMethod, message);
+                    env->DeleteLocalRef(message);
+                }
+            }
+            if (callbackClass) env->DeleteLocalRef(callbackClass);
+        }
+    } catch (const std::exception &error) {
+        LOGE("GENERATION_CPP_EXCEPTION message=%s %s",
+             error.what(), process_memory_snapshot().c_str());
+        if (!env->ExceptionCheck() && callback) {
+            jclass callbackClass = env->GetObjectClass(callback);
+            jmethodID errorMethod = callbackClass
+                    ? env->GetMethodID(callbackClass, "onError", "(Ljava/lang/String;)V") : nullptr;
+            if (errorMethod) {
+                jstring message = env->NewStringUTF("Native inference failed safely. Export logs for details.");
+                if (message) {
+                    env->CallVoidMethod(callback, errorMethod, message);
+                    env->DeleteLocalRef(message);
+                }
+            }
+            if (callbackClass) env->DeleteLocalRef(callbackClass);
+        }
+    } catch (...) {
+        LOGE("GENERATION_CPP_UNKNOWN_EXCEPTION %s", process_memory_snapshot().c_str());
+        if (!env->ExceptionCheck() && callback) {
+            jclass callbackClass = env->GetObjectClass(callback);
+            jmethodID errorMethod = callbackClass
+                    ? env->GetMethodID(callbackClass, "onError", "(Ljava/lang/String;)V") : nullptr;
+            if (errorMethod) {
+                jstring message = env->NewStringUTF("Native inference failed unexpectedly. Export logs for details.");
+                if (message) {
+                    env->CallVoidMethod(callback, errorMethod, message);
+                    env->DeleteLocalRef(message);
+                }
+            }
+            if (callbackClass) env->DeleteLocalRef(callbackClass);
+        }
+    }
+}
+
