@@ -1,12 +1,8 @@
 package com.sam.syncai;
 
-import android.app.AlarmManager;
-import android.app.PendingIntent;
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -15,6 +11,7 @@ import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.provider.AlarmClock;
 import android.os.StatFs;
 import android.provider.ContactsContract;
 import android.provider.Settings;
@@ -29,7 +26,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -62,7 +58,11 @@ public final class ToolEngine {
     }
 
     private static final Pattern TIMER =
-            Pattern.compile("(?i)(?:timer(?:\\s+(?:for|of))?|remind me in)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)");
+            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|of))?|(?:start|begin)\\s+(?:a\\s+)?timer(?:\\s+for)?|countdown(?:\\s+for)?)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+    private static final Pattern REMINDER_IN =
+            Pattern.compile("(?i)\\bremind\\s+me\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+to\\s+(.+))?");
+    private static final Pattern REMINDER_AT =
+            Pattern.compile("(?i)\\bremind\\s+me\\s+(tomorrow\\s+)?at\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?(?:\\s+to\\s+(.+))?");
     private static final Pattern ALARM =
             Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
@@ -286,43 +286,92 @@ public final class ToolEngine {
                     " • Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
         }
 
-        Matcher timer = TIMER.matcher(command);
-        if (timer.find()) {
-            double amount = Double.parseDouble(timer.group(1));
-            String unit = timer.group(2);
-            long seconds = unit.startsWith("hour") || unit.startsWith("hr")
-                    ? Math.round(amount * 3600)
-                    : unit.startsWith("min")
-                    ? Math.round(amount * 60)
-                    : Math.round(amount);
-            if (seconds <= 0) throw new IllegalArgumentException("Timer duration must be positive.");
-            scheduleNotification(seconds * 1000L, "Sync//AI timer",
-                    "Timer finished: " + formatDuration(seconds) + ".");
-            return result("timer", "Done bro, timer set for " + formatDuration(seconds) + ".");
+        Matcher reminderIn = REMINDER_IN.matcher(command);
+        if (reminderIn.find()) {
+            double amount = Double.parseDouble(reminderIn.group(1));
+            long seconds = durationSeconds(amount, reminderIn.group(2).toLowerCase(Locale.US));
+            if (seconds <= 0) throw new IllegalArgumentException("Reminder delay must be positive.");
+            String reminderText = reminderIn.group(3) == null ? "Your reminder is due." : reminderIn.group(3).trim();
+            ReminderScheduler.schedule(context, seconds * 1000L, "Sync AI reminder", "Reminder: " + reminderText);
+            return result("reminder", "Reminder scheduled in " + formatDuration(seconds) + ": " + reminderText
+                    + ". I'll notify you even if Sync AI is closed.");
         }
 
-        Matcher alarm = ALARM.matcher(command);
-        if (alarm.find()) {
-            int hour = Integer.parseInt(alarm.group(1));
-            int minute = alarm.group(2) == null ? 0 : Integer.parseInt(alarm.group(2));
-            String ampm = alarm.group(3);
+        Matcher reminderAt = REMINDER_AT.matcher(command);
+        if (reminderAt.find()) {
+            boolean tomorrow = reminderAt.group(1) != null;
+            int hour = Integer.parseInt(reminderAt.group(2));
+            int minute = reminderAt.group(3) == null ? 0 : Integer.parseInt(reminderAt.group(3));
+            String ampm = reminderAt.group(4);
+            String reminderText = reminderAt.group(5) == null ? "Your reminder is due." : reminderAt.group(5).trim();
             if (ampm != null) {
+                if (hour < 1 || hour > 12) throw new IllegalArgumentException("That is not a valid reminder time.");
                 if ("pm".equals(ampm) && hour < 12) hour += 12;
                 if ("am".equals(ampm) && hour == 12) hour = 0;
             }
-            if (hour > 23 || minute > 59) throw new IllegalArgumentException("That is not a valid alarm time.");
+            if (hour > 23 || minute > 59) throw new IllegalArgumentException("That is not a valid reminder time.");
             Calendar cal = Calendar.getInstance();
-            cal.set(Calendar.HOUR_OF_DAY, hour);
-            cal.set(Calendar.MINUTE, minute);
-            cal.set(Calendar.SECOND, 0);
-            cal.set(Calendar.MILLISECOND, 0);
-            if (cal.getTimeInMillis() <= System.currentTimeMillis()) {
-                cal.add(Calendar.DAY_OF_YEAR, 1);
+            if (tomorrow) cal.add(Calendar.DAY_OF_YEAR, 1);
+            cal.set(Calendar.HOUR_OF_DAY,hour);cal.set(Calendar.MINUTE,minute);
+            cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);
+            if(!tomorrow&&cal.getTimeInMillis()<=System.currentTimeMillis())cal.add(Calendar.DAY_OF_YEAR,1);
+            long delay=Math.max(1000L,cal.getTimeInMillis()-System.currentTimeMillis());
+            ReminderScheduler.schedule(context,delay,"Sync AI reminder","Reminder: "+reminderText);
+            return result("reminder","Reminder scheduled for "
+                    +DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(cal.getTime())
+                    +": "+reminderText+".");
+        }
+
+        Matcher timer = TIMER.matcher(command);
+        if (timer.find()) {
+            double amount = Double.parseDouble(timer.group(1));
+            long seconds = durationSeconds(amount, timer.group(2).toLowerCase(Locale.US));
+            if (seconds <= 0) throw new IllegalArgumentException("Timer duration must be positive.");
+            if (seconds > 86400L) return new Result(true,false,
+                    "Android's Clock timer supports up to 24 hours. Use a reminder for a longer delay.","timer",0);
+            Intent timerIntent=new Intent(AlarmClock.ACTION_SET_TIMER);
+            timerIntent.putExtra(AlarmClock.EXTRA_LENGTH,(int)seconds);
+            timerIntent.putExtra(AlarmClock.EXTRA_MESSAGE,"Sync AI timer");
+            timerIntent.putExtra(AlarmClock.EXTRA_SKIP_UI,true);
+            timerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                context.startActivity(timerIntent);
+                return result("timer","Sent a timer request to your Clock app for "+formatDuration(seconds)
+                        +". Check Clock if your installed app asks for confirmation.");
+            } catch(ActivityNotFoundException error) {
+                return new Result(true,false,"No installed Clock app accepted Android's timer action. I did not substitute a Sync AI notification.","timer",0);
             }
-            scheduleAt(cal.getTimeInMillis(), "Sync//AI alarm",
-                    "Alarm for " + DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime()) + ".");
-            return result("alarm", "Alarm set for " +
-                    DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime()) + ".");
+        }
+
+        Matcher alarm=ALARM.matcher(command);
+        if(alarm.find()) {
+            int hour=Integer.parseInt(alarm.group(1));
+            int minute=alarm.group(2)==null?0:Integer.parseInt(alarm.group(2));
+            String ampm=alarm.group(3);
+            if(ampm!=null) {
+                if(hour<1||hour>12)throw new IllegalArgumentException("That is not a valid alarm time.");
+                if("pm".equals(ampm)&&hour<12)hour+=12;
+                if("am".equals(ampm)&&hour==12)hour=0;
+            }
+            if(hour>23||minute>59)throw new IllegalArgumentException("That is not a valid alarm time.");
+            Calendar cal=Calendar.getInstance();
+            cal.set(Calendar.HOUR_OF_DAY,hour);cal.set(Calendar.MINUTE,minute);
+            cal.set(Calendar.SECOND,0);cal.set(Calendar.MILLISECOND,0);
+            if(cal.getTimeInMillis()<=System.currentTimeMillis())cal.add(Calendar.DAY_OF_YEAR,1);
+            Intent alarmIntent=new Intent(AlarmClock.ACTION_SET_ALARM);
+            alarmIntent.putExtra(AlarmClock.EXTRA_HOUR,hour);
+            alarmIntent.putExtra(AlarmClock.EXTRA_MINUTES,minute);
+            alarmIntent.putExtra(AlarmClock.EXTRA_MESSAGE,"Sync AI alarm");
+            alarmIntent.putExtra(AlarmClock.EXTRA_SKIP_UI,true);
+            alarmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            String timeText=DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime());
+            try {
+                context.startActivity(alarmIntent);
+                return result("alarm","Sent a Clock app request to set an alarm for "+timeText
+                        +". Check Clock to confirm it appears if your installed app asks for confirmation.");
+            } catch(ActivityNotFoundException error) {
+                return new Result(true,false,"No installed Clock app accepted Android's alarm action. I did not create a Sync AI notification instead.","alarm",0);
+            }
         }
 
         if (looksLikeCalculator(command)) {
@@ -546,32 +595,64 @@ public final class ToolEngine {
     }
 
     private Result callContact(String name) {
-        String wanted = name.trim();
-        Cursor cursor = null;
+        String wanted=name==null?"":name.trim();
+        if(wanted.isEmpty())return new Result(true,false,"Tell me which contact to call.","contact_call",0);
+        Cursor cursor=null;
         try {
-            cursor = context.getContentResolver().query(
-                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER,
-                            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME},
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
-                    new String[]{"%" + wanted + "%"},
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-            );
-            if (cursor == null || !cursor.moveToFirst()) {
-                return new Result(true, false,
-                        "I couldn't find a contact named \"" + wanted + "\".",
-                        "contact_call", 0);
+            cursor=context.getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER,ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME},
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" LIKE ?",new String[]{"%"+wanted+"%"},
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" ASC");
+            if(cursor==null||!cursor.moveToFirst())return new Result(true,false,
+                    "I couldn't find a contact named \\""+wanted+"\\".","contact_call",0);
+            Map<String,String> matches=new java.util.LinkedHashMap<>();
+            do {
+                String display=cursor.getString(1),number=cursor.getString(0);
+                if(display!=null&&number!=null&&!number.trim().isEmpty()&&!matches.containsKey(display))matches.put(display,number);
+            } while(cursor.moveToNext());
+            String display=null,number=null;
+            for(Map.Entry<String,String> entry:matches.entrySet())if(entry.getKey().equalsIgnoreCase(wanted)){
+                display=entry.getKey();number=entry.getValue();break;
             }
-            String number = cursor.getString(0);
-            String display = cursor.getString(1);
-            Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
-            lastContact = display;
-            return result("contact_call", "Opening the dialer for " + display + ".");
-        } finally {
-            if (cursor != null) cursor.close();
+            if(display==null&&matches.size()==1){Map.Entry<String,String> only=matches.entrySet().iterator().next();display=only.getKey();number=only.getValue();}
+            if(display==null||number==null){
+                StringBuilder names=new StringBuilder();int count=0;
+                for(String candidate:matches.keySet()){if(count++>=4)break;if(names.length()>0)names.append(", ");names.append(candidate);}
+                return new Result(true,false,matches.isEmpty()?"I couldn't find a phone number for "+wanted+"."
+                        :"I found multiple contacts matching \\""+wanted+"\\" ("+names+"). Say the full contact name so I don't call the wrong person.",
+                        "contact_call",0);
+            }
+            if(context.checkSelfPermission(android.Manifest.permission.CALL_PHONE)==android.content.pm.PackageManager.PERMISSION_GRANTED){
+                try {
+                    Intent call=new Intent(Intent.ACTION_CALL,Uri.parse("tel:"+Uri.encode(number)));
+                    call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(call);
+                    lastContact=display;return result("contact_call","Calling "+display+".");
+                } catch(SecurityException denied){return launchCallPermissionBridge(number,display);}
+                catch(ActivityNotFoundException unavailable){return new Result(true,false,"Android couldn't find a phone app to call "+display+".","contact_call",0);}
+            }
+            lastContact=display;return launchCallPermissionBridge(number,display);
+        } finally {if(cursor!=null)cursor.close();}
+    }
+
+    private Result launchCallPermissionBridge(String number,String display) {
+        try {
+            Intent permission=new Intent(context,CallPermissionActivity.class);
+            permission.putExtra(CallPermissionActivity.EXTRA_NUMBER,number);
+            permission.putExtra(CallPermissionActivity.EXTRA_CONTACT,display);
+            permission.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(permission);
+            return new Result(true,false,"Android will ask for permission before calling "+display
+                    +". If permission is denied, the dialer will open instead.","contact_call",0);
+        } catch(Exception error) {
+            return new Result(true,false,"I couldn't start the direct-call permission flow: "
+                    +error.getClass().getSimpleName(),"contact_call",0);
         }
+    }
+
+    private static long durationSeconds(double amount,String unit) {
+        if(amount<=0)return 0L;
+        if(unit.startsWith("hour")||unit.startsWith("hr"))return Math.round(amount*3600);
+        if(unit.startsWith("min"))return Math.round(amount*60);
+        return Math.round(amount);
     }
 
     private void setFlashlight(boolean on) throws Exception {
@@ -593,30 +674,6 @@ public final class ToolEngine {
         if (target == null) throw new IllegalStateException("No controllable flashlight was found.");
         cm.setTorchMode(target, on);
         flashlightOn = on;
-    }
-
-    private void scheduleNotification(long delayMs, String title, String text) {
-        scheduleAt(System.currentTimeMillis() + Math.max(1000, delayMs), title, text);
-    }
-
-    private void scheduleAt(long when, String title, String text) {
-        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarms == null) throw new IllegalStateException("Alarm service is unavailable.");
-
-        String id = UUID.randomUUID().toString();
-        Intent intent = new Intent(context, SyncNotificationReceiver.class);
-        intent.putExtra("title", title);
-        intent.putExtra("text", text);
-        intent.putExtra("id", id.hashCode());
-        PendingIntent pending = PendingIntent.getBroadcast(
-                context, id.hashCode(), intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-        if (Build.VERSION.SDK_INT >= 31 && !alarms.canScheduleExactAlarms()) {
-            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
-        } else {
-            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
-        }
     }
 
     private static String normalize(String input) {
