@@ -741,8 +741,8 @@ public final class MainActivity extends Activity {
         if (tool.handled) {
             DiagnosticRecord diag = new DiagnosticRecord(
                     started, tool.durationMs, "DETERMINISTIC TOOL",
-                    tool.toolName, tool.durationMs, "", "", "",
-                    tool.success ? "" : tool.response);
+                    tool.toolName, tool.durationMs, "", "",
+                    tool.success ? "" : "tool", tool.success ? "" : tool.response);
             ChatMessage assistant = new ChatMessage(
                     ChatMessage.Role.ASSISTANT, tool.response,
                     System.currentTimeMillis(), diag.format());

@@ -388,8 +388,6 @@ public final class VoiceModeActivity extends Activity {
                 "handled=" + tool.handled + " tool=" + tool.toolName
                         + " success=" + tool.success + " durationMs=" + tool.durationMs);
         if (tool.handled) {
-            if (responseHeading != null) responseHeading.setText(tool.success
-                    ? "SYNC CORE • ACTION" : "SYNC CORE • ACTION NEEDS ATTENTION");
             appendVoiceChat(clean, tool.response, new DiagnosticRecord(
                     System.currentTimeMillis() - tool.durationMs,
                     tool.durationMs,
@@ -401,6 +399,8 @@ public final class VoiceModeActivity extends Activity {
                     tool.success ? "" : "tool",
                     tool.success ? "" : tool.response
             ).format());
+            if (responseHeading != null) responseHeading.setText(tool.success
+                    ? "SYNC CORE • ACTION" : "SYNC CORE • ACTION NEEDS ATTENTION");
             processing.set(false);
             updateState("RESPONDING");
             showResponse(tool.response);
