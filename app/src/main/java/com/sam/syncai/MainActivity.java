@@ -20,6 +20,8 @@ import android.provider.Settings;
 import android.graphics.Rect;
 import android.view.Gravity;
 import android.service.voice.VoiceInteractionService;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
@@ -1392,6 +1394,13 @@ public final class MainActivity extends Activity {
             if (styleDialog[0] != null) styleDialog[0].dismiss();
             showSpeechRatePicker();
         });
+        String savedVoice = runtime.preferences().getSpeechVoiceName();
+        Button voice = sectionButton("SPEECH VOICE",
+                savedVoice.isEmpty() ? "System default" : savedVoice);
+        voice.setOnClickListener(v -> {
+            if (styleDialog[0] != null) styleDialog[0].dismiss();
+            showSpeechVoicePicker();
+        });
         Button output = sectionButton("VOICE OUTPUT",
                 runtime.preferences().isVoiceOutputEnabled() ? "Spoken replies enabled" : "Spoken replies disabled");
         output.setOnClickListener(v -> {
@@ -1409,6 +1418,7 @@ public final class MainActivity extends Activity {
         content.addView(note);
         content.addView(personality);
         content.addView(speech);
+        content.addView(voice);
         content.addView(output);
         styleDialog[0] = new SyncDialog.Builder(this, accent)
                 .setTitle("PERSONALITY & VOICE")
@@ -1442,6 +1452,62 @@ public final class MainActivity extends Activity {
                     d.dismiss();
                     showToast("Speech rate set to "+labels[which].split(" · ")[0]+".");
                 }).setNegativeButton("CLOSE",null).show();
+    }
+
+    private void showSpeechVoicePicker() {
+        final TextToSpeech[] probe = new TextToSpeech[1];
+        probe[0] = new TextToSpeech(this, status -> {
+            if (status != TextToSpeech.SUCCESS) {
+                if (probe[0] != null) { probe[0].shutdown(); probe[0] = null; }
+                runOnUiThread(() -> showToast("Android couldn't load the available speech voices."));
+                return;
+            }
+
+            ArrayList<Voice> voices = new ArrayList<>();
+            try {
+                if (probe[0].getVoices() != null) voices.addAll(probe[0].getVoices());
+            } catch (Exception ignored) {}
+            Locale deviceLocale = Locale.getDefault();
+            java.util.Collections.sort(voices, (a, b) -> {
+                int aMatch = a.getLocale().getLanguage().equals(deviceLocale.getLanguage()) ? 0 : 1;
+                int bMatch = b.getLocale().getLanguage().equals(deviceLocale.getLanguage()) ? 0 : 1;
+                if (aMatch != bMatch) return Integer.compare(aMatch, bMatch);
+                int localeOrder = a.getLocale().getDisplayName(deviceLocale)
+                        .compareToIgnoreCase(b.getLocale().getDisplayName(deviceLocale));
+                return localeOrder != 0 ? localeOrder : a.getName().compareToIgnoreCase(b.getName());
+            });
+
+            ArrayList<String> names = new ArrayList<>();
+            ArrayList<String> labels = new ArrayList<>();
+            labels.add("System default · chosen by Android");
+            names.add("");
+            for (Voice item : voices) {
+                if (item == null || item.getName() == null || item.getLocale() == null) continue;
+                names.add(item.getName());
+                labels.add(item.getLocale().getDisplayName(deviceLocale) + " · " + item.getName()
+                        + (item.isNetworkConnectionRequired() ? " · network voice" : " · on-device voice"));
+            }
+            String[] labelArray = labels.toArray(new String[0]);
+            String[] voiceNames = names.toArray(new String[0]);
+            int selected = 0;
+            String current = runtime.preferences().getSpeechVoiceName();
+            for (int i = 0; i < voiceNames.length; i++) {
+                if (voiceNames[i].equals(current)) { selected = i; break; }
+            }
+            if (probe[0] != null) { probe[0].shutdown(); probe[0] = null; }
+            final int selectedIndex = selected;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                new SyncDialog.Builder(this, accent).setTitle("SPEECH VOICE")
+                        .setMessage("Voice availability depends on the installed Android speech engine. Network voices may require connectivity; on-device voices work offline when installed.")
+                        .setSingleChoiceItems(labelArray, selectedIndex, (dialog, which) -> {
+                            runtime.preferences().setSpeechVoiceName(voiceNames[which]);
+                            dialog.dismiss();
+                            showToast(which == 0 ? "Using Android's default speech voice."
+                                    : "Speech voice saved. It will apply to the next voice session.");
+                        }).setNegativeButton("CLOSE", null).show();
+            });
+        });
     }
 
     private void showPerformanceHealth() {

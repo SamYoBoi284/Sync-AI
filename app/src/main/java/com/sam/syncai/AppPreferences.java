@@ -14,6 +14,7 @@ public final class AppPreferences {
     private static final String KEY_MOTION = "motion_intensity";
     private static final String KEY_PERSONALITY = "assistant_personality";
     private static final String KEY_SPEECH_RATE = "speech_rate";
+    private static final String KEY_SPEECH_VOICE = "speech_voice";
 
     public static final int[] ACCENTS = {
             0xFF9A60FF, 0xFF4B8BFF, 0xFF50D7FF, 0xFF35C987,
@@ -149,5 +150,14 @@ public final class AppPreferences {
 
     public void setSpeechRate(float rate) {
         prefs.edit().putFloat(KEY_SPEECH_RATE, Math.max(0.75f, Math.min(1.25f, rate))).apply();
+    }
+
+    /** Empty means let Android's selected TTS engine choose its default voice. */
+    public String getSpeechVoiceName() {
+        return prefs.getString(KEY_SPEECH_VOICE, "");
+    }
+
+    public void setSpeechVoiceName(String voiceName) {
+        prefs.edit().putString(KEY_SPEECH_VOICE, voiceName == null ? "" : voiceName.trim()).apply();
     }
 }

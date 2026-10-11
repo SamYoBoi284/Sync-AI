@@ -226,7 +226,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
             ttsReady = status == TextToSpeech.SUCCESS;
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
-                tts.setSpeechRate(runtime.preferences().getSpeechRate());
+                SpeechPreferences.apply(tts, getContext());
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {}
                     @Override public void onDone(String id) {

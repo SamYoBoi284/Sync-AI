@@ -274,7 +274,7 @@ public final class VoiceModeActivity extends Activity {
                     "status=" + status);
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
-                tts.setSpeechRate(runtime.preferences().getSpeechRate());
+                SpeechPreferences.apply(tts, VoiceModeActivity.this);
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {}
                     @Override public void onDone(String id) {
