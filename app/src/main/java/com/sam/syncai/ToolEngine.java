@@ -62,7 +62,11 @@ public final class ToolEngine {
     }
 
     private static final Pattern TIMER =
-            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|of))?|(?:start|begin)\\s+(?:a\\s+)?timer(?:\\s+for)?|countdown(?:\\s+for)?)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|of))?|(?:start|begin)\\s+(?:a\\s+)?timer(?:\\s+for)?|countdown(?:\\s+for)?)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+(?:and|,)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?))?\\b");
+    private static final Pattern TIMER_CLOCK_TIME =
+            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|to|until))?|countdown(?:\\s+(?:for|to|until))?)\\s+(\\d{1,2})(?::(\\d{2}))\\s*(a\\.?m\\.?|p\\.?m\\.?)?\\b");
+    private static final Pattern ALARM_LABEL =
+            Pattern.compile("(?i)\\b(?:named|called|label(?:ed|led)?(?:\\s+as)?|with\\s+(?:the\\s+)?label(?:\\s+as)?)\\s+(.+?)\\s*$");
     private static final Pattern REMINDER_IN =
             Pattern.compile("(?i)\\bremind\\s+me\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+to\\s+(.+))?");
     private static final Pattern REMINDER_AT =
@@ -426,10 +430,24 @@ public final class ToolEngine {
                     +": "+reminderText+".");
         }
 
+        Matcher timerClockTime = TIMER_CLOCK_TIME.matcher(command);
+        if (timerClockTime.find()) {
+            return new Result(true, false,
+                    "That looks like a clock time, not a timer duration. Say “set an alarm for "
+                            + timerClockTime.group(1) + ":" + timerClockTime.group(2)
+                            + (timerClockTime.group(3) == null ? "" : " " + timerClockTime.group(3).replace(".", "").toUpperCase(Locale.US))
+                            + "” for a specific time, or give me a duration like “10 minutes”.",
+                    "timer-clarification", 0);
+        }
+
         Matcher timer = TIMER.matcher(command);
         if (timer.find()) {
             double amount = Double.parseDouble(timer.group(1));
             long seconds = durationSeconds(amount, timer.group(2).toLowerCase(Locale.US));
+            if (timer.group(3) != null) {
+                seconds += durationSeconds(Double.parseDouble(timer.group(3)),
+                        timer.group(4).toLowerCase(Locale.US));
+            }
             if (seconds <= 0) throw new IllegalArgumentException("Timer duration must be positive.");
             if (seconds > 86400L) return new Result(true,false,
                     "Android's Clock timer supports up to 24 hours. Use a reminder for a longer delay.","timer",0);
@@ -447,7 +465,10 @@ public final class ToolEngine {
             }
         }
 
-        Matcher alarm=ALARM.matcher(command);
+        Matcher labelMatcher = ALARM_LABEL.matcher(command);
+        String alarmLabel = labelMatcher.find() ? labelMatcher.group(1).trim() : "Sync AI alarm";
+        String alarmCommand = labelMatcher.reset().replaceAll("").trim();
+        Matcher alarm=ALARM.matcher(alarmCommand);
         if(alarm.find()) {
             int hour=Integer.parseInt(alarm.group(1));
             int minute=alarm.group(2)==null?0:Integer.parseInt(alarm.group(2));
@@ -465,14 +486,14 @@ public final class ToolEngine {
             Intent alarmIntent=new Intent(AlarmClock.ACTION_SET_ALARM);
             alarmIntent.putExtra(AlarmClock.EXTRA_HOUR,hour);
             alarmIntent.putExtra(AlarmClock.EXTRA_MINUTES,minute);
-            alarmIntent.putExtra(AlarmClock.EXTRA_MESSAGE,"Sync AI alarm");
+            alarmIntent.putExtra(AlarmClock.EXTRA_MESSAGE,alarmLabel);
             alarmIntent.putExtra(AlarmClock.EXTRA_SKIP_UI,true);
             alarmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             String timeText=DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime());
             try {
                 context.startActivity(alarmIntent);
                 return result("alarm","Sent a Clock app request to set an alarm for "+timeText
-                        +". Check Clock to confirm it appears if your installed app asks for confirmation.");
+                        +" labeled “"+alarmLabel+"”. Check Clock to confirm it appears if your installed app asks for confirmation.");
             } catch(ActivityNotFoundException error) {
                 return new Result(true,false,"No installed Clock app accepted Android's alarm action. I did not create a Sync AI notification instead.","alarm",0);
             }
