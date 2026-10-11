@@ -71,8 +71,7 @@ public final class MainActivity extends Activity {
     private String appliedThemeId;
     private int appliedAccentIndex;
     private String appliedMotionIntensity;
-    private View coreOrb;
-    private android.animation.ValueAnimator corePulse;
+    private SyncCoreView coreOrb;
 
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private SyncRuntime runtime;
@@ -734,11 +733,14 @@ public final class MainActivity extends Activity {
         Motion.setEnabledAnimated(importButton, false);
 
         long started = System.currentTimeMillis();
+        if (coreOrb != null) coreOrb.setState(SyncCoreView.State.EXECUTING);
         ToolEngine.Result tool = runtime.tools().handle(message);
         SyncEventLogger.record(this, "ToolEngine", "ROUTE_RESULT", "INFO",
                 "handled=" + tool.handled + " tool=" + tool.toolName
                         + " success=" + tool.success + " durationMs=" + tool.durationMs);
         if (tool.handled) {
+            if (coreOrb != null) coreOrb.setState(tool.success
+                    ? SyncCoreView.State.SUCCESS : SyncCoreView.State.ERROR);
             DiagnosticRecord diag = new DiagnosticRecord(
                     started, tool.durationMs, "DETERMINISTIC TOOL",
                     tool.toolName, tool.durationMs, "", "",
@@ -753,6 +755,8 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        if (coreOrb != null) coreOrb.setState(runtime.backend().isLoaded()
+                ? SyncCoreView.State.THINKING : SyncCoreView.State.IDLE);
         String fallback = casualFallback(message);
         if (!runtime.backend().isLoaded()) {
             DiagnosticRecord diag = new DiagnosticRecord(
@@ -811,6 +815,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     replaceStreamingBubble(streamingBubble, assistant);
+                    if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
                     Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
                     Motion.setEnabledAnimated(sendButton, !modelBusy);
@@ -835,6 +840,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     replaceStreamingBubble(streamingBubble, assistant);
+                    if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
                     activeGenerations = Math.max(0, activeGenerations - 1);
                     Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
                     Motion.setEnabledAnimated(sendButton, !modelBusy);
@@ -1488,23 +1494,11 @@ public final class MainActivity extends Activity {
         timelineDialog[0].show();
     }
 
-    private View makeCoreOrb() {
-        View orb=new View(this);
-        GradientDrawable shape=new GradientDrawable();
-        shape.setShape(GradientDrawable.OVAL);shape.setColor(palette.primary);
-        shape.setStroke(dp(2),palette.secondary);
-        orb.setBackground(shape);orb.setElevation(dp(4));
-        orb.setContentDescription("Sync Core, local assistant ready");
-        if(!Motion.reduced(this)){
-            corePulse=android.animation.ValueAnimator.ofFloat(1f,
-                    "Immersive".equals(runtime.preferences().getMotionIntensity())?1.12f:1.045f);
-            corePulse.setDuration("Immersive".equals(runtime.preferences().getMotionIntensity())?650:1200);
-            corePulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
-            corePulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-            corePulse.addUpdateListener(a->{if(coreOrb!=null){float x=(float)a.getAnimatedValue();coreOrb.setScaleX(x);coreOrb.setScaleY(x);}});
-            corePulse.start();
-        }
-        return orb;
+    private SyncCoreView makeCoreOrb() {
+        SyncCoreView core = new SyncCoreView(this);
+        core.setState(runtime.backend().isLoaded()
+                ? SyncCoreView.State.READY : SyncCoreView.State.IDLE);
+        return core;
     }
 
     private void requestDefaultAssistant() {
@@ -1841,7 +1835,6 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         SyncEventLogger.record(this, "MainActivity", "onDestroy", "INFO",
                 "taskId=" + getTaskId());
-        if (corePulse != null) { corePulse.cancel(); corePulse = null; }
         ioExecutor.shutdownNow();
         super.onDestroy();
     }

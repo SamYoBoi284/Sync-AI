@@ -45,6 +45,7 @@ public final class VoiceModeActivity extends Activity {
     private LinearLayout transcriptContainer;
     private View micButton;
     private View panelView;
+    private SyncCoreView coreOrb;
     private android.animation.ValueAnimator micPulse;
     private boolean exiting;
     private int accent;
@@ -107,14 +108,9 @@ public final class VoiceModeActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
 
-        View core = new View(this);
-        GradientDrawable coreShape = new GradientDrawable();
-        coreShape.setShape(GradientDrawable.OVAL);
-        coreShape.setColor(palette.primary);
-        coreShape.setStroke(dp(2), palette.secondary);
-        core.setBackground(coreShape);
-        core.setContentDescription("Sync Core status");
-        top.addView(core, new LinearLayout.LayoutParams(dp(25), dp(25)));
+        coreOrb = new SyncCoreView(this);
+        coreOrb.setState(SyncCoreView.State.READY);
+        top.addView(coreOrb, new LinearLayout.LayoutParams(dp(30), dp(30)));
         TextView title = text("SYNC AI", 18, Color.WHITE, true);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, dp(35), 1);
         titleLp.leftMargin = dp(10);
@@ -614,6 +610,7 @@ public final class VoiceModeActivity extends Activity {
     private void updateState(String text) {
         main.post(() -> {
             if (destroyed || stateView == null) return;
+            if (coreOrb != null) coreOrb.setStateFromLabel(text);
             Motion.swapText(stateView, text);
             applyStateMotion(text);
         });

@@ -15,15 +15,13 @@ import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.animation.ValueAnimator;
 
 /** Full-screen Appearance studio, independent of personality and assistant behavior. */
 public final class AppearanceActivity extends Activity {
     private AppPreferences preferences;
     private AppTheme palette;
     private LinearLayout root;
-    private View coreOrb;
-    private ValueAnimator corePulse;
+    private SyncCoreView coreOrb;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -32,7 +30,6 @@ public final class AppearanceActivity extends Activity {
     }
 
     private void render() {
-        stopCorePulse();
         palette = AppTheme.from(this);
         getWindow().setStatusBarColor(palette.background);
         getWindow().setNavigationBarColor(palette.background);
@@ -133,7 +130,7 @@ public final class AppearanceActivity extends Activity {
             radio.setOnClickListener(v->{
                 preferences.setMotionIntensity(item);
                 SyncEventLogger.record(this,"Appearance","MOTION_CHANGED","INFO","intensity="+item);
-                if ("Minimal".equals(item)) stopCorePulse(); else startCorePulse();
+                if (coreOrb != null) coreOrb.refreshMotionSettings();
             });
             motion.addView(radio);
         }
@@ -166,7 +163,6 @@ public final class AppearanceActivity extends Activity {
         doneLp.topMargin=dp(8);
         root.addView(done,doneLp);
         setContentView(root);
-        startCorePulse();
     }
 
     private void addHero(LinearLayout content) {
@@ -252,14 +248,9 @@ public final class AppearanceActivity extends Activity {
         content.addView(sub);
     }
 
-    private View makeCore() {
-        View core=new View(this);
-        GradientDrawable orb=new GradientDrawable();
-        orb.setShape(GradientDrawable.OVAL);
-        orb.setColor(palette.primary);
-        orb.setStroke(dp(3),palette.secondary);
-        core.setBackground(orb); core.setElevation(dp(8));
-        core.setContentDescription("Sync Core visualizer");
+    private SyncCoreView makeCore() {
+        SyncCoreView core = new SyncCoreView(this);
+        core.setState(SyncCoreView.State.READY);
         return core;
     }
 
@@ -272,27 +263,7 @@ public final class AppearanceActivity extends Activity {
         GradientDrawable d=new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius); return d;
     }
 
-    private void startCorePulse() {
-        if(coreOrb==null||Motion.reduced(this)||"Minimal".equals(preferences.getMotionIntensity())) return;
-        stopCorePulse();
-        float peak="Immersive".equals(preferences.getMotionIntensity())?1.13f:1.06f;
-        corePulse=ValueAnimator.ofFloat(1f,peak);
-        corePulse.setDuration("Immersive".equals(preferences.getMotionIntensity())?620:1050);
-        corePulse.setRepeatMode(ValueAnimator.REVERSE);
-        corePulse.setRepeatCount(ValueAnimator.INFINITE);
-        corePulse.addUpdateListener(a->{
-            if(coreOrb==null)return;
-            float s=(float)a.getAnimatedValue(); coreOrb.setScaleX(s); coreOrb.setScaleY(s);
-        });
-        corePulse.start();
-    }
-
-    private void stopCorePulse() {
-        if(corePulse!=null){corePulse.cancel();corePulse=null;}
-        if(coreOrb!=null){coreOrb.setScaleX(1f);coreOrb.setScaleY(1f);}
-    }
-
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
 
-    @Override protected void onDestroy(){stopCorePulse();super.onDestroy();}
+    @Override protected void onDestroy(){super.onDestroy();}
 }
