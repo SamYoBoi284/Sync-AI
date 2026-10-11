@@ -694,43 +694,84 @@ public final class ToolEngine {
     }
 
     private Result callContact(String name) {
-        String wanted=name==null?"":name.trim();
-        if(wanted.isEmpty())return new Result(true,false,"Tell me which contact to call.","contact_call",0);
-        Cursor cursor=null;
+        String wanted = name == null ? "" : name.trim();
+        if (wanted.isEmpty()) {
+            return new Result(true, false, "Tell me which contact to call.", "contact_call", 0);
+        }
+        Cursor cursor = null;
         try {
-            cursor=context.getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER,ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME},
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" LIKE ?",new String[]{"%"+wanted+"%"},
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" ASC");
-            if(cursor==null||!cursor.moveToFirst())return new Result(true,false,
-                    "I couldn't find a contact named \\""+wanted+"\\".","contact_call",0);
-            Map<String,String> matches=new java.util.LinkedHashMap<>();
+            cursor = context.getContentResolver().query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER,
+                            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME},
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
+                    new String[]{"%" + wanted + "%"},
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC");
+            if (cursor == null || !cursor.moveToFirst()) {
+                return new Result(true, false,
+                        "I couldn't find a contact named \"" + wanted + "\".",
+                        "contact_call", 0);
+            }
+
+            Map<String, String> matches = new java.util.LinkedHashMap<>();
             do {
-                String display=cursor.getString(1),number=cursor.getString(0);
-                if(display!=null&&number!=null&&!number.trim().isEmpty()&&!matches.containsKey(display))matches.put(display,number);
-            } while(cursor.moveToNext());
-            String display=null,number=null;
-            for(Map.Entry<String,String> entry:matches.entrySet())if(entry.getKey().equalsIgnoreCase(wanted)){
-                display=entry.getKey();number=entry.getValue();break;
+                String display = cursor.getString(1);
+                String number = cursor.getString(0);
+                if (display != null && number != null && !number.trim().isEmpty()
+                        && !matches.containsKey(display)) {
+                    matches.put(display, number);
+                }
+            } while (cursor.moveToNext());
+
+            String display = null;
+            String number = null;
+            for (Map.Entry<String, String> entry : matches.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(wanted)) {
+                    display = entry.getKey();
+                    number = entry.getValue();
+                    break;
+                }
             }
-            if(display==null&&matches.size()==1){Map.Entry<String,String> only=matches.entrySet().iterator().next();display=only.getKey();number=only.getValue();}
-            if(display==null||number==null){
-                StringBuilder names=new StringBuilder();int count=0;
-                for(String candidate:matches.keySet()){if(count++>=4)break;if(names.length()>0)names.append(", ");names.append(candidate);}
-                return new Result(true,false,matches.isEmpty()?"I couldn't find a phone number for "+wanted+"."
-                        :"I found multiple contacts matching \\""+wanted+"\\" ("+names+"). Say the full contact name so I don't call the wrong person.",
-                        "contact_call",0);
+            if (display == null && matches.size() == 1) {
+                Map.Entry<String, String> only = matches.entrySet().iterator().next();
+                display = only.getKey();
+                number = only.getValue();
             }
-            if(context.checkSelfPermission(android.Manifest.permission.CALL_PHONE)==android.content.pm.PackageManager.PERMISSION_GRANTED){
+            if (display == null || number == null) {
+                StringBuilder names = new StringBuilder();
+                int count = 0;
+                for (String candidate : matches.keySet()) {
+                    if (count++ >= 4) break;
+                    if (names.length() > 0) names.append(", ");
+                    names.append(candidate);
+                }
+                String response = matches.isEmpty()
+                        ? "I couldn't find a phone number for " + wanted + "."
+                        : "I found multiple contacts matching \"" + wanted + "\" (" + names
+                            + "). Say the full contact name so I don't call the wrong person.";
+                return new Result(true, false, response, "contact_call", 0);
+            }
+
+            if (context.checkSelfPermission(android.Manifest.permission.CALL_PHONE)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 try {
-                    Intent call=new Intent(Intent.ACTION_CALL,Uri.fromParts("tel",number,null));
-                    call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);context.startActivity(call);
-                    lastContact=display;return result("contact_call","Calling "+display+".");
-                } catch(SecurityException denied){return launchCallPermissionBridge(number,display);}
-                catch(ActivityNotFoundException unavailable){return new Result(true,false,"Android couldn't find a phone app to call "+display+".","contact_call",0);}
+                    Intent call = new Intent(Intent.ACTION_CALL, Uri.fromParts("tel", number, null));
+                    call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(call);
+                    lastContact = display;
+                    return result("contact_call", "Calling " + display + ".");
+                } catch (SecurityException denied) {
+                    return launchCallPermissionBridge(number, display);
+                } catch (ActivityNotFoundException unavailable) {
+                    return new Result(true, false, "Android couldn't find a phone app to call "
+                            + display + ".", "contact_call", 0);
+                }
             }
-            lastContact=display;return launchCallPermissionBridge(number,display);
-        } finally {if(cursor!=null)cursor.close();}
+            lastContact = display;
+            return launchCallPermissionBridge(number, display);
+        } finally {
+            if (cursor != null) cursor.close();
+        }
     }
 
     private Result launchCallPermissionBridge(String number,String display) {
