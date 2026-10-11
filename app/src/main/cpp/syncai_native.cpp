@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <fstream>
 #include <mutex>
+#include <unistd.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -13,6 +14,20 @@
 #include "ggml-backend.h"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SyncAI", __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "SyncAI", __VA_ARGS__)
+
+static std::string process_memory_snapshot() {
+    std::ifstream status("/proc/self/status");
+    std::string line, result;
+    while (std::getline(status, line)) {
+        if (line.rfind("VmRSS:", 0) == 0 || line.rfind("VmSize:", 0) == 0
+                || line.rfind("VmHWM:", 0) == 0) {
+            if (!result.empty()) result += " ";
+            result += line;
+        }
+    }
+    return result.empty() ? "process memory unavailable" : result;
+}
 
 static std::mutex g_mutex;
 static llama_model *g_model = nullptr;
@@ -168,6 +183,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const long long startedMs = static_cast<long long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
+    LOGI("GENERATION_NATIVE_START pid=%d %s", getpid(), process_memory_snapshot().c_str());
 
     jclass callbackClass = env->GetObjectClass(callback);
     jmethodID tokenMethod = env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V");
@@ -204,20 +220,27 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
 
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
-    // Keep a modest cap for mobile RAM while allowing models trained for larger
-    // contexts to retain more conversation than the old hard 2048-token ceiling.
+    // Sync AI targets 4 GB Android phones. A 4096-token KV cache can push
+    // the process into memory pressure alongside the resident GGUF weights and
+    // other apps. Prefer a conservative 2048-token context for reliability.
     const uint32_t contextSize = static_cast<uint32_t>(
-            std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx)));
+            std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
     ctxParams.n_batch = 256;
     ctxParams.n_ubatch = 256;
+    LOGI("GENERATION_CONTEXT context=%u trained=%d maxTokens=%d %s",
+         contextSize, trainedCtx, static_cast<int>(maxTokens), process_memory_snapshot().c_str());
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     const int threads = std::max(2, std::min(6, cpuCount - 1));
     ctxParams.n_threads = threads;
     ctxParams.n_threads_batch = threads;
 
+    LOGI("GENERATION_CONTEXT_CREATE_BEGIN context=%u promptMessages=%zu %s",
+         contextSize, roleStrings.size(), process_memory_snapshot().c_str());
     llama_context *ctx = llama_init_from_model(g_model, ctxParams);
     if (!ctx) {
+        LOGE("GENERATION_CONTEXT_CREATE_FAILED context=%u %s",
+             contextSize, process_memory_snapshot().c_str());
         const std::string message = "Could not create the inference context.";
         set_error_diagnostics(startedMs, "context", message);
         jstring value = env->NewStringUTF(message.c_str());
@@ -252,6 +275,8 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         return size;
     };
 
+    LOGI("GENERATION_PROMPT_READY promptTokens=%d context=%u %s",
+         promptCount, contextSize, process_memory_snapshot().c_str());
     const int requestedGeneration = std::max(1, std::min(256, static_cast<int>(maxTokens)));
     const int reservedGeneration = std::min(requestedGeneration, 256);
     const int promptBudget = std::max(
@@ -353,6 +378,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const long long generationStartMs = static_cast<long long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
+    LOGI("GENERATION_DECODE_BEGIN promptMs=%lld %s", promptMs, process_memory_snapshot().c_str());
 
     std::string pendingUtf8;
     const int generationLimit = std::max(
@@ -365,6 +391,10 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     int generated = 0;
 
     for (; generated < generationLimit; ++generated) {
+        if (generated > 0 && generated % 32 == 0) {
+            LOGI("GENERATION_PROGRESS generated=%d/%d %s",
+                 generated, generationLimit, process_memory_snapshot().c_str());
+        }
         llama_token token = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, token)) break;
 
@@ -427,6 +457,8 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
              promptCount, contextSize, threads, promptMs, generationMs,
              generated, tokensPerSecond, totalMs);
     g_last_diagnostics = diagnostics;
+    LOGI("GENERATION_NATIVE_COMPLETE generated=%d totalMs=%lld %s",
+         generated, totalMs, process_memory_snapshot().c_str());
 
     jstring diagnosticsValue = env->NewStringUTF(g_last_diagnostics.c_str());
     env->CallVoidMethod(callback, completeMethod, diagnosticsValue);
