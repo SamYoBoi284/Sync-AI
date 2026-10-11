@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <mutex>
