@@ -400,6 +400,8 @@ public final class VoiceModeActivity extends Activity {
             processing.set(false);
             updateState("RESPONDING");
             showResponse(tool.response);
+            if (responseHeading != null) responseHeading.setText(tool.success
+                    ? "SYNC CORE • ACTION" : "SYNC CORE • ACTION NEEDS ATTENTION");
             speakAndMaybeListen(tool.response, false);
             return;
         }
@@ -531,10 +533,12 @@ public final class VoiceModeActivity extends Activity {
         LinearLayout bubble = new LinearLayout(this);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(10), dp(7), dp(10), dp(8));
-        bubble.setBackground(round(fromUser ? 0x443C6EA8 : 0x443D3266, 16));
+        GradientDrawable bubbleBg = round(fromUser ? palette.userBubble : palette.assistantBubble, 16);
+        bubbleBg.setStroke(dp(1), fromUser ? palette.border : palette.primary);
+        bubble.setBackground(bubbleBg);
         TextView heading = text(speaker, 10, fromUser ? palette.secondary : accent, true);
-        if (!fromUser && speaker.startsWith("SYNC AI")) responseHeading = heading;
-        TextView body = text(message == null ? "" : message, 13, Color.WHITE, false);
+        if (!fromUser && (speaker.startsWith("SYNC AI") || speaker.startsWith("SYNC CORE"))) responseHeading = heading;
+        TextView body = text(message == null ? "" : message, 13, palette.body, false);
         body.setMaxWidth(dp(270));
         bubble.addView(heading);
         bubble.addView(body);

@@ -18,7 +18,11 @@ public final class SyncCoreView extends View {
     private AppTheme theme;
     private State state = State.READY;
     private float rotation;
+    private boolean reducedMotion;
     private ValueAnimator animator;
+    private final Runnable resetTransientState = () -> {
+        if (state == State.SUCCESS || state == State.ERROR) setState(State.READY);
+    };
 
     public SyncCoreView(Context context) {
         super(context);
@@ -31,9 +35,11 @@ public final class SyncCoreView extends View {
     public void setState(State next) {
         if (next == null) return;
         if (state != next) {
+            removeCallbacks(resetTransientState);
             state = next;
             setContentDescription("Sync Core, " + next.name().toLowerCase(java.util.Locale.US));
             if (animator != null) animator.setDuration(duration());
+            if (next == State.SUCCESS || next == State.ERROR) postDelayed(resetTransientState, 1800L);
             invalidate();
         }
         refreshMotionSettings();
@@ -52,7 +58,8 @@ public final class SyncCoreView extends View {
     }
 
     public void refreshMotionSettings() {
-        if (Motion.reduced(getContext())) stopAnimator();
+        reducedMotion = Motion.reduced(getContext());
+        if (reducedMotion) stopAnimator();
         else if (isAttachedToWindow()) startAnimator();
         invalidate();
     }
@@ -61,7 +68,7 @@ public final class SyncCoreView extends View {
     @Override protected void onDetachedFromWindow() { stopAnimator(); super.onDetachedFromWindow(); }
 
     private void startAnimator() {
-        if (animator != null || Motion.reduced(getContext())) return;
+        if (animator != null || reducedMotion) return;
         animator = ValueAnimator.ofFloat(0f, 360f);
         animator.setDuration(duration());
         animator.setRepeatCount(ValueAnimator.INFINITE);
@@ -92,7 +99,7 @@ public final class SyncCoreView extends View {
         float d=Math.min(getWidth(),getHeight());
         if(d<=0f)return;
         float x=getWidth()/2f,y=getHeight()/2f,r=d*.31f;
-        float pulse=Motion.reduced(getContext())?1f:1f+.035f*(float)Math.sin(Math.toRadians(rotation*2f));
+        float pulse=reducedMotion?1f:1f+.035f*(float)Math.sin(Math.toRadians(rotation*2f));
         int primary=stateColor(), secondary=state==State.ERROR?0xFFFF718D:state==State.SUCCESS?0xFF34D399:theme.secondary;
 
         paint.setStyle(Paint.Style.FILL);
