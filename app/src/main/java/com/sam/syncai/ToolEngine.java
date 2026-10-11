@@ -64,7 +64,7 @@ public final class ToolEngine {
     private static final Pattern TIMER =
             Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|of))?|(?:start|begin)\\s+(?:a\\s+)?timer(?:\\s+for)?|countdown(?:\\s+for)?)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+(?:and|,)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?))?\\b");
     private static final Pattern TIMER_CLOCK_TIME =
-            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|to|until))?|countdown(?:\\s+(?:for|to|until))?)\\s+(\\d{1,2})(?::(\\d{2}))\\s*(a\\.?m\\.?|p\\.?m\\.?)?(?![a-z])");
+            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|to|until))?|countdown(?:\\s+(?:for|to|until))?)\\s+(\\d{1,2})(?::?(\\d{2}))\\s*(a\\.?m\\.?|p\\.?m\\.?)?(?![a-z])");
     private static final Pattern ALARM_LABEL =
             Pattern.compile("(?i)\\b(?:named|called|label(?:ed|led)?(?:\\s+as)?|with\\s+(?:the\\s+)?label(?:\\s+as)?)\\s+(.+?)\\s*$");
     private static final Pattern REMINDER_IN =
@@ -76,7 +76,7 @@ public final class ToolEngine {
     private static final Pattern BRIGHTNESS_PERCENT =
             Pattern.compile("(?i)\\b(?:set|change|turn)\\s+(?:the\\s+)?(?:screen\\s+)?brightness\\s+(?:to\\s+)?(\\d{1,3})\\s*%?\\b");
     private static final Pattern ALARM =
-            Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
+            Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::?(\\d{2}))?\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
             Pattern.compile("(?i)^(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+)$");
     private static final Pattern CALL =
