@@ -780,7 +780,10 @@ public final class MainActivity extends Activity {
         activeGenerations++;
         SyncEventLogger.record(this, "GgufModelBackend", "GENERATION_START", "INFO",
                 "chatId=" + activeChat.id + " generationIndex=" + activeGenerations
-                        + " model=" + currentModelName());
+                        + " model=" + currentModelName()
+                        + " thread=" + Thread.currentThread().getName()
+                        + " uptimeMs=" + android.os.SystemClock.elapsedRealtime()
+                        + " memory={" + environmentSnapshot() + "}");
 
         List<ChatMessage> context = buildModelContext(message);
         GenerationConfig config = new GenerationConfig();
@@ -801,7 +804,8 @@ public final class MainActivity extends Activity {
                 SyncEventLogger.record(MainActivity.this, "GgufModelBackend",
                         "GENERATION_COMPLETE", "INFO",
                         "chatId=" + activeChat.id + " totalMs=" + total
-                                + " responseChars=" + response.length());
+                                + " responseChars=" + response.length()
+                                + " memory={" + environmentSnapshot() + "}");
                 // Do not call backend().diagnostics() from this callback.
                 // llama.cpp invokes the callback while its native generation mutex is held;
                 // synchronously requesting diagnostics here would deadlock the executor.
@@ -829,7 +833,8 @@ public final class MainActivity extends Activity {
                 long total = System.currentTimeMillis() - started;
                 SyncEventLogger.recordException(MainActivity.this, "GgufModelBackend",
                         "GENERATION_ERROR", error,
-                        "chatId=" + activeChat.id + " totalMs=" + total);
+                        "chatId=" + activeChat.id + " totalMs=" + total
+                                + " memory={" + environmentSnapshot() + "}");
                 // Same deadlock rule as onComplete(): diagnostics must not be queried
                 // synchronously from the native callback.
                 DiagnosticRecord diag = new DiagnosticRecord(
@@ -1067,6 +1072,8 @@ public final class MainActivity extends Activity {
             out.append("Active Chat ID: ").append(runtime.preferences().getActiveChatId()).append('\n');
             out.append("Accent: ").append(AppPreferences.ACCENT_NAMES[
                     runtime.preferences().getAccent()]).append("\n\n");
+            out.append("=== DEVICE / PROCESS / MEMORY SNAPSHOT ===\n");
+            out.append(environmentSnapshot()).append("\n\n");
 
             out.append("=== PERSONALIZATION MEMORY ===\n");
             out.append(runtime.preferences().getMemory()).append("\n\n");
@@ -1135,7 +1142,9 @@ public final class MainActivity extends Activity {
         out.append("Title: ").append(chat.title).append('\n');
         out.append("Chat ID: ").append(chat.id).append('\n');
         out.append("Created: ").append(formatTimestamp(chat.createdAt)).append('\n');
-        out.append("Updated: ").append(formatTimestamp(chat.updatedAt)).append("\n\n");
+        out.append("Updated: ").append(formatTimestamp(chat.updatedAt)).append('\n');
+        out.append("\\n=== DEVICE / PROCESS / MEMORY SNAPSHOT ===\\n");
+        out.append(environmentSnapshot()).append("\\n\\n");
         appendMessages(out, chat);
         return out.toString();
     }
@@ -1172,6 +1181,66 @@ public final class MainActivity extends Activity {
                 out.append("\n");
             }
         }
+    }
+
+    private String environmentSnapshot() {
+        StringBuilder out = new StringBuilder();
+        Runtime javaRuntime = Runtime.getRuntime();
+        long heapUsed = javaRuntime.totalMemory() - javaRuntime.freeMemory();
+        out.append("Captured: ").append(formatTimestamp(System.currentTimeMillis())).append('\n');
+        out.append("Package: ").append(getPackageName()).append('\n');
+        out.append("Version: ").append(BuildConfig.VERSION_NAME).append(" (")
+                .append(BuildConfig.VERSION_CODE).append(")\n");
+        out.append("Process ID: ").append(android.os.Process.myPid()).append('\n');
+        out.append("Process thread: ").append(Thread.currentThread().getName()).append('\n');
+        out.append("Elapsed realtime: ").append(android.os.SystemClock.elapsedRealtime()).append(" ms\n");
+        out.append("Device: ").append(Build.MANUFACTURER).append(' ')
+                .append(Build.MODEL).append(" / ").append(Build.DEVICE).append('\n');
+        out.append("Build fingerprint: ").append(Build.FINGERPRINT).append('\n');
+        out.append("Android: ").append(Build.VERSION.RELEASE).append(" (API ")
+                .append(Build.VERSION.SDK_INT).append(")\n");
+        out.append("Supported ABIs: ").append(java.util.Arrays.toString(Build.SUPPORTED_ABIS)).append('\n');
+        out.append("Locale / timezone: ").append(Locale.getDefault()).append(" / ")
+                .append(java.util.TimeZone.getDefault().getID()).append('\n');
+        out.append("Java heap used / allocated / max: ")
+                .append(heapUsed / (1024L * 1024L)).append(" / ")
+                .append(javaRuntime.totalMemory() / (1024L * 1024L)).append(" / ")
+                .append(javaRuntime.maxMemory() / (1024L * 1024L)).append(" MB\n");
+        out.append("Native heap allocated / free / size: ")
+                .append(android.os.Debug.getNativeHeapAllocatedSize() / (1024L * 1024L)).append(" / ")
+                .append(android.os.Debug.getNativeHeapFreeSize() / (1024L * 1024L)).append(" / ")
+                .append(android.os.Debug.getNativeHeapSize() / (1024L * 1024L)).append(" MB\n");
+        try {
+            android.app.ActivityManager manager =
+                    (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            android.app.ActivityManager.MemoryInfo memory = new android.app.ActivityManager.MemoryInfo();
+            if (manager != null) {
+                manager.getMemoryInfo(memory);
+                out.append("System RAM available / total / threshold: ")
+                        .append(memory.availMem / (1024L * 1024L)).append(" / ")
+                        .append(memory.totalMem / (1024L * 1024L)).append(" / ")
+                        .append(memory.threshold / (1024L * 1024L)).append(" MB\n");
+                out.append("System low-memory flag: ").append(memory.lowMemory).append('\n');
+            }
+        } catch (Exception error) {
+            out.append("System memory snapshot error: ")
+                    .append(error.getClass().getSimpleName()).append('\n');
+        }
+        ModelInfo loaded = runtime == null ? null : runtime.modelManager().getLoadedModel();
+        out.append("Selected model: ").append(loaded == null ? "none"
+                : loaded.name + " | " + loaded.format + " | " + loaded.sizeLabel()).append('\n');
+        out.append("Backend loaded: ").append(runtime != null && runtime.backend().isLoaded()).append('\n');
+        if (runtime != null) {
+            out.append("Wake-word preference / service: ")
+                    .append(runtime.preferences().isWakeWordEnabled()).append(" / ")
+                    .append(SyncAssistantService.isRunning()).append('\n');
+            try {
+                out.append("Backend diagnostics: ").append(runtime.backend().diagnostics()).append('\n');
+            } catch (Exception error) {
+                out.append("Backend diagnostics error: ").append(error.getClass().getSimpleName()).append('\n');
+            }
+        }
+        return out.toString();
     }
 
     private String formatTimestamp(long timestamp) {
