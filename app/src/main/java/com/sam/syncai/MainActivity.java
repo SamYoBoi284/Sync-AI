@@ -1230,47 +1230,51 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
+        final SyncDialog[] settingsDialog = new SyncDialog[1];
+        Runnable closeSettings = () -> {
+            if (settingsDialog[0] != null) settingsDialog[0].dismiss();
+        };
 
-        Button appearance = sectionButton("APPEARANCE", AppTheme.displayName(runtime.preferences().getTheme())
-                + " • themes, accents, animation");
-        appearance.setOnClickListener(v -> showAppearance());
+        Button appearance = sectionButton("APPEARANCE",
+                AppTheme.displayName(runtime.preferences().getTheme()) + " • themes, accents, animation");
+        appearance.setOnClickListener(v -> { closeSettings.run(); showAppearance(); });
         content.addView(appearance);
 
-        Button style = sectionButton("PERSONALITY & VOICE", runtime.preferences().getPersonalityName()
-                + " • response style and speech rate");
-        style.setOnClickListener(v -> showAssistantStyle());
+        Button style = sectionButton("PERSONALITY & VOICE",
+                runtime.preferences().getPersonalityName() + " • response style and speech rate");
+        style.setOnClickListener(v -> { closeSettings.run(); showAssistantStyle(); });
         content.addView(style);
 
         Button voice = sectionButton("VOICE & WAKE WORD", "Voice output, Hey Sync, assistant setup");
-        voice.setOnClickListener(v -> showVoiceSettings());
+        voice.setOnClickListener(v -> { closeSettings.run(); showVoiceSettings(); });
         content.addView(voice);
 
         Button personalization = sectionButton("PERSONALIZATION", "On-device memory and import");
-        personalization.setOnClickListener(v -> showPersonalization());
+        personalization.setOnClickListener(v -> { closeSettings.run(); showPersonalization(); });
         content.addView(personalization);
 
         Button about = sectionButton("ABOUT & DIAGNOSTICS", "Version, creators, runtime evidence");
-        about.setOnClickListener(v -> showAbout());
+        about.setOnClickListener(v -> { closeSettings.run(); showAbout(); });
         content.addView(about);
 
         Button models = sectionButton("LOCAL MODELS", "Import, load, inspect, remove");
-        models.setOnClickListener(v -> showModelsDialog());
+        models.setOnClickListener(v -> { closeSettings.run(); showModelsDialog(); });
         content.addView(models);
 
         Button health = sectionButton("PERFORMANCE & HEALTH", "Loaded model, memory, listener status");
-        health.setOnClickListener(v -> showPerformanceHealth());
+        health.setOnClickListener(v -> { closeSettings.run(); showPerformanceHealth(); });
         content.addView(health);
 
         Button commands = sectionButton("COMMAND HISTORY", "Recent deterministic actions and diagnostics");
-        commands.setOnClickListener(v -> showCommandTimeline());
+        commands.setOnClickListener(v -> { closeSettings.run(); showCommandTimeline(); });
         content.addView(commands);
 
-        SyncDialog dialog = new SyncDialog.Builder(this, accent)
+        settingsDialog[0] = new SyncDialog.Builder(this, accent)
                 .setTitle("SETTINGS")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
                 .create();
-        dialog.show();
+        settingsDialog[0].show();
     }
 
     private Button sectionButton(String title, String subtitle) {
@@ -1285,17 +1289,23 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
+        final SyncDialog[] personalizationDialog = new SyncDialog[1];
 
-        TextView summary = text("Memory is kept on-device and is used as optional context for local generation.", 13, MUTED, false);
+        TextView summary = text("Memory is kept on-device and is used as optional context for local generation.",
+                13, MUTED, false);
         summary.setPadding(0, dp(4), 0, dp(12));
         content.addView(summary);
 
         Button editMemory = sectionButton("MEMORY", "View / edit imported memory");
-        editMemory.setOnClickListener(v -> editMemory());
+        editMemory.setOnClickListener(v -> {
+            if (personalizationDialog[0] != null) personalizationDialog[0].dismiss();
+            editMemory();
+        });
         content.addView(editMemory);
 
         Button importMemory = sectionButton("IMPORT MEMORY FILE", "Load a text memory file into Sync");
         importMemory.setOnClickListener(v -> {
+            if (personalizationDialog[0] != null) personalizationDialog[0].dismiss();
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("text/*");
@@ -1305,14 +1315,18 @@ public final class MainActivity extends Activity {
 
         Button colors = sectionButton("APPEARANCE", AppTheme.displayName(runtime.preferences().getTheme())
                 + " • theme, accent and motion");
-        colors.setOnClickListener(v -> showAppearance());
+        colors.setOnClickListener(v -> {
+            if (personalizationDialog[0] != null) personalizationDialog[0].dismiss();
+            showAppearance();
+        });
         content.addView(colors);
 
-        new SyncDialog.Builder(this, accent)
+        personalizationDialog[0] = new SyncDialog.Builder(this, accent)
                 .setTitle("PERSONALIZATION")
                 .setView(content)
                 .setNegativeButton("CLOSE", null)
-                .show();
+                .create();
+        personalizationDialog[0].show();
     }
 
     private void editMemory() {
@@ -1360,11 +1374,18 @@ public final class MainActivity extends Activity {
     }
 
     private void showAssistantStyle() {
+        final SyncDialog[] styleDialog = new SyncDialog[1];
         Button personality = sectionButton("RESPONSE PERSONALITY", runtime.preferences().getPersonalityName());
-        personality.setOnClickListener(v -> showPersonalityPicker());
+        personality.setOnClickListener(v -> {
+            if (styleDialog[0] != null) styleDialog[0].dismiss();
+            showPersonalityPicker();
+        });
         Button speech = sectionButton("SPOKEN RESPONSE SPEED",
                 String.format(Locale.US, "%.2fx", runtime.preferences().getSpeechRate()));
-        speech.setOnClickListener(v -> showSpeechRatePicker());
+        speech.setOnClickListener(v -> {
+            if (styleDialog[0] != null) styleDialog[0].dismiss();
+            showSpeechRatePicker();
+        });
         Button output = sectionButton("VOICE OUTPUT",
                 runtime.preferences().isVoiceOutputEnabled() ? "Spoken replies enabled" : "Spoken replies disabled");
         output.setOnClickListener(v -> {
@@ -1375,15 +1396,20 @@ public final class MainActivity extends Activity {
         });
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(18),dp(4),dp(18),dp(4));
-        TextView note = text("Personality changes response style only. Theme, tools, permissions, and wake-word behavior stay independent.",12,MUTED,false);
-        note.setPadding(0,0,0,dp(10));
+        content.setPadding(dp(18), dp(4), dp(18), dp(4));
+        TextView note = text("Personality changes response style only. Theme, tools, permissions, and wake-word behavior stay independent.",
+                12, MUTED, false);
+        note.setPadding(0, 0, 0, dp(10));
         content.addView(note);
         content.addView(personality);
         content.addView(speech);
         content.addView(output);
-        new SyncDialog.Builder(this,accent).setTitle("PERSONALITY & VOICE")
-                .setView(content).setNegativeButton("CLOSE",null).show();
+        styleDialog[0] = new SyncDialog.Builder(this, accent)
+                .setTitle("PERSONALITY & VOICE")
+                .setView(content)
+                .setNegativeButton("CLOSE", null)
+                .create();
+        styleDialog[0].show();
     }
 
     private void showPersonalityPicker() {
