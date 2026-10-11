@@ -31,13 +31,14 @@ import java.util.List;
  * same motion system as the rest of the app instead of the stock Android popup.
  */
 public final class SyncDialog implements DialogInterface {
-    private static final int SURFACE = Color.rgb(14, 18, 31);
-    private static final int SURFACE_2 = Color.rgb(21, 27, 44);
-    private static final int BUTTON = Color.rgb(23, 30, 49);
-    private static final int BORDER = Color.rgb(42, 52, 78);
-    private static final int TEXT = Color.rgb(245, 247, 255);
-    private static final int BODY = Color.rgb(216, 223, 241);
-    private static final int MUTED = Color.rgb(151, 164, 190);
+    private final int SURFACE;
+    private final int SURFACE_2;
+    private final int BUTTON;
+    private final int BORDER;
+    private final int TEXT;
+    private final int BODY;
+    private final int MUTED;
+    private final AppTheme palette;
     private static final float DIM = 0.62f;
 
     private final Context ctx;
@@ -114,6 +115,14 @@ public final class SyncDialog implements DialogInterface {
     private SyncDialog(Builder b) {
         this.ctx = b.ctx;
         this.accent = b.accent;
+        this.palette = AppTheme.from(ctx);
+        this.SURFACE = palette.surface;
+        this.SURFACE_2 = palette.surface2;
+        this.BUTTON = palette.button;
+        this.BORDER = palette.border;
+        this.TEXT = palette.text;
+        this.BODY = palette.body;
+        this.MUTED = palette.muted;
 
         dialog = new Dialog(ctx, android.R.style.Theme_Translucent_NoTitleBar) {
             @Override public void onBackPressed() { SyncDialog.this.dismiss(); }
