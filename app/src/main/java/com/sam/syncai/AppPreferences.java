@@ -10,6 +10,10 @@ public final class AppPreferences {
     private static final String KEY_VOICE_OUTPUT = "voice_output";
     private static final String KEY_ACTIVE_CHAT = "active_chat";
     private static final String KEY_WAKE_WORD = "wake_word_enabled";
+    private static final String KEY_THEME = "appearance_theme";
+    private static final String KEY_MOTION = "motion_intensity";
+    private static final String KEY_PERSONALITY = "assistant_personality";
+    private static final String KEY_SPEECH_RATE = "speech_rate";
 
     public static final int[] ACCENTS = {
             0xFF9A60FF, 0xFF4B8BFF, 0xFF50D7FF, 0xFF35C987,
@@ -18,6 +22,14 @@ public final class AppPreferences {
 
     public static final String[] ACCENT_NAMES = {
             "Purple", "Blue", "Cyan", "Green", "Lime", "Orange", "Red", "Pink"
+    };
+
+    public static final String[] MOTION_INTENSITIES = {"Minimal", "Balanced", "Immersive"};
+    public static final String[] PERSONALITY_IDS = {
+            "balanced", "concise", "warm", "professional", "playful"
+    };
+    public static final String[] PERSONALITY_NAMES = {
+            "Balanced companion", "Concise", "Warm & supportive", "Professional", "Playful"
     };
 
     private final SharedPreferences prefs;
@@ -66,5 +78,76 @@ public final class AppPreferences {
 
     public void setWakeWordEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_WAKE_WORD, enabled).apply();
+    }
+
+    public String getTheme() {
+        String value = prefs.getString(KEY_THEME, AppTheme.OBSIDIAN);
+        return AppTheme.isKnownTheme(value) ? value : AppTheme.OBSIDIAN;
+    }
+
+    public void setTheme(String theme) {
+        prefs.edit().putString(KEY_THEME,
+                AppTheme.isKnownTheme(theme) ? theme : AppTheme.OBSIDIAN).apply();
+    }
+
+    public String getMotionIntensity() {
+        String value = prefs.getString(KEY_MOTION, "Balanced");
+        for (String option : MOTION_INTENSITIES) if (option.equalsIgnoreCase(value)) return option;
+        return "Balanced";
+    }
+
+    public void setMotionIntensity(String intensity) {
+        String accepted = "Balanced";
+        if (intensity != null) {
+            for (String option : MOTION_INTENSITIES) {
+                if (option.equalsIgnoreCase(intensity)) accepted = option;
+            }
+        }
+        prefs.edit().putString(KEY_MOTION, accepted).apply();
+    }
+
+    public String getPersonality() {
+        String value = prefs.getString(KEY_PERSONALITY, "balanced");
+        for (String option : PERSONALITY_IDS) if (option.equals(value)) return value;
+        return "balanced";
+    }
+
+    public void setPersonality(String personality) {
+        String accepted = "balanced";
+        if (personality != null) {
+            for (String option : PERSONALITY_IDS) if (option.equals(personality)) accepted = option;
+        }
+        prefs.edit().putString(KEY_PERSONALITY, accepted).apply();
+    }
+
+    public String getPersonalityName() {
+        String id = getPersonality();
+        for (int i = 0; i < PERSONALITY_IDS.length; i++) {
+            if (PERSONALITY_IDS[i].equals(id)) return PERSONALITY_NAMES[i];
+        }
+        return PERSONALITY_NAMES[0];
+    }
+
+    public String getPersonalityInstruction() {
+        switch (getPersonality()) {
+            case "concise":
+                return "Keep replies brief and direct unless the user asks for detail.";
+            case "warm":
+                return "Be warm, patient, supportive, and attentive without becoming overly sentimental.";
+            case "professional":
+                return "Use a clear, composed, professional tone while remaining approachable.";
+            case "playful":
+                return "Use light humor and relaxed conversation when it fits; keep serious tasks accurate.";
+            default:
+                return "Be natural, warm, and conversational; match the user's tone without forcing slang.";
+        }
+    }
+
+    public float getSpeechRate() {
+        return Math.max(0.75f, Math.min(1.25f, prefs.getFloat(KEY_SPEECH_RATE, 1.03f)));
+    }
+
+    public void setSpeechRate(float rate) {
+        prefs.edit().putFloat(KEY_SPEECH_RATE, Math.max(0.75f, Math.min(1.25f, rate))).apply();
     }
 }
