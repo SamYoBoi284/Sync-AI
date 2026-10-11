@@ -1143,8 +1143,8 @@ public final class MainActivity extends Activity {
         out.append("Chat ID: ").append(chat.id).append('\n');
         out.append("Created: ").append(formatTimestamp(chat.createdAt)).append('\n');
         out.append("Updated: ").append(formatTimestamp(chat.updatedAt)).append('\n');
-        out.append("\\n=== DEVICE / PROCESS / MEMORY SNAPSHOT ===\\n");
-        out.append(environmentSnapshot()).append("\\n\\n");
+        out.append("\n=== DEVICE / PROCESS / MEMORY SNAPSHOT ===\n");
+        out.append(environmentSnapshot()).append("\n\n");
         appendMessages(out, chat);
         return out.toString();
     }
