@@ -14,6 +14,9 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import androidx.core.content.FileProvider;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -63,6 +66,10 @@ public final class MainActivity extends Activity {
     private String pendingLogExport;
     private boolean pendingWakeWordStart;
     private SyncDialog voiceSettingsDialog;
+    private SyncUpdater.ReleaseInfo pendingRelease;
+    private java.io.File pendingUpdateApk;
+    private boolean updateCheckInProgress;
+    private boolean updateDownloadInProgress;
 
     private int BG;
     private int SURFACE;
@@ -144,6 +151,13 @@ public final class MainActivity extends Activity {
                 return;
             }
             refreshStatus();
+            maybeAutoCheckUpdates();
+            if (pendingUpdateApk != null && Build.VERSION.SDK_INT >= 26
+                    && getPackageManager().canRequestPackageInstalls()) {
+                java.io.File ready = pendingUpdateApk;
+                pendingUpdateApk = null;
+                installUpdateNow(ready);
+            }
         }
     }
 
@@ -1299,6 +1313,255 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    private void showUpdateSettings() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+
+        Switch autoCheck = new Switch(this);
+        autoCheck.setText("Auto Check for Updates");
+        autoCheck.setTextColor(TEXT);
+        autoCheck.setChecked(runtime.preferences().isAutoCheckUpdatesEnabled());
+        content.addView(autoCheck);
+
+        Switch autoDownload = new Switch(this);
+        autoDownload.setText("Auto Download Updates");
+        autoDownload.setTextColor(TEXT);
+        autoDownload.setChecked(runtime.preferences().isAutoDownloadUpdatesEnabled());
+        content.addView(autoDownload);
+
+        TextView networkLabel = text("Download on", 13, TEXT, true);
+        networkLabel.setPadding(0, dp(14), 0, dp(5));
+        content.addView(networkLabel);
+
+        Spinner networkPolicy = new Spinner(this);
+        String[] options = {"Wi-Fi", "Mobile Data", "Both"};
+        networkPolicy.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, options));
+        String savedPolicy = runtime.preferences().getUpdateNetworkPolicy();
+        networkPolicy.setSelection("MOBILE".equals(savedPolicy) ? 1
+                : ("BOTH".equals(savedPolicy) ? 2 : 0));
+        content.addView(networkPolicy);
+
+        TextView explanation = text(
+                "Automatic checks run when Sync AI is opened (at most once every 12 hours). "
+                        + "Downloads obey this network policy. Android will still ask you to confirm installation.",
+                12, MUTED, false);
+        explanation.setPadding(0, dp(10), 0, dp(8));
+        content.addView(explanation);
+
+        final SyncDialog[] dialogRef = new SyncDialog[1];
+        Button checkNow = sectionButton("CHECK NOW", "Check GitHub Releases immediately");
+        checkNow.setOnClickListener(v -> {
+            runtime.preferences().setAutoCheckUpdatesEnabled(autoCheck.isChecked());
+            runtime.preferences().setAutoDownloadUpdatesEnabled(autoDownload.isChecked());
+            saveUpdateNetworkPolicy(networkPolicy.getSelectedItemPosition());
+            if (dialogRef[0] != null) dialogRef[0].dismiss();
+            checkForUpdates(true);
+        });
+        content.addView(checkNow);
+
+        autoCheck.setOnCheckedChangeListener((button, enabled) ->
+                runtime.preferences().setAutoCheckUpdatesEnabled(enabled));
+        autoDownload.setOnCheckedChangeListener((button, enabled) ->
+                runtime.preferences().setAutoDownloadUpdatesEnabled(enabled));
+        networkPolicy.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view,
+                                                 int position, long id) {
+                saveUpdateNetworkPolicy(position);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+
+        dialogRef[0] = new SyncDialog.Builder(this, accent)
+                .setTitle("SYNC AI UPDATES")
+                .setView(content)
+                .setNegativeButton("CLOSE", null)
+                .create();
+        dialogRef[0].show();
+    }
+
+    private void saveUpdateNetworkPolicy(int selected) {
+        runtime.preferences().setUpdateNetworkPolicy(
+                selected == 1 ? "MOBILE" : (selected == 2 ? "BOTH" : "WIFI"));
+    }
+
+    private void maybeAutoCheckUpdates() {
+        if (runtime == null || !runtime.preferences().isAutoCheckUpdatesEnabled()
+                || updateCheckInProgress || updateDownloadInProgress) return;
+        android.content.SharedPreferences state =
+                getSharedPreferences("sync-update-runtime", MODE_PRIVATE);
+        long last = state.getLong("last_auto_check", 0L);
+        if (System.currentTimeMillis() - last < 12L * 60L * 60L * 1000L) return;
+        state.edit().putLong("last_auto_check", System.currentTimeMillis()).apply();
+        checkForUpdates(false);
+    }
+
+    private void checkForUpdates(boolean manual) {
+        if (updateCheckInProgress) {
+            if (manual) showToast("Update check is already running.");
+            return;
+        }
+        updateCheckInProgress = true;
+        SyncEventLogger.record(this, "SyncUpdater", "UPDATE_CHECK_START", "INFO",
+                "manual=" + manual);
+        SyncUpdater.checkLatest(this, new SyncUpdater.CheckCallback() {
+            @Override public void onResult(SyncUpdater.ReleaseInfo release, boolean available) {
+                updateCheckInProgress = false;
+                SyncEventLogger.record(MainActivity.this, "SyncUpdater", "UPDATE_CHECK_RESULT", "INFO",
+                        "version=" + release.version + " available=" + available);
+                if (!available) {
+                    if (manual) showToast("Sync AI is up to date (" + BuildConfig.VERSION_NAME + ").");
+                    return;
+                }
+                pendingRelease = release;
+                if (runtime.preferences().isAutoDownloadUpdatesEnabled()) {
+                    if (SyncUpdater.isNetworkAllowed(MainActivity.this)) {
+                        startUpdateDownload(release);
+                    } else if (manual) {
+                        showUpdateAvailable(release,
+                                "Update found, but the current network is blocked by your download policy.");
+                    } else {
+                        showToast("Sync AI update available. Download paused by network policy.");
+                    }
+                } else {
+                    showUpdateAvailable(release, "A newer version is available.");
+                }
+            }
+
+            @Override public void onError(Exception error) {
+                updateCheckInProgress = false;
+                SyncEventLogger.recordException(MainActivity.this, "SyncUpdater",
+                        "UPDATE_CHECK_ERROR", error, "manual=" + manual);
+                if (manual) showError("Could not check for updates", error);
+            }
+        });
+    }
+
+    private void showUpdateAvailable(SyncUpdater.ReleaseInfo release, String lead) {
+        String notes = release.notes == null ? "" : release.notes.trim();
+        if (notes.length() > 1200) notes = notes.substring(0, 1200) + "…";
+        String message = lead + "\\n\\nVersion: " + release.version
+                + (notes.isEmpty() ? "" : "\\n\\nRelease notes:\\n" + notes);
+        new SyncDialog.Builder(this, accent)
+                .setTitle("SYNC AI UPDATE AVAILABLE")
+                .setMessage(message)
+                .setNegativeButton("LATER", null)
+                .setPositiveButton("DOWNLOAD", (d, w) -> {
+                    if (!SyncUpdater.isNetworkAllowed(this)) {
+                        showToast("Connect using the selected update network first.");
+                    } else {
+                        startUpdateDownload(release);
+                    }
+                })
+                .show();
+    }
+
+    private void startUpdateDownload(SyncUpdater.ReleaseInfo release) {
+        if (updateDownloadInProgress) return;
+        if (!SyncUpdater.isNetworkAllowed(this)) {
+            showToast("Download blocked by the selected network policy.");
+            return;
+        }
+        updateDownloadInProgress = true;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(20), dp(12), dp(20), dp(8));
+        TextView status = text("Preparing download…", 13, TEXT, false);
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        panel.addView(status);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, dp(12));
+        barLp.topMargin = dp(12);
+        panel.addView(bar, barLp);
+        final SyncDialog[] progressDialog = new SyncDialog[1];
+        progressDialog[0] = new SyncDialog.Builder(this, accent)
+                .setTitle("DOWNLOADING SYNC AI")
+                .setView(panel)
+                .setNegativeButton("HIDE", null)
+                .create();
+        progressDialog[0].show();
+        SyncEventLogger.record(this, "SyncUpdater", "UPDATE_DOWNLOAD_START", "INFO",
+                "version=" + release.version);
+        SyncUpdater.downloadAndVerify(this, release, new SyncUpdater.DownloadCallback() {
+            @Override public void onProgress(int percent, long downloaded, long total) {
+                if (isFinishing()) return;
+                if (percent >= 0) {
+                    bar.setProgress(percent);
+                    status.setText("Downloading " + percent + "% • "
+                            + android.text.format.Formatter.formatShortFileSize(MainActivity.this, downloaded)
+                            + (total > 0 ? " / " + android.text.format.Formatter.formatShortFileSize(
+                                    MainActivity.this, total) : ""));
+                } else {
+                    status.setText("Downloaded "
+                            + android.text.format.Formatter.formatShortFileSize(MainActivity.this, downloaded));
+                }
+            }
+
+            @Override public void onComplete(java.io.File apk) {
+                updateDownloadInProgress = false;
+                if (progressDialog[0].isShowing()) progressDialog[0].dismiss();
+                pendingUpdateApk = apk;
+                SyncEventLogger.record(MainActivity.this, "SyncUpdater", "UPDATE_DOWNLOAD_VERIFIED",
+                        "INFO", "bytes=" + apk.length() + " version=" + release.version);
+                new SyncDialog.Builder(MainActivity.this, accent)
+                        .setTitle("UPDATE READY")
+                        .setMessage("Sync AI " + release.version
+                                + " was downloaded and its SHA-256 checksum verified. Android will ask you to confirm installation.")
+                        .setNegativeButton("LATER", null)
+                        .setPositiveButton("INSTALL", (d, w) -> {
+                            pendingUpdateApk = null;
+                            installUpdate(apk);
+                        })
+                        .show();
+            }
+
+            @Override public void onError(Exception error) {
+                updateDownloadInProgress = false;
+                if (progressDialog[0].isShowing()) progressDialog[0].dismiss();
+                SyncEventLogger.recordException(MainActivity.this, "SyncUpdater",
+                        "UPDATE_DOWNLOAD_ERROR", error, "version=" + release.version);
+                showError("Update download failed", error);
+            }
+        });
+    }
+
+    private void installUpdate(java.io.File apk) {
+        if (apk == null || !apk.isFile()) {
+            showToast("The verified update file is no longer available. Check for updates again.");
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            pendingUpdateApk = apk;
+            new SyncDialog.Builder(this, accent)
+                    .setTitle("ALLOW UPDATE INSTALLATION")
+                    .setMessage("Android requires permission to install Sync AI updates from this source. Enable “Allow from this source”, then return to Sync AI.")
+                    .setNegativeButton("CANCEL", (d, w) -> pendingUpdateApk = null)
+                    .setPositiveButton("OPEN SETTINGS", (d, w) -> {
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    })
+                    .show();
+            return;
+        }
+        installUpdateNow(apk);
+    }
+
+    private void installUpdateNow(java.io.File apk) {
+        try {
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".updates", apk);
+            Intent install = new Intent(Intent.ACTION_VIEW);
+            install.setDataAndType(uri, "application/vnd.android.package-archive");
+            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(install);
+        } catch (Exception error) {
+            SyncEventLogger.recordException(this, "SyncUpdater", "UPDATE_INSTALL_INTENT_ERROR",
+                    error, "apk=" + apk.getName());
+            showError("Could not open Android's installer", error);
+        }
+    }
+
     private void showSettings() {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -1325,6 +1588,10 @@ public final class MainActivity extends Activity {
         Button personalization = sectionButton("PERSONALIZATION", "On-device memory and import");
         personalization.setOnClickListener(v -> { closeSettings.run(); showPersonalization(); });
         content.addView(personalization);
+
+        Button updates = sectionButton("UPDATES", "Automatic checks, downloads and network policy");
+        updates.setOnClickListener(v -> { closeSettings.run(); showUpdateSettings(); });
+        content.addView(updates);
 
         Button about = sectionButton("ABOUT & DIAGNOSTICS", "Version, creators, runtime evidence");
         about.setOnClickListener(v -> { closeSettings.run(); showAbout(); });
