@@ -87,6 +87,7 @@ public final class ToolEngine {
     private String lastTool = "";
     private String lastApp = "";
     private String lastContact = "";
+    private String originalCommand = "";
     private volatile boolean flashlightOn;
     private String flashlightCameraId;
 
@@ -126,6 +127,7 @@ public final class ToolEngine {
 
     public synchronized Result handle(String raw) {
         if (raw == null) return Result.none();
+        originalCommand = raw.trim();
         String command = normalize(raw);
         if (command.isEmpty()) return Result.none();
 
@@ -465,9 +467,11 @@ public final class ToolEngine {
             }
         }
 
-        Matcher labelMatcher = ALARM_LABEL.matcher(command);
+        String labelSource = normalize(originalCommand).equals(command)
+                ? originalCommand : command;
+        Matcher labelMatcher = ALARM_LABEL.matcher(labelSource);
         String alarmLabel = labelMatcher.find() ? labelMatcher.group(1).trim() : "Sync AI alarm";
-        String alarmCommand = labelMatcher.reset().replaceAll("").trim();
+        String alarmCommand = ALARM_LABEL.matcher(command).replaceAll("").trim();
         Matcher alarm=ALARM.matcher(alarmCommand);
         if(alarm.find()) {
             int hour=Integer.parseInt(alarm.group(1));
