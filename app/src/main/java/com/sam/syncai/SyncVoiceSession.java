@@ -46,6 +46,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     private android.animation.ValueAnimator micPulse;
     private boolean exiting;
     private int accent;
+    private AppTheme palette;
     private boolean ttsReady;
     private boolean destroyed;
     private final AtomicBoolean processing = new AtomicBoolean(false);
@@ -57,7 +58,8 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
                 "session constructed");
         android.util.Log.d("SyncAI", "VoiceInteractionSession constructed");
         runtime = SyncRuntime.get(context);
-        accent = AppPreferences.ACCENTS[runtime.preferences().getAccent()];
+        palette = AppTheme.from(context);
+        accent = palette.primary;
     }
 
     @Override public void onCreate() {
@@ -224,7 +226,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
             ttsReady = status == TextToSpeech.SUCCESS;
             if (ttsReady) {
                 tts.setLanguage(Locale.getDefault());
-                tts.setSpeechRate(1.03f);
+                tts.setSpeechRate(runtime.preferences().getSpeechRate());
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {}
                     @Override public void onDone(String id) {
@@ -320,6 +322,7 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
         updateState("THINKING");
         ToolEngine.Result tool = runtime.tools().handle(clean);
         if (tool.handled) {
+            updateState(tool.success ? "ACTION COMPLETE" : "ACTION NEEDS ATTENTION");
             appendVoiceChat(clean, tool.response, new DiagnosticRecord(
                     System.currentTimeMillis() - tool.durationMs,
                     tool.durationMs,
@@ -395,10 +398,11 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     private List<ChatMessage> buildModelContext(String current) {
         ArrayList<ChatMessage> messages = new ArrayList<>();
         String memory = runtime.preferences().getMemory();
-        String system = "You are Sync//AI, a concise offline Android companion. "
+        String system = "You are Sync AI, a concise offline Android companion. "
                 + "Talk naturally and casually. Avoid robotic disclaimers. "
                 + "The phone's deterministic tools handle device commands. "
-                + "User language may include slang, typos, shorthand, and bro/bfam wording.";
+                + "User language may include slang, typos, shorthand, and bro/bfam wording. "
+                + runtime.preferences().getPersonalityInstruction();
         if (!memory.trim().isEmpty()) system += "\nRelevant user memory:\n" + memory.trim();
         messages.add(new ChatMessage(ChatMessage.Role.SYSTEM, system));
         ChatRecord active = activeChat();

@@ -40,6 +40,7 @@ public final class Motion {
     /** True when the user disabled animations system-wide. */
     public static boolean reduced(Context c) {
         try {
+            if ("Minimal".equals(new AppPreferences(c).getMotionIntensity())) return true;
             float scale = Settings.Global.getFloat(
                     c.getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
             return scale == 0f;

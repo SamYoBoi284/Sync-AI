@@ -859,7 +859,8 @@ public final class MainActivity extends Activity {
                 + "Do not insult the user or make random assumptions about them. "
                 + "Do not produce canned replies when the user's question needs a real answer. "
                 + "Do not volunteer robotic identity disclaimers unless identity is relevant. "
-                + "Deterministic Android tools handle device actions before the model.";
+                + "Deterministic Android tools handle device actions before the model. "
+                + runtime.preferences().getPersonalityInstruction();
         if (!memory.trim().isEmpty()) {
             String memoryText = memory.trim();
             if (memoryText.length() > 6000) {
@@ -1805,6 +1806,7 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         SyncEventLogger.record(this, "MainActivity", "onDestroy", "INFO",
                 "taskId=" + getTaskId());
+        if (corePulse != null) { corePulse.cancel(); corePulse = null; }
         ioExecutor.shutdownNow();
         super.onDestroy();
     }

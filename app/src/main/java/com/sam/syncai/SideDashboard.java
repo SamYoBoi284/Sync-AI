@@ -175,8 +175,6 @@ public final class SideDashboard extends FrameLayout {
         item(settingsContent, "▣  Local models", v -> actions.models(), true);
         item(settingsContent, "↓  Import model", v -> actions.importModel(), true);
         item(settingsContent, "▤  Runtime", v -> actions.runtime(), true);
-        item(settingsContent, "⌁  Command history", v -> actions.commands(), true);
-        item(settingsContent, "◉  Performance & health", v -> actions.health(), true);
 
         section(settingsContent, "PERSONALIZATION");
         item(settingsContent, "🎨  Accent colors + memory", v -> actions.personalization(), true);
