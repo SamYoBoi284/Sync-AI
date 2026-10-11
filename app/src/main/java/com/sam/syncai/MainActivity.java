@@ -1306,15 +1306,11 @@ public final class MainActivity extends Activity {
         content.addView(summary);
 
         Button editMemory = sectionButton("MEMORY", "View / edit imported memory");
-        editMemory.setOnClickListener(v -> {
-            if (personalizationDialog[0] != null) personalizationDialog[0].dismiss();
-            editMemory();
-        });
+        editMemory.setOnClickListener(v -> editMemory());
         content.addView(editMemory);
 
         Button importMemory = sectionButton("IMPORT MEMORY FILE", "Load a text memory file into Sync");
         importMemory.setOnClickListener(v -> {
-            if (personalizationDialog[0] != null) personalizationDialog[0].dismiss();
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("text/*");
