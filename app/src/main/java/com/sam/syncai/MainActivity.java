@@ -1234,11 +1234,6 @@ public final class MainActivity extends Activity {
             out.append("Wake-word preference / service: ")
                     .append(runtime.preferences().isWakeWordEnabled()).append(" / ")
                     .append(SyncAssistantService.isRunning()).append('\n');
-            try {
-                out.append("Backend diagnostics: ").append(runtime.backend().diagnostics()).append('\n');
-            } catch (Exception error) {
-                out.append("Backend diagnostics error: ").append(error.getClass().getSimpleName()).append('\n');
-            }
         }
         return out.toString();
     }
