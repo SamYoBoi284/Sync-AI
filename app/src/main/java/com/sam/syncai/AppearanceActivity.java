@@ -163,6 +163,19 @@ public final class AppearanceActivity extends Activity {
         doneLp.topMargin=dp(8);
         root.addView(done,doneLp);
         setContentView(root);
+        final int baseLeft = dp(18);
+        final int baseTop = dp(10);
+        final int baseRight = dp(18);
+        final int baseBottom = dp(12);
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            androidx.core.graphics.Insets safeInsets = windowInsets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                            | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            view.setPadding(baseLeft + safeInsets.left, baseTop + safeInsets.top,
+                    baseRight + safeInsets.right, baseBottom + safeInsets.bottom);
+            return windowInsets;
+        });
+        androidx.core.view.ViewCompat.requestApplyInsets(root);
     }
 
     private void addHero(LinearLayout content) {
