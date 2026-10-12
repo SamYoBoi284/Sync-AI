@@ -14,6 +14,7 @@ public final class SpeechPreferences {
         if (engine == null || context == null) return;
         AppPreferences prefs = new AppPreferences(context);
         engine.setSpeechRate(prefs.getSpeechRate());
+        engine.setPitch(prefs.getSpeechPitch());
         String preferredName = prefs.getSpeechVoiceName();
         if (preferredName.isEmpty()) return;
 

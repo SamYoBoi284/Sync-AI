@@ -859,16 +859,36 @@ public final class MainActivity extends Activity {
                 // synchronously requesting diagnostics here would deadlock the executor.
                 String answer = response.toString().trim();
                 if (answer.isEmpty()) answer = "I got no response from the local model.";
-                final String artifactContent = answer;
-                boolean hasCompleteFence = hasCompleteFencedBlock(artifactContent);
+                String artifactDraft = answer;
+                boolean hasCompleteFence = hasCompleteFencedBlock(artifactDraft);
                 boolean completeArtifactBlock = hasCompleteFence
-                        && WorkspaceStore.passesBasicQualityChecks(artifactContent);
+                        && WorkspaceStore.passesBasicQualityChecks(artifactDraft);
+                boolean usedBuiltInRpsFallback = false;
+                if (routeArtifactToWorkspace && isTwoPlayerRpsRequest(message) && !completeArtifactBlock) {
+                    try {
+                        artifactDraft = "Artifact: " + artifactFilename + "\n\u0060\u0060\u0060html\n"
+                                + readTwoPlayerRpsFallback() + "\n\u0060\u0060\u0060";
+                        hasCompleteFence = hasCompleteFencedBlock(artifactDraft);
+                        completeArtifactBlock = hasCompleteFence
+                                && WorkspaceStore.passesBasicQualityChecks(artifactDraft);
+                        usedBuiltInRpsFallback = completeArtifactBlock;
+                        SyncEventLogger.record(MainActivity.this, "WorkspaceStore", "RPS_FALLBACK_USED",
+                                completeArtifactBlock ? "INFO" : "WARN",
+                                "modelDraftAccepted=" + !usedBuiltInRpsFallback);
+                    } catch (Exception fallbackError) {
+                        SyncEventLogger.recordException(MainActivity.this, "WorkspaceStore",
+                                "RPS_FALLBACK_ERROR", fallbackError, "retaining failed model draft");
+                    }
+                }
+                final String artifactContent = artifactDraft;
                 WorkspaceStore.State artifactState = routeArtifactToWorkspace && !completeArtifactBlock
                         ? WorkspaceStore.State.FAILED : WorkspaceStore.State.COMPLETED;
                 String chatAnswer = artifactContent;
                 if (routeArtifactToWorkspace) {
                     if (completeArtifactBlock) {
-                        chatAnswer = "Created \"" + artifactFilename + "\" in Workspace.";
+                        chatAnswer = usedBuiltInRpsFallback
+                                ? "The local model's draft failed a quality check, so Sync used its built-in playable two-player Rock-Paper-Scissors template in Workspace."
+                                : "Created \"" + artifactFilename + "\" in Workspace.";
                     } else if (hasCompleteFence) {
                         chatAnswer = "The output for \"" + artifactFilename
                                 + "\" failed a basic completeness/behavior check and was not accepted as a completed artifact. Inspect the source before using it.";
@@ -1073,6 +1093,25 @@ public final class MainActivity extends Activity {
         String slug = String.join("-", useful).replaceAll("-+", "-");
         if (slug.isEmpty()) slug = "sync-artifact";
         return slug + extension;
+    }
+
+    private boolean isTwoPlayerRpsRequest(String text) {
+        String lower = text == null ? "" : text.toLowerCase(Locale.US);
+        boolean isRps = lower.contains("rock") && lower.contains("paper") && lower.contains("scissors");
+        boolean twoPlayers = lower.contains("two player") || lower.contains("two-player")
+                || lower.contains("two players") || lower.contains("2 player")
+                || lower.contains("2-player") || lower.contains("2 players");
+        return isRps && twoPlayers;
+    }
+
+    private String readTwoPlayerRpsFallback() throws java.io.IOException {
+        try (InputStream input = getAssets().open("templates/two-player-rock-paper-scissors.html")) {
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        }
     }
 
     private boolean hasCompleteFencedBlock(String text) {
@@ -1501,6 +1540,21 @@ public final class MainActivity extends Activity {
         autoCheck.setChecked(runtime.preferences().isAutoCheckUpdatesEnabled());
         content.addView(autoCheck);
 
+        TextView intervalLabel = text("Check interval", 13, TEXT, true);
+        intervalLabel.setPadding(0, dp(14), 0, dp(5));
+        content.addView(intervalLabel);
+        Spinner interval = new Spinner(this);
+        String[] intervalLabels = {"Every 3 hours", "Every 6 hours", "Every 9 hours",
+                "Every 12 hours", "Every day", "Every week"};
+        int[] intervalHours = {3, 6, 9, 12, 24, 168};
+        interval.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, intervalLabels));
+        int savedInterval = runtime.preferences().getAutoCheckIntervalHours();
+        for (int i = 0; i < intervalHours.length; i++) {
+            if (intervalHours[i] == savedInterval) { interval.setSelection(i); break; }
+        }
+        content.addView(interval);
+
         Switch autoDownload = new Switch(this);
         autoDownload.setText("Auto Download Updates");
         autoDownload.setTextColor(TEXT);
@@ -1521,8 +1575,9 @@ public final class MainActivity extends Activity {
         content.addView(networkPolicy);
 
         TextView explanation = text(
-                "Automatic checks run when Sync AI is opened (at most once every 12 hours). "
-                        + "Downloads obey this network policy. Android will still ask you to confirm installation.",
+                "Automatic checks run when Sync AI is opened, once the selected interval has elapsed. "
+                        + "Manual checks always ask before downloading. Automatic downloads are optional; "
+                        + "downloads obey this network policy, and Android still asks before installation.",
                 12, MUTED, false);
         explanation.setPadding(0, dp(10), 0, dp(8));
         content.addView(explanation);
@@ -1532,6 +1587,8 @@ public final class MainActivity extends Activity {
         checkNow.setOnClickListener(v -> {
             runtime.preferences().setAutoCheckUpdatesEnabled(autoCheck.isChecked());
             runtime.preferences().setAutoDownloadUpdatesEnabled(autoDownload.isChecked());
+            runtime.preferences().setAutoCheckIntervalHours(
+                    intervalHours[Math.max(0, Math.min(intervalHours.length - 1, interval.getSelectedItemPosition()))]);
             saveUpdateNetworkPolicy(networkPolicy.getSelectedItemPosition());
             if (dialogRef[0] != null) dialogRef[0].dismiss();
             checkForUpdates(true);
@@ -1542,6 +1599,13 @@ public final class MainActivity extends Activity {
                 runtime.preferences().setAutoCheckUpdatesEnabled(enabled));
         autoDownload.setOnCheckedChangeListener((button, enabled) ->
                 runtime.preferences().setAutoDownloadUpdatesEnabled(enabled));
+        interval.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view,
+                                                 int position, long id) {
+                runtime.preferences().setAutoCheckIntervalHours(intervalHours[position]);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
         networkPolicy.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view,
                                                  int position, long id) {
@@ -1569,7 +1633,8 @@ public final class MainActivity extends Activity {
         android.content.SharedPreferences state =
                 getSharedPreferences("sync-update-runtime", MODE_PRIVATE);
         long last = state.getLong("last_auto_check", 0L);
-        if (System.currentTimeMillis() - last < 12L * 60L * 60L * 1000L) return;
+        long intervalMs = runtime.preferences().getAutoCheckIntervalHours() * 60L * 60L * 1000L;
+        if (System.currentTimeMillis() - last < intervalMs) return;
         checkForUpdates(false);
     }
 
@@ -1595,7 +1660,10 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 pendingRelease = release;
-                if (runtime.preferences().isAutoDownloadUpdatesEnabled()) {
+                // A manual check is an explicit request to inspect availability, not consent to download.
+                if (manual) {
+                    showUpdateAvailable(release, "A newer version is available. Download it only if you choose to.");
+                } else if (runtime.preferences().isAutoDownloadUpdatesEnabled()) {
                     if (SyncUpdater.isNetworkAllowed(MainActivity.this)) {
                         startUpdateDownload(release);
                     } else if (manual) {
@@ -1614,9 +1682,10 @@ public final class MainActivity extends Activity {
                 if (!manual) {
                     // Retry an unsuccessful automatic check after 30 minutes instead of
                     // suppressing retries for half a day when the phone was offline.
+                    long intervalMs = runtime.preferences().getAutoCheckIntervalHours() * 60L * 60L * 1000L;
                     getSharedPreferences("sync-update-runtime", MODE_PRIVATE).edit()
-                            .putLong("last_auto_check",
-                                    System.currentTimeMillis() - 11L * 60L * 60L * 1000L - 30L * 60L * 1000L)
+                            .putLong("last_auto_check", System.currentTimeMillis() - intervalMs
+                                    + 30L * 60L * 1000L)
                             .apply();
                 }
                 SyncEventLogger.recordException(MainActivity.this, "SyncUpdater",
@@ -1911,6 +1980,12 @@ public final class MainActivity extends Activity {
             showSpeechRatePicker();
         });
         String savedVoice = runtime.preferences().getSpeechVoiceName();
+        Button pitch = sectionButton("VOICE PITCH",
+                String.format(Locale.US, "%.2fx", runtime.preferences().getSpeechPitch()));
+        pitch.setOnClickListener(v -> {
+            if (styleDialog[0] != null) styleDialog[0].dismiss();
+            showSpeechPitchPicker();
+        });
         Button voice = sectionButton("SPEECH VOICE",
                 savedVoice.isEmpty() ? "System default" : savedVoice);
         voice.setOnClickListener(v -> {
@@ -1934,6 +2009,7 @@ public final class MainActivity extends Activity {
         content.addView(note);
         content.addView(personality);
         content.addView(speech);
+        content.addView(pitch);
         content.addView(voice);
         content.addView(output);
         styleDialog[0] = new SyncDialog.Builder(this, accent)
@@ -1968,6 +2044,25 @@ public final class MainActivity extends Activity {
                     d.dismiss();
                     showToast("Speech rate set to "+labels[which].split(" · ")[0]+".");
                 }).setNegativeButton("CLOSE",null).show();
+    }
+
+    private void showSpeechPitchPicker() {
+        String[] labels = {"Lower · 0.85×", "Natural · 1.00×", "Brighter · 1.15×", "Higher · 1.30×"};
+        float[] pitches = {0.85f, 1.0f, 1.15f, 1.3f};
+        int selected = 1;
+        float best = Float.MAX_VALUE;
+        float current = runtime.preferences().getSpeechPitch();
+        for (int i = 0; i < pitches.length; i++) {
+            float delta = Math.abs(current - pitches[i]);
+            if (delta < best) { best = delta; selected = i; }
+        }
+        new SyncDialog.Builder(this, accent).setTitle("VOICE PITCH")
+                .setMessage("Adjusts the pitch of your installed Android voice. The available voice identity still comes from the selected speech engine.")
+                .setSingleChoiceItems(labels, selected, (dialog, which) -> {
+                    runtime.preferences().setSpeechPitch(pitches[which]);
+                    dialog.dismiss();
+                    showToast("Voice pitch set to " + labels[which].split(" · ")[0] + ".");
+                }).setNegativeButton("CLOSE", null).show();
     }
 
     private void showSpeechVoicePicker() {

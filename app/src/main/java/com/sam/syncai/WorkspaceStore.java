@@ -188,8 +188,30 @@ public final class WorkspaceStore {
         if ("html".equalsIgnoreCase(block.language) || "htm".equalsIgnoreCase(block.language)) {
             if (!lower.contains("<html") || !lower.contains("</html>")) return false;
             if (lower.contains("<script") != lower.contains("</script>")) return false;
-            // Catch the exact class of broken "game" artifact seen in v0.4.0:
-            // controls and headings existed, but no result logic updated the UI.
+            // Catch static Rock-Paper-Scissors mockups even when the model omits a handler entirely.
+            boolean mentionsRps = lower.contains("rock") && lower.contains("paper")
+                    && lower.contains("scissors");
+            boolean looksLikeRpsGame = mentionsRps && (lower.contains("score")
+                    || lower.contains("round") || lower.contains("player") || lower.contains("game"));
+            if (looksLikeRpsGame) {
+                boolean hasRealControls = lower.contains("<button") || lower.contains("<input");
+                boolean hasScript = lower.contains("<script") && lower.contains("</script>");
+                boolean hasEventHandler = lower.contains("addeventlistener") || lower.contains("onclick")
+                        || lower.contains("onchange");
+                boolean updatesUi = lower.contains("textcontent") || lower.contains("innertext")
+                        || lower.contains("innerhtml") || lower.contains("insertadjacenthtml");
+                boolean playerOne = lower.contains("player 1") || lower.contains("player one")
+                        || lower.contains("player1") || lower.contains("player-one")
+                        || lower.contains("player a");
+                boolean playerTwo = lower.contains("player 2") || lower.contains("player two")
+                        || lower.contains("player2") || lower.contains("player-two")
+                        || lower.contains("player b");
+                boolean playerVsComputer = lower.contains("computer")
+                        && (lower.contains("human") || lower.contains("you"));
+                if (!hasRealControls || !hasScript || !hasEventHandler || !updatesUi
+                        || (!playerVsComputer && (!playerOne || !playerTwo))) return false;
+            }
+            // Keep the earlier targeted guard for variants using an explicit playRound handler.
             if (lower.contains("function playround") || lower.contains("playround(")) {
                 boolean hasChoices = lower.contains("<button") || lower.contains("<input");
                 boolean hasRules = lower.contains("if") || lower.contains("switch");

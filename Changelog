@@ -1,9 +1,18 @@
 # Sync AI — Changelog & Development Handoff
 
-> Last updated: 2026-10-11
+## 2026-10-12 — Update consent, check intervals, voice tuning, artifact guards
+
+- Manual update checks now always show release details and a DOWNLOAD / LATER choice; they no longer start downloads without confirmation. Automatic downloading remains configurable and defaults to off for new installs. Existing saved preferences are preserved.
+- Add a persistent update-check interval selector: every 3, 6, 9, or 12 hours, every day, or every week. Checks are evaluated when Sync AI opens/resumes; this is not a background polling service.
+- Add adjustable TTS pitch alongside existing speech-rate and installed Android TTS voice selection. This tunes an installed voice; it does not clone or synthesize a new voice.
+- Strengthen Workspace HTML checks so static Rock-Paper-Scissors mockups without real controls, event handlers, live UI updates, and appropriate player labels are rejected as incomplete. For an explicit two-player Rock-Paper-Scissors request whose local-model draft fails those checks, use a bundled, self-contained playable HTML fallback and tell the user transparently. This remains a targeted fallback and heuristic, not a full browser execution test.
+- Third-party dictation integration is not included here; a provider such as Wispr Flow needs a supported SDK or system-level speech-recognition integration and should be evaluated separately before adding dependencies.
+
+
+> Last updated: 2026-10-12
 > Repository: `SamYoBoi284/Sync-AI`
-> Current work branch: `fix/sync-workspace-canvas`
-> Current draft PR: [#14 — Fix Sync Canvas Workspace and capture generated artifacts](https://github.com/SamYoBoi284/Sync-AI/pull/14)
+> Current work branch: `feat/update-controls-voice-artifact-guards`
+> Current draft PR: [#17 — Add update download consent, intervals, and voice controls](https://github.com/SamYoBoi284/Sync-AI/pull/17)
 > Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
 >
 > This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
@@ -17,7 +26,7 @@
 - If an artifact request ends without a complete fenced block or fails basic structural/behavior checks (including the known static Rock-Paper-Scissors failure pattern), mark the Workspace draft failed/incomplete rather than reporting it as successfully created. This is a lightweight guard, not a full runtime test of arbitrary code.
 - Keep the selected Workspace source view updating in place while generation streams; do not repeatedly reload a running HTML preview. Refresh the preview when generation completes.
 - Apply Android system-bar/display-cutout insets to Workspace and the Appearance studio so headers/content stay inside the safe area on edge-to-edge Android versions.
-- Validation pending: GitHub Actions build and physical-device regression tests. No release tag or release assets are changed by this work.
+- PR #16 was merged into `fix/generation-timer-alarm-export` on 2026-10-12. The current base branch includes the generation/Workspace changes, but physical-device regression tests for the 4096-token context and artifact generation are still pending. No release tag or release assets were changed.
 
 ## 2026-10-11 — Sync Canvas / Workspace repair (in progress)
 
@@ -53,24 +62,18 @@ Changes included in the PR:
 - Do not change the baseline branch while fixing Canvas.
 - Do not remove or replace existing SAF, file import/export, model import, voice, wake-word, call, alarm, or updater functionality.
 - Follow the project rule: **NEVER DELETE SOMETHING THAT ALREADY WORKS unless it directly contradicts a new requirement or is specifically being fixed.**
-- PR #14 remains a **draft** and has not been merged. No new version tag/release has been created.
+- PR #14 was subsequently merged into `fix/generation-timer-alarm-export` on 2026-10-12. No new version tag/release was created by that merge.
 - The latest known CI attempt was GitHub Actions run **#672**, building a debug APK. At the time of this handoff, its final result and on-device verification were not confirmed. Check the live run before relying on this status.
 
-### Next steps
-1. Check the latest CI result for PR #14 / run #672.
-2. If it failed, inspect the actual failing job/log and make the smallest targeted correction on `fix/sync-workspace-canvas`; preserve unrelated working behavior.
-3. If it passed, obtain/install the debug APK and test on Sam's Galaxy A16:
-   - Workspace opens Canvas, not Android's file picker or Settings.
-   - Generated fenced code/document artifacts appear in Workspace.
-   - Artifacts update during generation and finish as completed/incomplete.
-   - Reopening Workspace retains saved artifacts.
-   - HTML preview and source view work.
-   - Copy/save/remove actions work.
-   - Existing SAF file/memory import/export remains accessible through its own entry.
-   - Existing calling, alarms, voice, and other core functionality remain unaffected.
-4. Once build and behavior are satisfactory, ask Sam before merging/publishing if confirmation is needed; PR #14 is intentionally still a draft.
-5. Merge only after verification and Sam's approval.
-6. Publish the next version only after explicit confirmation. Then test the updater from Sam's already-installed **v0.3.0** to the new release. Do not create a tag/release prematurely.
+### Outstanding physical-device verification
+PR #14 and the generation/Workspace follow-up in PR #16 have merged into the development baseline, but the remaining tests below still need real-device confirmation on Sam's Galaxy A16:
+1. Workspace opens Canvas, not Android's file picker or Settings.
+2. Generated code/document artifacts appear in Workspace, stream safely, and finish as completed or incomplete.
+3. Reopening Workspace retains artifacts; HTML preview/source view and copy/save/remove actions work.
+4. Existing SAF import/export, model import, voice/wake-word, calling, alarms, and other core behavior remain intact.
+5. Validate 4096-token context memory/latency and artifact generation; verify the new two-player RPS fallback when the local model returns a static mockup.
+6. After PR #17 CI succeeds, test manual update consent, interval persistence, auto-download preference, and voice pitch on-device.
+7. Do not publish a tag/release until the user explicitly approves and the regression tests are satisfactory.
 
 ## 2026-10-11 — Updater/release baseline confirmed
 
@@ -80,7 +83,7 @@ Changes included in the PR:
 - The release workflow `.github/workflows/release.yml` on `fix/generation-timer-alarm-export` is correctly indented and triggers on tags matching `v*.*.*`. Do not re-edit it for the already-fixed YAML indentation issue.
 - A prior failed workflow run (#6) used an older commit with the indentation issue; the working pipeline was subsequently verified by a successful build (run #670) and installation.
 - Android signing secrets are configured in GitHub Actions. Never request or expose their values.
-- Current goal: fix and verify Canvas on a separate branch, then publish a new version to exercise the updater from installed v0.3.0.
+- Historical goal was to fix Canvas and exercise the updater from installed v0.3.0. Current work is tracked by PR #17 on `feat/update-controls-voice-artifact-guards`; the PR remains a draft and no release/tag has been created.
 
 ## Existing project architecture and completed capabilities
 

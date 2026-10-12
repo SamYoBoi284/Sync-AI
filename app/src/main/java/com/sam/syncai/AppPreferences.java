@@ -14,8 +14,10 @@ public final class AppPreferences {
     private static final String KEY_MOTION = "motion_intensity";
     private static final String KEY_PERSONALITY = "assistant_personality";
     private static final String KEY_SPEECH_RATE = "speech_rate";
+    private static final String KEY_SPEECH_PITCH = "speech_pitch";
     private static final String KEY_SPEECH_VOICE = "speech_voice";
     private static final String KEY_AUTO_CHECK_UPDATES = "auto_check_updates";
+    private static final String KEY_AUTO_CHECK_INTERVAL_HOURS = "auto_check_interval_hours";
     private static final String KEY_AUTO_DOWNLOAD_UPDATES = "auto_download_updates";
     private static final String KEY_UPDATE_NETWORK = "update_network";
 
@@ -155,6 +157,14 @@ public final class AppPreferences {
         prefs.edit().putFloat(KEY_SPEECH_RATE, Math.max(0.75f, Math.min(1.25f, rate))).apply();
     }
 
+    public float getSpeechPitch() {
+        return Math.max(0.75f, Math.min(1.35f, prefs.getFloat(KEY_SPEECH_PITCH, 1.0f)));
+    }
+
+    public void setSpeechPitch(float pitch) {
+        prefs.edit().putFloat(KEY_SPEECH_PITCH, Math.max(0.75f, Math.min(1.35f, pitch))).apply();
+    }
+
     /** Empty means let Android's selected TTS engine choose its default voice. */
     public String getSpeechVoiceName() {
         return prefs.getString(KEY_SPEECH_VOICE, "");
@@ -173,9 +183,25 @@ public final class AppPreferences {
         prefs.edit().putBoolean(KEY_AUTO_CHECK_UPDATES, enabled).apply();
     }
 
-    /** Automatic downloads default on, with Wi-Fi-only network policy for safety. */
+    /** Supported intervals are 3, 6, 9, 12 hours, 1 day, and 1 week. */
+    public int getAutoCheckIntervalHours() {
+        int hours = prefs.getInt(KEY_AUTO_CHECK_INTERVAL_HOURS, 12);
+        return isSupportedAutoCheckInterval(hours) ? hours : 12;
+    }
+
+    public void setAutoCheckIntervalHours(int hours) {
+        prefs.edit().putInt(KEY_AUTO_CHECK_INTERVAL_HOURS,
+                isSupportedAutoCheckInterval(hours) ? hours : 12).apply();
+    }
+
+    private boolean isSupportedAutoCheckInterval(int hours) {
+        return hours == 3 || hours == 6 || hours == 9 || hours == 12
+                || hours == 24 || hours == 168;
+    }
+
+    /** Automatic downloads are opt-in; manual checks always ask before downloading. */
     public boolean isAutoDownloadUpdatesEnabled() {
-        return prefs.getBoolean(KEY_AUTO_DOWNLOAD_UPDATES, true);
+        return prefs.getBoolean(KEY_AUTO_DOWNLOAD_UPDATES, false);
     }
 
     public void setAutoDownloadUpdatesEnabled(boolean enabled) {
