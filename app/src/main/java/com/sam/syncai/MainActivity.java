@@ -852,7 +852,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                            answer, WorkspaceStore.State.COMPLETED);
+                            assistant.text, WorkspaceStore.State.COMPLETED);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
@@ -907,6 +907,8 @@ public final class MainActivity extends Activity {
                 + "Do not insult the user or make random assumptions about them. "
                 + "Do not produce canned replies when the user's question needs a real answer. "
                 + "Do not volunteer robotic identity disclaimers unless identity is relevant. "
+                + "When asked to create a code file, webpage, script, or document artifact, provide the complete deliverable in a Markdown fenced block with its language and put a short descriptive heading immediately before it. "
+                + "For HTML deliverables, include a complete self-contained HTML document. Do not fence ordinary explanations; use a fence only when it is part of the requested deliverable. "
                 + "Deterministic Android tools handle device actions before the model. "
                 + runtime.preferences().getPersonalityInstruction();
         if (!memory.trim().isEmpty()) {
