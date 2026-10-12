@@ -6,12 +6,11 @@
 > Stable development base: `fix/generation-timer-alarm-export`
 > This tracker records implemented work and known verification status. Source code / CI remains authoritative.
 
-## Project
-
 ## 2026-10-13 — Current File Library work (in progress)
 
 Branch: `feat/file-library-context-generation-1024`
 
+- PR #18: [Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18) (draft; build and phone verification pending).
 - Drawer → Settings → File Library now uses its own activity/import flow; it must not reuse the Memory import result code. The existing Personalization → Import Memory File action remains separate.
 - `FileLibraryStore` keeps user-imported file copies and metadata inside app-private storage, detects exact-content duplicates by SHA-256, permits import/export/delete, and previews supported text files.
 - `MainActivity.buildModelContext` attaches only specifically mentioned (or clearly referenced in an immediate follow-up) library files, up to two items and a bounded text excerpt. It treats file contents as user data, not instructions, and tells the model not to claim a truncated excerpt is a full file.
@@ -27,6 +26,8 @@ Branch: `feat/file-library-context-generation-1024`
 - Android Java + C++ JNI + llama.cpp, CPU-first, arm64-v8a.
 - GGUF model files remain on-device and are not committed to GitHub.
 - App name is **Sync AI**; the old `Sync//AI` naming is no longer the desired user-facing name.
+
+## Project
 
 ## Deterministic Sync Tool Core — implemented
 
