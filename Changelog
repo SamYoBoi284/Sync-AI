@@ -1,12 +1,13 @@
 # Sync AI — Changelog & Development Handoff
 
-> Last updated: 2026-10-11
+> Last updated: 2026-10-12
 > Repository: `SamYoBoi284/Sync-AI`
-> Current work branch: `fix/sync-workspace-canvas`
-> Current draft PR: [#14 — Fix Sync Canvas Workspace and capture generated artifacts](https://github.com/SamYoBoi284/Sync-AI/pull/14)
-> Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
->
-> This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
+> Current work branch: `fix/generation-quality-safe-area`
+> Parent/integration branch: `fix/generation-timer-alarm-export`
+> Latest installed release: `v0.4.0` (previous baseline: `v0.3.0`)
+> PR #14 — Fix Sync Canvas Workspace and capture generated artifacts — merged into the integration branch at `799602d5b47ef810b2597d1726c4f1cb4d66ee2b`.
+
+This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale. The original Canvas notes below preserve historical context; their initial pending status was superseded by the merge and v0.4.0 device verification.
 
 ## 2026-10-11 — Sync Canvas / Workspace repair (in progress)
 
@@ -42,24 +43,14 @@ Changes included in the PR:
 - Do not change the baseline branch while fixing Canvas.
 - Do not remove or replace existing SAF, file import/export, model import, voice, wake-word, call, alarm, or updater functionality.
 - Follow the project rule: **NEVER DELETE SOMETHING THAT ALREADY WORKS unless it directly contradicts a new requirement or is specifically being fixed.**
-- PR #14 remains a **draft** and has not been merged. No new version tag/release has been created.
+- Historical status when this entry was first written: PR #14 was still a draft. It was later merged into `fix/generation-timer-alarm-export` at `799602d5b47ef810b2597d1726c4f1cb4d66ee2b`; v0.4.0 was subsequently published, installed, and its in-app update flow was confirmed by Sam.
 - The latest known CI attempt was GitHub Actions run **#672**, building a debug APK. At the time of this handoff, its final result and on-device verification were not confirmed. Check the live run before relying on this status.
 
-### Next steps
-1. Check the latest CI result for PR #14 / run #672.
-2. If it failed, inspect the actual failing job/log and make the smallest targeted correction on `fix/sync-workspace-canvas`; preserve unrelated working behavior.
-3. If it passed, obtain/install the debug APK and test on Sam's Galaxy A16:
-   - Workspace opens Canvas, not Android's file picker or Settings.
-   - Generated fenced code/document artifacts appear in Workspace.
-   - Artifacts update during generation and finish as completed/incomplete.
-   - Reopening Workspace retains saved artifacts.
-   - HTML preview and source view work.
-   - Copy/save/remove actions work.
-   - Existing SAF file/memory import/export remains accessible through its own entry.
-   - Existing calling, alarms, voice, and other core functionality remain unaffected.
-4. Once build and behavior are satisfactory, ask Sam before merging/publishing if confirmation is needed; PR #14 is intentionally still a draft.
-5. Merge only after verification and Sam's approval.
-6. Publish the next version only after explicit confirmation. Then test the updater from Sam's already-installed **v0.3.0** to the new release. Do not create a tag/release prematurely.
+### Resolution
+- PR #14 was merged into `fix/generation-timer-alarm-export` after its build and Canvas implementation were verified.
+- Sam installed v0.4.0, confirmed Workspace, generation, code capture, and in-app updating work on the Galaxy A16.
+- The current follow-up branch is `fix/generation-quality-safe-area`; its build/device verification is still pending.
+- Do not publish or retag a release from the follow-up branch without explicit approval.
 
 ## 2026-10-11 — Updater/release baseline confirmed
 
