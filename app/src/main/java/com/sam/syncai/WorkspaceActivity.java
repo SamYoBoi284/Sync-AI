@@ -306,6 +306,12 @@ public final class WorkspaceActivity extends Activity {
         actions.addView(delete, deleteLp);
         page.addView(actions);
 
+        Button saveToLibrary = button("SAVE TO FILE LIBRARY", false);
+        saveToLibrary.setOnClickListener(v -> saveArtifactToLibrary(artifact));
+        LinearLayout.LayoutParams libraryLp = new LinearLayout.LayoutParams(-1, dp(42));
+        libraryLp.topMargin = dp(8);
+        page.addView(saveToLibrary, libraryLp);
+
         boolean html = isHtml(artifact);
         if (html) {
             LinearLayout viewToggle = new LinearLayout(this);
@@ -374,6 +380,52 @@ public final class WorkspaceActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(page);
         body.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private void saveArtifactToLibrary(WorkspaceStore.Artifact artifact) {
+        FileLibraryStore library = new FileLibraryStore(getApplicationContext());
+        FileLibraryStore.LibraryFile existing = library.findByName(artifact.title);
+        if (existing != null && existing.isTextReadable()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("File already exists")
+                    .setMessage("A library file named \"" + existing.name
+                            + "\" already exists. Choose whether to replace it or keep a separate copy.")
+                    .setNegativeButton("CANCEL", null)
+                    .setNeutralButton("SAVE AS COPY", (dialog, which) ->
+                            saveArtifactCopy(library, artifact))
+                    .setPositiveButton("REPLACE EXISTING", (dialog, which) -> {
+                        try {
+                            library.saveGeneratedText(existing.name, artifact.content, existing.id);
+                            Toast.makeText(this, "Updated " + existing.name + " in File Library",
+                                    Toast.LENGTH_LONG).show();
+                        } catch (Exception error) {
+                            Toast.makeText(this, "Could not update file: " + error.getMessage(),
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    }).show();
+        } else if (existing != null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("File name already used")
+                    .setMessage("A non-text file already uses this name. Save the generated text as a separate copy?")
+                    .setNegativeButton("CANCEL", null)
+                    .setPositiveButton("SAVE COPY", (dialog, which) ->
+                            saveArtifactCopy(library, artifact))
+                    .show();
+        } else {
+            saveArtifactCopy(library, artifact);
+        }
+    }
+
+    private void saveArtifactCopy(FileLibraryStore library, WorkspaceStore.Artifact artifact) {
+        try {
+            FileLibraryStore.LibraryFile saved =
+                    library.saveGeneratedText(artifact.title, artifact.content, null);
+            Toast.makeText(this, "Saved " + saved.name + " to File Library",
+                    Toast.LENGTH_LONG).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "Could not save to File Library: " + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void copyArtifact(WorkspaceStore.Artifact artifact) {
