@@ -956,10 +956,12 @@ public final class MainActivity extends Activity {
     private List<ChatMessage> buildModelContext(String current) {
         java.util.ArrayList<ChatMessage> messages = new java.util.ArrayList<>();
         String memory = runtime.preferences().getMemory();
-        List<FileLibraryStore.LibraryFile> mentionedFiles = findMentionedLibraryFiles(current, 2);
+        boolean fileEditIntent = isFileEditIntent(current);
+        boolean fileEditRequest = isFileLibraryEditRequest(current);
+        List<FileLibraryStore.LibraryFile> mentionedFiles = findMentionedLibraryFiles(
+                current, fileEditRequest ? 1 : 2);
         boolean hasLibraryContext = !mentionedFiles.isEmpty();
         boolean artifactRequest = isArtifactRequest(current);
-        boolean fileEditIntent = isFileEditIntent(current);
         String system = "You are Sync AI, a helpful local Android AI companion. "
                 + "Answer the user's actual question directly and naturally. "
                 + "Be conversational, concise when the question is simple, and detailed when detail is useful. "
@@ -977,6 +979,9 @@ public final class MainActivity extends Activity {
                 + "If a file excerpt is marked TRUNCATED, do not present a partial result as a complete replacement file. Explain the limitation and ask for a smaller file or a specific section instead. "
                 + "Deterministic Android tools handle device actions before the model. "
                 + runtime.preferences().getPersonalityInstruction();
+        if (fileEditRequest) {
+            system += "\nEXISTING FILE EDIT MODE: The original filename is authoritative. Return the complete revised file, not a diff or partial snippet, and preserve all unrelated content. Use the exact existing filename in the Artifact line. If the full file content is unavailable, ask for a smaller file or specific section instead of generating a replacement. ";
+        }
         if (artifactRequest) {
             system += "\nARTIFACT MODE: Output only one short line in the form Artifact: filename.ext, followed by one complete Markdown fenced code/document block. "
                     + "Use a descriptive filename based on the user's requested subject and the correct extension. Do not add an explanation before or after the artifact. "
@@ -1149,15 +1154,16 @@ public final class MainActivity extends Activity {
 
     private boolean isFileEditIntent(String text) {
         String lower = text == null ? "" : text.toLowerCase(Locale.US);
-        boolean editVerb = lower.matches("(?s).*\\b(edit|modify|update|rewrite|revise|patch|refactor|fix|correct|replace)\\b.*");
-        return editVerb || lower.contains("add to") || lower.contains("remove from")
+        boolean editVerb = lower.matches("(?s).*\\b(edit|modify|update|rewrite|revise|patch|refactor|fix|correct|replace|append|insert|add)\\b.*");
+        return editVerb || lower.contains("remove from")
                 || lower.contains("change to") || lower.contains("change in");
     }
 
     private boolean isFileLibraryEditRequest(String text) {
         if (!isFileEditIntent(text)) return false;
-        List<FileLibraryStore.LibraryFile> referenced = findMentionedLibraryFiles(text, 1);
-        if (referenced.isEmpty()) return false;
+        List<FileLibraryStore.LibraryFile> referenced = findMentionedLibraryFiles(text, 2);
+        // Workspace's current single-artifact save flow edits one source file at a time.
+        if (referenced.size() != 1) return false;
         FileLibraryStore.LibraryFile file = referenced.get(0);
         // Keep full-file edits bounded so the model is less likely to rewrite a truncated document.
         return file.isTextReadable() && file.sizeBytes <= 3000L;
