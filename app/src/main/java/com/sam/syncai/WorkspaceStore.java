@@ -50,7 +50,7 @@ public final class WorkspaceStore {
     private static final Pattern OPEN_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "([^\\r\\n]*)\\r?\\n");
     private static final Pattern CLOSE_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "[ ]*(?:\\r?\\n|$)");
     private static final Pattern EXPLICIT_FILENAME = Pattern.compile(
-            "(?i)(?<![\\\\w.-])([\\\\w-]{1,48}\\\\.(?:html?|css|js|mjs|cjs|py|java|kt|json|md|txt|xml|sh|cpp|c|h|ts|tsx|jsx))(?![\\\\w.-])");
+            "(?i)(?<![\\w.-])([\\w-]{1,48}\\.(?:html?|css|js|mjs|cjs|py|java|kt|json|md|txt|xml|sh|cpp|c|h|ts|tsx|jsx))(?![\\w.-])");
     private static final int MAX_ARTIFACTS = 100;
 
     private final File file;
@@ -182,7 +182,8 @@ public final class WorkspaceStore {
         List<ExtractedBlock> blocks = extractBlocks(response);
         if (blocks.isEmpty()) return false;
         String prompt = request == null ? "" : request.toLowerCase(Locale.ROOT);
-        boolean interactive = prompt.matches("(?s).*\\\\b(game|playable|interactive|calculator|quiz|timer|todo|counter|form|button)\\\\b.*");
+        boolean interactive = prompt.matches("(?s).*\\b(game|playable|interactive|calculator|quiz|timer|todo|counter|form|button|player)\\b.*")
+                || prompt.contains("rock paper scissors");
         for (ExtractedBlock block : blocks) {
             String language = block.language.toLowerCase(Locale.ROOT);
             String code = block.content.toLowerCase(Locale.ROOT);
@@ -202,8 +203,8 @@ public final class WorkspaceStore {
         Matcher explicit = EXPLICIT_FILENAME.matcher(request);
         if (explicit.find()) return explicit.group(1);
         String clean = request.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9\\\\s-]", " ")
-                .replaceAll("\\\\s+", " ").trim();
+                .replaceAll("[^a-z0-9\\s-]", " ")
+                .replaceAll("\\s+", " ").trim();
         java.util.Set<String> stop = new java.util.HashSet<>(java.util.Arrays.asList(
                 "can", "could", "you", "we", "please", "pls", "if", "so", "output", "it",
                 "to", "workspace", "a", "an", "the", "small", "simple", "program", "code",
@@ -214,7 +215,7 @@ public final class WorkspaceStore {
                 "instead", "of", "as", "would", "like", "want", "i", "my", "this", "help",
                 "do", "what", "something", "and", "then", "it", "please", "pls"));
         List<String> words = new ArrayList<>();
-        for (String word : clean.split("\\\\s+")) {
+        for (String word : clean.split("\\s+")) {
             if (!word.isEmpty() && !stop.contains(word) && word.length() > 1) {
                 words.add(word);
                 if (words.size() == 6) break;
