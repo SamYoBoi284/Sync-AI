@@ -88,19 +88,26 @@ public final class FileLibraryStore {
         load();
     }
 
+    public synchronized void reload() {
+        load();
+    }
+
     public synchronized List<LibraryFile> all() {
+        load();
         ArrayList<LibraryFile> result = new ArrayList<>(files);
         Collections.sort(result, (a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         return result;
     }
 
     public synchronized LibraryFile get(String id) {
+        load();
         if (id == null) return null;
         for (LibraryFile file : files) if (id.equals(file.id)) return file;
         return null;
     }
 
     public synchronized LibraryFile findByName(String name) {
+        load();
         if (name == null) return null;
         for (LibraryFile file : files) {
             if (file.name.equalsIgnoreCase(name.trim())) return file;
@@ -109,6 +116,7 @@ public final class FileLibraryStore {
     }
 
     public synchronized List<LibraryFile> findMentioned(String query, int maximum) {
+        load();
         ArrayList<LibraryFile> matches = new ArrayList<>();
         if (query == null || query.trim().isEmpty() || maximum <= 0) return matches;
         String lower = query.toLowerCase(Locale.ROOT);
@@ -131,6 +139,7 @@ public final class FileLibraryStore {
 
     /** Copies the selected URI into app-private storage; no ongoing URI permission is needed. */
     public synchronized LibraryFile importUri(Uri uri) throws Exception {
+        load();
         if (uri == null) throw new IllegalArgumentException("No file was selected.");
         ContentResolver resolver = context.getContentResolver();
         String name = displayName(resolver, uri);
@@ -188,6 +197,7 @@ public final class FileLibraryStore {
     }
 
     public synchronized void delete(String id) {
+        load();
         LibraryFile item = get(id);
         if (item == null) return;
         files.remove(item);
@@ -228,6 +238,7 @@ public final class FileLibraryStore {
     /** Writes generated text to the library. A non-null replaceId explicitly updates that item. */
     public synchronized LibraryFile saveGeneratedText(String requestedName, String text, String replaceId)
             throws Exception {
+        load();
         String name = safeName(requestedName);
         if (name.equals("imported-file")) name = "sync-edited-file.txt";
         byte[] bytes = (text == null ? "" : text).getBytes(StandardCharsets.UTF_8);
