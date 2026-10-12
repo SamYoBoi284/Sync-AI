@@ -58,6 +58,14 @@ public final class FileLibraryActivity extends Activity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         buildShell();
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            androidx.core.graphics.Insets safe = windowInsets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                            | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+            return windowInsets;
+        });
+        androidx.core.view.ViewCompat.requestApplyInsets(root);
         renderList();
     }
 
