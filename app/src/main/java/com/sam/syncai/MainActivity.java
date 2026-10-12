@@ -955,7 +955,7 @@ public final class MainActivity extends Activity {
                 + "Deterministic Android tools handle device actions before the model. "
                 + runtime.preferences().getPersonalityInstruction();
         if (isArtifactTask(current)) {
-            system += "\\nARTIFACT QUALITY RULES: Return a complete, runnable deliverable, not pseudocode or a partial sketch. "
+            system += "\nARTIFACT QUALITY RULES: Return a complete, runnable deliverable, not pseudocode or a partial sketch. "
                     + "Use one correctly labelled fenced block for the complete file. "
                     + "Never leave TODOs, ellipses, placeholder variables, or unimplemented handlers. "
                     + "Make every button/control perform its advertised action and ensure every referenced variable/function exists. "
