@@ -16,7 +16,11 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -238,9 +242,11 @@ public final class FileLibraryStore {
                 out.write(bytes);
                 out.getFD().sync();
             }
-            if (!temp.renameTo(destination)) {
+            try {
+                moveReplacing(temp, destination);
+            } catch (Exception error) {
                 temp.delete();
-                throw new IllegalStateException("Could not replace the file. The original was left unchanged.");
+                throw new IllegalStateException("Could not replace the file.", error);
             }
             long now = System.currentTimeMillis();
             LibraryFile updated = new LibraryFile(old.id, old.name, old.mimeType, bytes.length,
@@ -270,7 +276,13 @@ public final class FileLibraryStore {
         LibraryFile item = new LibraryFile(id, name, mimeFromName(name), bytes.length,
                 sha256(bytes), now, now);
         files.add(item);
-        saveIndex();
+        try {
+            saveIndex();
+        } catch (RuntimeException error) {
+            files.remove(item);
+            destination.delete();
+            throw error;
+        }
         SyncEventLogger.record(context, "FileLibraryStore", "FILE_SAVED_FROM_SYNC", "INFO",
                 "name=" + item.name + " bytes=" + item.sizeBytes);
         return item;
@@ -374,16 +386,18 @@ public final class FileLibraryStore {
                 out.write(array.toString(2).getBytes(StandardCharsets.UTF_8));
                 out.getFD().sync();
             }
-            if (indexFile.exists() && !indexFile.delete()) {
-                temp.delete();
-                throw new IllegalStateException("Could not update the File Library index.");
-            }
-            if (!temp.renameTo(indexFile)) {
-                temp.delete();
-                throw new IllegalStateException("Could not finalize the File Library index.");
-            }
+            moveReplacing(temp, indexFile);
         } catch (Exception error) {
             throw new IllegalStateException("Could not save the File Library index.", error);
+        }
+    }
+
+    private static void moveReplacing(File source, File destination) throws IOException {
+        try {
+            Files.move(source.toPath(), destination.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
