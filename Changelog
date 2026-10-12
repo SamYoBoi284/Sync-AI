@@ -3,7 +3,7 @@
 > Last updated: 2026-10-13
 > Repository: `SamYoBoi284/Sync-AI`
 > Current work branch: `feat/file-library-context-generation-1024`
-> Current draft PR: [#17 — Add update download consent, intervals, and voice controls](https://github.com/SamYoBoi284/Sync-AI/pull/17)
+> Current draft PR: [#18 — Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18)
 > Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
 >
 > This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
