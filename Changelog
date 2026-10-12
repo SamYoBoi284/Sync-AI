@@ -9,10 +9,10 @@
 - Third-party dictation integration is not included here; a provider such as Wispr Flow needs a supported SDK or system-level speech-recognition integration and should be evaluated separately before adding dependencies.
 
 
-> Last updated: 2026-10-11
+> Last updated: 2026-10-12
 > Repository: `SamYoBoi284/Sync-AI`
-> Current work branch: `fix/sync-workspace-canvas`
-> Current draft PR: [#14 — Fix Sync Canvas Workspace and capture generated artifacts](https://github.com/SamYoBoi284/Sync-AI/pull/14)
+> Current work branch: `feat/update-controls-voice-artifact-guards`
+> Current draft PR: [#17 — Add update download consent, intervals, and voice controls](https://github.com/SamYoBoi284/Sync-AI/pull/17)
 > Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
 >
 > This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
@@ -26,7 +26,7 @@
 - If an artifact request ends without a complete fenced block or fails basic structural/behavior checks (including the known static Rock-Paper-Scissors failure pattern), mark the Workspace draft failed/incomplete rather than reporting it as successfully created. This is a lightweight guard, not a full runtime test of arbitrary code.
 - Keep the selected Workspace source view updating in place while generation streams; do not repeatedly reload a running HTML preview. Refresh the preview when generation completes.
 - Apply Android system-bar/display-cutout insets to Workspace and the Appearance studio so headers/content stay inside the safe area on edge-to-edge Android versions.
-- Validation pending: GitHub Actions build and physical-device regression tests. No release tag or release assets are changed by this work.
+- PR #16 was merged into `fix/generation-timer-alarm-export` on 2026-10-12. The current base branch includes the generation/Workspace changes, but physical-device regression tests for the 4096-token context and artifact generation are still pending. No release tag or release assets were changed.
 
 ## 2026-10-11 — Sync Canvas / Workspace repair (in progress)
 
@@ -62,7 +62,7 @@ Changes included in the PR:
 - Do not change the baseline branch while fixing Canvas.
 - Do not remove or replace existing SAF, file import/export, model import, voice, wake-word, call, alarm, or updater functionality.
 - Follow the project rule: **NEVER DELETE SOMETHING THAT ALREADY WORKS unless it directly contradicts a new requirement or is specifically being fixed.**
-- PR #14 remains a **draft** and has not been merged. No new version tag/release has been created.
+- PR #14 was subsequently merged into `fix/generation-timer-alarm-export` on 2026-10-12. No new version tag/release was created by that merge.
 - The latest known CI attempt was GitHub Actions run **#672**, building a debug APK. At the time of this handoff, its final result and on-device verification were not confirmed. Check the live run before relying on this status.
 
 ### Next steps
