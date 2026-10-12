@@ -1036,6 +1036,14 @@ public final class MainActivity extends Activity {
             subject = " " + subject + " ";
             for (String word : remove) subject = subject.replace(" " + word + " ", " ");
         }
+        subject = subject.trim();
+        String[] knownExtensions = {".html", ".htm", ".txt", ".md", ".js", ".py", ".css", ".json", ".java", ".xml", ".csv"};
+        for (String knownExtension : knownExtensions) {
+            if (subject.toLowerCase(Locale.US).endsWith(knownExtension)) {
+                subject = subject.substring(0, subject.length() - knownExtension.length());
+                break;
+            }
+        }
         int suffixAt = subject.indexOf(" output");
         if (suffixAt >= 0) subject = subject.substring(0, suffixAt);
         suffixAt = subject.indexOf(" to workspace");
