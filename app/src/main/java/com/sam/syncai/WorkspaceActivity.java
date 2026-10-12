@@ -48,7 +48,12 @@ public final class WorkspaceActivity extends Activity {
     private String pendingExport;
     private String pendingMime = "text/plain";
     private WebView activeWebView;
+    private TextView selectedMetaView;
+    private TextView activeSourceView;
     private boolean showingPreview = true;
+    private long lastPreviewRefreshAt;
+    private int lastPreviewContentLength;
+    private String selectedSignature = "";
     private ScrollView listScroll;
     private String lastListSignature = "";
     private boolean pollScheduled;
@@ -56,16 +61,46 @@ public final class WorkspaceActivity extends Activity {
     private final Runnable workspacePoller = new Runnable() {
         @Override public void run() {
             if (isFinishing() || isDestroyed()) return;
-            if (selected == null && store != null) {
+            if (store != null) {
                 store.reload();
-                List<WorkspaceStore.Artifact> latest = store.all();
-                String currentSignature = signature(latest);
-                if (!currentSignature.equals(lastListSignature)) {
-                    int oldScrollY = listScroll == null ? 0 : listScroll.getScrollY();
-                    renderList();
-                    if (listScroll != null) {
-                        ScrollView updatedScroll = listScroll;
-                        updatedScroll.post(() -> updatedScroll.scrollTo(0, oldScrollY));
+                if (selected == null) {
+                    List<WorkspaceStore.Artifact> latest = store.all();
+                    String currentSignature = signature(latest);
+                    if (!currentSignature.equals(lastListSignature)) {
+                        int oldScrollY = listScroll == null ? 0 : listScroll.getScrollY();
+                        renderList();
+                        if (listScroll != null) {
+                            ScrollView updatedScroll = listScroll;
+                            updatedScroll.post(() -> updatedScroll.scrollTo(0, oldScrollY));
+                        }
+                    }
+                } else {
+                    WorkspaceStore.Artifact latest = store.get(selected.id);
+                    if (latest == null) {
+                        selected = null;
+                        renderList();
+                    } else if (!artifactSignature(latest).equals(selectedSignature)) {
+                        WorkspaceStore.Artifact previous = selected;
+                        boolean stateChanged = previous.state != latest.state;
+                        selected = latest;
+                        selectedSignature = artifactSignature(latest);
+                        if (selectedMetaView != null) {
+                            selectedMetaView.setText(latest.language.toUpperCase(Locale.ROOT)
+                                    + "  •  " + stateLabel(latest.state));
+                            selectedMetaView.setTextColor(stateColor(latest.state));
+                        }
+                        if (activeSourceView != null) activeSourceView.setText(latest.content);
+                        long now = System.currentTimeMillis();
+                        boolean refreshPreview = activeWebView != null
+                                && (stateChanged || latest.state != WorkspaceStore.State.IN_PROGRESS
+                                || latest.content.length() - lastPreviewContentLength >= 160
+                                || now - lastPreviewRefreshAt >= 3000L);
+                        if (refreshPreview) {
+                            activeWebView.loadDataWithBaseURL(
+                                    "about:blank", latest.content, "text/html", "UTF-8", null);
+                            lastPreviewRefreshAt = now;
+                            lastPreviewContentLength = latest.content.length();
+                        }
                     }
                 }
             }
@@ -266,6 +301,11 @@ public final class WorkspaceActivity extends Activity {
             return;
         }
         selected = artifact;
+        selectedSignature = artifactSignature(artifact);
+        selectedMetaView = null;
+        activeSourceView = null;
+        lastPreviewRefreshAt = System.currentTimeMillis();
+        lastPreviewContentLength = artifact.content == null ? 0 : artifact.content.length();
         if (activeWebView != null) {
             activeWebView.destroy();
             activeWebView = null;
@@ -280,16 +320,17 @@ public final class WorkspaceActivity extends Activity {
         LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(-1, -2);
         metaLp.topMargin = dp(5);
         metaLp.bottomMargin = dp(14);
-        page.addView(text(artifact.language.toUpperCase(Locale.ROOT) + "  •  "
-                + stateLabel(artifact.state), 12, stateColor(artifact.state), true), metaLp);
+        selectedMetaView = text(artifact.language.toUpperCase(Locale.ROOT) + "  •  "
+                + stateLabel(artifact.state), 12, stateColor(artifact.state), true);
+        page.addView(selectedMetaView, metaLp);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         Button copy = button("COPY", false);
-        copy.setOnClickListener(v -> copyArtifact(artifact));
+        copy.setOnClickListener(v -> copyArtifact(selected == null ? artifact : selected));
         actions.addView(copy, new LinearLayout.LayoutParams(0, dp(42), 1));
         Button save = button("SAVE", false);
-        save.setOnClickListener(v -> beginExport(artifact));
+        save.setOnClickListener(v -> beginExport(selected == null ? artifact : selected));
         LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(0, dp(42), 1);
         saveLp.leftMargin = dp(7);
         actions.addView(save, saveLp);
@@ -355,6 +396,7 @@ public final class WorkspaceActivity extends Activity {
         } else {
             ScrollView codeScroll = new ScrollView(this);
             TextView code = text(artifact.content, 12, TEXT, false);
+            activeSourceView = code;
             code.setTypeface(Typeface.MONOSPACE);
             code.setTextIsSelectable(true);
             code.setGravity(Gravity.TOP | Gravity.START);
@@ -367,6 +409,12 @@ public final class WorkspaceActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(page);
         body.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private static String artifactSignature(WorkspaceStore.Artifact artifact) {
+        if (artifact == null) return "";
+        return artifact.id + "|" + artifact.updatedAt + "|" + artifact.state
+                + "|" + (artifact.content == null ? 0 : artifact.content.length());
     }
 
     private void copyArtifact(WorkspaceStore.Artifact artifact) {
