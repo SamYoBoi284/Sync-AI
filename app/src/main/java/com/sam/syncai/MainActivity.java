@@ -860,16 +860,23 @@ public final class MainActivity extends Activity {
                 String answer = response.toString().trim();
                 if (answer.isEmpty()) answer = "I got no response from the local model.";
                 final String artifactContent = answer;
-                boolean completeArtifactBlock = hasCompleteFencedBlock(artifactContent)
+                boolean hasCompleteFence = hasCompleteFencedBlock(artifactContent);
+                boolean completeArtifactBlock = hasCompleteFence
                         && WorkspaceStore.passesBasicQualityChecks(artifactContent);
                 WorkspaceStore.State artifactState = routeArtifactToWorkspace && !completeArtifactBlock
                         ? WorkspaceStore.State.FAILED : WorkspaceStore.State.COMPLETED;
-                String chatAnswer = routeArtifactToWorkspace
-                        ? (completeArtifactBlock
-                            ? "Created \"" + artifactFilename + "\" in Workspace."
-                            : "The draft for \"" + artifactFilename
-                                    + "\" failed a basic completeness/behavior check or ended early. Workspace marked it incomplete; inspect the source before using it.")
-                        : artifactContent;
+                String chatAnswer = artifactContent;
+                if (routeArtifactToWorkspace) {
+                    if (completeArtifactBlock) {
+                        chatAnswer = "Created \"" + artifactFilename + "\" in Workspace.";
+                    } else if (hasCompleteFence) {
+                        chatAnswer = "The output for \"" + artifactFilename
+                                + "\" failed a basic completeness/behavior check and was not accepted as a completed artifact. Inspect the source before using it.";
+                    } else {
+                        chatAnswer = "Sync stopped before producing a complete code block for \"" + artifactFilename
+                                + "\". No complete artifact was saved; ask Sync to continue or try a smaller request.";
+                    }
+                }
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
                         currentModelName(), runtime.backend() instanceof GgufModelBackend
