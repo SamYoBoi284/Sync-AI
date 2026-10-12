@@ -88,6 +88,27 @@ public final class WorkspaceStore {
         }
     }
 
+    /** Saves a user's edit or a generated continuation without creating a second artifact. */
+    public synchronized Artifact updateArtifactContent(String id, String content, State requestedState) {
+        Artifact old = get(id);
+        if (old == null) throw new IllegalArgumentException("That Workspace artifact no longer exists.");
+        String updatedContent = content == null ? "" : content;
+        State state = requestedState == null ? State.FAILED : requestedState;
+        String fenced = FENCE + old.language + "\n" + updatedContent + "\n" + FENCE;
+        if (state == State.COMPLETED && !passesBasicQualityChecks(fenced)) state = State.FAILED;
+        Artifact updated = new Artifact(old.id, old.responseId, old.chatId, old.title,
+                old.language, updatedContent, state, old.createdAt, System.currentTimeMillis());
+        replace(updated);
+        save();
+        return updated;
+    }
+
+    /** Returns the first fenced block body, including an unfinished block's available text. */
+    public static String extractFirstBlockContent(String response) {
+        List<ExtractedBlock> blocks = extractBlocks(response == null ? "" : response);
+        return blocks.isEmpty() ? "" : blocks.get(0).content;
+    }
+
     public synchronized void updateResponse(String responseId, String chatId,
                                             String response, State state) {
         updateResponse(responseId, chatId, response, state, "");
