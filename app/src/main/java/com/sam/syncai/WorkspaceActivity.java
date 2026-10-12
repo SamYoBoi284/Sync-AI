@@ -140,6 +140,30 @@ public final class WorkspaceActivity extends Activity {
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
         root.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int left;
+            int top;
+            int right;
+            int bottom;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets safe = insets.getInsets(
+                        android.view.WindowInsets.Type.systemBars()
+                                | android.view.WindowInsets.Type.displayCutout());
+                left = safe.left;
+                top = safe.top;
+                right = safe.right;
+                bottom = safe.bottom;
+            } else {
+                left = insets.getSystemWindowInsetLeft();
+                top = insets.getSystemWindowInsetTop();
+                right = insets.getSystemWindowInsetRight();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            root.setPadding(left, top, right, bottom);
+            return insets;
+        });
+        root.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        root.requestApplyInsets();
     }
 
     private void renderList() {
