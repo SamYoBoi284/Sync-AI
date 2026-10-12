@@ -261,7 +261,7 @@ public final class WorkspaceActivity extends Activity {
 
         FrameLayout previewFrame = new FrameLayout(this);
         previewFrame.setBackground(round(SURFACE, dp(14)));
-        LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(-1, 0, 1);
+        LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(-1, dp(420));
         previewLp.topMargin = dp(12);
         page.addView(previewFrame, previewLp);
 
@@ -369,7 +369,7 @@ public final class WorkspaceActivity extends Activity {
     }
 
     private Button button(String label, boolean quiet) {
-        return button(label, quiet, true);
+        return button(label, false, quiet);
     }
 
     private Button button(String label, boolean selected, boolean quiet) {
