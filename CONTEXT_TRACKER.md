@@ -1,9 +1,10 @@
 # Sync AI — Context Tracker
 
 > Living handoff/context document for the Sync AI project.
-> Updated: 2026-10-09
-> Latest verified source branch: `sync-ai-context-visual-813e999-v2`
-> This tracker records implemented work and known verification status. Source code / CI remains authoritative.
+> Updated: 2026-10-12
+> Current active development branch: `fix/generation-quality-safe-area` (draft PR #15; CI/device verification pending)
+> Integration branch / installed v0.4.0 baseline: `fix/generation-timer-alarm-export`
+> See root `Changelog` for the current release status and latest development work. Source code / CI / device tests remain authoritative.
 
 ## Project
 
@@ -171,9 +172,9 @@ One earlier attempt used `getComponentName()` in `VoiceInteractionService`; that
 
 ## Native model context / performance
 
-The native runtime on the current branch is already using a **4096-token inference context**, so no redundant 128→4096 context change should be made based only on the earlier plan.
+The integration branch used a **2048-token inference context** and a **256-token output ceiling**. The active follow-up branch raises these to **3072 context tokens**, **768 default output tokens**, and **up to 1024 output tokens for artifact generation**. The latest debug build and on-device memory/latency behavior must be verified before treating these changes as stable.
 
-The project previously had smaller generation/context safety bounds and the recurring long-response problem remains an investigation target. Diagnostics should be used to measure prompt evaluation versus generation time before further tuning.
+The target device has 4 GB RAM; do not raise context or generation limits further without diagnostics and real-device stability testing.
 
 ## Settings / Personalization — implemented
 
@@ -263,11 +264,16 @@ Physical-device verification remains required for:
 
 ## Current working branch
 
-Development/visual branch:
-`sync-ai-context-visual-813e999-v2`
+Active follow-up branch:
+`fix/generation-quality-safe-area`
 
-The older core branch remains:
-`sync-ai-toolcore-voice-history`
+Base/integration branch:
+`fix/generation-timer-alarm-export`
+
+Draft PR #15:
+`Improve generation quality and Workspace safe areas`
+
+The older visual/core branches above remain historical implementation context.
 
 ## Project rules / handoff rules
 
@@ -276,6 +282,6 @@ The older core branch remains:
 - Keep deterministic Android tools independent from the LLM.
 - Preserve diagnostic evidence instead of replacing errors with generic failure text.
 - Keep persistent chat storage separate from bounded inference context.
-- Keep wake-word/background microphone behavior out of the project.
+- Preserve the existing opt-in Vosk wake-word/background microphone behavior; do not modify it during unrelated generation or layout fixes.
 - Keep model files out of GitHub.
 - Treat source code + CI + physical-device tests as the authority; tracker text alone never proves runtime behavior.

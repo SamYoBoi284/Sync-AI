@@ -1,14 +1,15 @@
 # Sync AI — Changelog & Development Handoff
 
-> Last updated: 2026-10-11
+> Last updated: 2026-10-12
 > Repository: `SamYoBoi284/Sync-AI`
-> Current work branch: `fix/sync-workspace-canvas`
-> Current draft PR: [#14 — Fix Sync Canvas Workspace and capture generated artifacts](https://github.com/SamYoBoi284/Sync-AI/pull/14)
-> Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
->
-> This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
+> Current work branch: `fix/generation-quality-safe-area`
+> Parent/integration branch: `fix/generation-timer-alarm-export`
+> Latest installed release: `v0.4.0` (previous baseline: `v0.3.0`)
+> PR #14 — Fix Sync Canvas Workspace and capture generated artifacts — merged into the integration branch at `799602d5b47ef810b2597d1726c4f1cb4d66ee2b`.
 
-## 2026-10-11 — Sync Canvas / Workspace repair (in progress)
+This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale. The original Canvas notes below preserve historical context; their initial pending status was superseded by the merge and v0.4.0 device verification.
+
+## 2026-10-11 — Sync Canvas / Workspace repair (completed; historical notes)
 
 ### Clarification from Sam
 - Workspace is intended to be **Sync's Canvas/artifact viewer**, similar to ChatGPT Canvas or Claude Artifacts.
@@ -42,24 +43,14 @@ Changes included in the PR:
 - Do not change the baseline branch while fixing Canvas.
 - Do not remove or replace existing SAF, file import/export, model import, voice, wake-word, call, alarm, or updater functionality.
 - Follow the project rule: **NEVER DELETE SOMETHING THAT ALREADY WORKS unless it directly contradicts a new requirement or is specifically being fixed.**
-- PR #14 remains a **draft** and has not been merged. No new version tag/release has been created.
+- Historical status when this entry was first written: PR #14 was still a draft. It was later merged into `fix/generation-timer-alarm-export` at `799602d5b47ef810b2597d1726c4f1cb4d66ee2b`; v0.4.0 was subsequently published, installed, and its in-app update flow was confirmed by Sam.
 - The latest known CI attempt was GitHub Actions run **#672**, building a debug APK. At the time of this handoff, its final result and on-device verification were not confirmed. Check the live run before relying on this status.
 
-### Next steps
-1. Check the latest CI result for PR #14 / run #672.
-2. If it failed, inspect the actual failing job/log and make the smallest targeted correction on `fix/sync-workspace-canvas`; preserve unrelated working behavior.
-3. If it passed, obtain/install the debug APK and test on Sam's Galaxy A16:
-   - Workspace opens Canvas, not Android's file picker or Settings.
-   - Generated fenced code/document artifacts appear in Workspace.
-   - Artifacts update during generation and finish as completed/incomplete.
-   - Reopening Workspace retains saved artifacts.
-   - HTML preview and source view work.
-   - Copy/save/remove actions work.
-   - Existing SAF file/memory import/export remains accessible through its own entry.
-   - Existing calling, alarms, voice, and other core functionality remain unaffected.
-4. Once build and behavior are satisfactory, ask Sam before merging/publishing if confirmation is needed; PR #14 is intentionally still a draft.
-5. Merge only after verification and Sam's approval.
-6. Publish the next version only after explicit confirmation. Then test the updater from Sam's already-installed **v0.3.0** to the new release. Do not create a tag/release prematurely.
+### Resolution
+- PR #14 was merged into `fix/generation-timer-alarm-export` after its build and Canvas implementation were verified.
+- Sam installed v0.4.0, confirmed Workspace, generation, code capture, and in-app updating work on the Galaxy A16.
+- The current follow-up branch is `fix/generation-quality-safe-area`; its build/device verification is still pending.
+- Do not publish or retag a release from the follow-up branch without explicit approval.
 
 ## 2026-10-11 — Updater/release baseline confirmed
 
@@ -91,7 +82,7 @@ Implemented tool routing for device-known requests before model generation, incl
 - Chat/composer fixes include queued follow-ups, keyboard behavior, and assistant-message persistence.
 - Inference diagnostics capture route, request time, prompt tokens, context size, CPU threads, prompt evaluation and generation times, token count/rate, model details, and failure stage/message.
 - A prior About/Diagnostics ANR was traced to a JNI mutex deadlock caused by querying native diagnostics during a completion callback while the native mutex was held; completion now passes already-computed diagnostics instead of re-entering native diagnostics.
-- Native inference context is already configured at 4096 tokens on the documented branch; do not blindly repeat old context-size changes.
+- The integration branch's native inference context was **2048 tokens**, intentionally conservative for 4 GB phones. The current follow-up branch raises it to **3072 tokens** and the native output ceiling to **1024 tokens**; memory, latency, and stability still require on-device verification.
 - Persistent flight recorder `SyncEventLogger.java` records lifecycle, voice, tool, model, exception, and related diagnostic events. Settings → About & Diagnostics includes Export Logs, which gathers app/device metadata, model/runtime info, chats and diagnostics, recorder timeline, and best-effort logcat.
 - Chat export includes per-assistant-message diagnostics.
 
@@ -118,3 +109,26 @@ Implemented tool routing for device-known requests before model generation, incl
 6. Keep GGUF/Vosk model binaries out of the repo unless Sam explicitly changes that decision.
 7. Do not ask for GitHub signing-secret values; they are already configured.
 8. Prioritize real build logs and on-device evidence over assumptions.
+
+
+## 2026-10-12 — Generation quality, Workspace routing, and safe-area follow-up
+
+Branch: `fix/generation-quality-safe-area` (based on `fix/generation-timer-alarm-export`). Draft PR: [#15 — Improve generation quality and Workspace safe areas](https://github.com/SamYoBoi284/Sync-AI/pull/15).
+
+### Evidence from Sam's exported on-device logs
+- The two-player Rock/Paper/Scissors HTML artifact was visibly incomplete: its JavaScript stopped at `var rock`; there was no completed input handling, computer choice, round resolution, or result update.
+- Both attempts generated exactly 256 tokens. The second request used 1,114 prompt tokens with a 2,048-token context and again stopped at 256 generated tokens. This is consistent with the configured output ceiling, not a native crash.
+- The source also independently hard-clamped generation to 256 tokens in native C++, so changing only Java's `GenerationConfig` would not have been enough.
+
+### Changes in this branch
+- Raise the default output budget from 256 to 768 tokens; artifact requests use up to 1,024 tokens.
+- Raise the native hard generation ceiling to 1,024 tokens and increase the inference context modestly from 2,048 to 3,072 tokens. Do not raise further without memory/latency testing on the 4 GB Galaxy A16.
+- Strengthen artifact-specific instructions: complete runnable files, no placeholders, fully wired controls, complete self-contained interactive HTML, and full-file repairs.
+- Infer a useful artifact filename from the original user request (for example, a Rock/Paper/Scissors HTML request becomes a descriptive `.html` artifact name).
+- During artifact requests, keep the chat bubble to a status message while Workspace receives live fenced-block content. Preserve the full assistant response in chat storage for conversational context, and render a compact status bubble when the corresponding Workspace artifact exists.
+- Mark artifacts incomplete when generation hits its token ceiling or simple structural checks detect an unclosed fence / obviously incomplete HTML. These checks are conservative and do not claim to prove arbitrary JavaScript is correct.
+- Apply status/navigation-bar and display-cutout insets to Workspace and MainActivity layouts without removing existing animations, styling, keyboard behavior, or navigation.
+
+### Verification status
+- Source changes are prepared for CI review; build and on-device testing remain required.
+- Do not publish or retag a release from this branch. Preserve `main`, the current release/tag, model import, voice/wake-word, tools, chats, updater, SAF flows, and existing Workspace actions.

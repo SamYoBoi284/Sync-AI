@@ -316,11 +316,11 @@ static void native_generate_impl(
 
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
-    // Sync AI targets 4 GB Android phones. A 4096-token KV cache can push
-    // the process into memory pressure alongside the resident GGUF weights and
-    // other apps. Prefer a conservative 2048-token context for reliability.
+    // A modest 3072-token context gives code tasks more room while avoiding
+    // the much larger KV cache of 4096+ on 4 GB phones. Re-check device memory
+    // before raising this further.
     const uint32_t contextSize = static_cast<uint32_t>(
-            std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx)));
+            std::min<int32_t>(3072, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
     // The prompt is prefilled as one logical batch and can exceed 256 tokens.
     // Keep n_batch large enough for the bounded context while retaining a small
@@ -374,8 +374,8 @@ static void native_generate_impl(
         return size;
     };
 
-    const int requestedGeneration = std::max(1, std::min(256, static_cast<int>(maxTokens)));
-    const int reservedGeneration = std::min(requestedGeneration, 256);
+    const int requestedGeneration = std::max(1, std::min(1024, static_cast<int>(maxTokens)));
+    const int reservedGeneration = std::min(requestedGeneration, 1024);
     const int promptBudget = std::max(
             1, static_cast<int>(contextSize) - reservedGeneration - 4);
 
@@ -396,9 +396,9 @@ static void native_generate_impl(
             vocab, formatted.data(), formattedSize,
             nullptr, 0, true, true);
 
-    // Keep enough room for the response. Older versions only checked that the
-    // prompt itself fit, then could decode past the context window during the
-    // 128-token generation loop and terminate the app inside llama.cpp.
+    // Keep enough room for the requested response. Older versions only checked
+    // that the prompt itself fit, then could decode past the context window during
+    // generation and terminate the app inside llama.cpp.
     while (promptCount > promptBudget && roleStrings.size() > 1) {
         // Preserve the system prompt and discard the oldest conversation turn.
         roleStrings.erase(roleStrings.begin() + 1);
@@ -484,7 +484,7 @@ static void native_generate_impl(
     const int generationLimit = std::max(
             1,
             std::min(
-                    256,
+                    1024,
                     std::min(
                             static_cast<int>(maxTokens),
                             static_cast<int>(contextSize) - promptCount - 1)));

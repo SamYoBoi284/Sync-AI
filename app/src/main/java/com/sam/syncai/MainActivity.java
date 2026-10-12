@@ -105,6 +105,9 @@ public final class MainActivity extends Activity {
     private boolean modelBusy;
     private LinearLayout contentRootView;
     private int statusInset;
+    private int navigationInset;
+    private int horizontalInsetLeft;
+    private int horizontalInsetRight;
     private boolean edgeTracking;
     private boolean edgeDragging;
     private float edgeStartX;
@@ -332,13 +335,29 @@ public final class MainActivity extends Activity {
         rootFrame = frame;
         setContentView(frame);
         rootFrame.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
-            int imeBottom = ime.bottom;
-            int topNow = Build.VERSION.SDK_INT >= 30
-                    ? insets.getInsets(android.view.WindowInsets.Type.statusBars()
-                            | android.view.WindowInsets.Type.displayCutout()).top
-                    : insets.getSystemWindowInsetTop();
-            applyTopInset(topNow);
+            int imeBottom = 0;
+            if (Build.VERSION.SDK_INT >= 30) {
+                imeBottom = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+            }
+            int topNow;
+            int leftNow;
+            int rightNow;
+            int bottomNow;
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets safe = insets.getInsets(
+                        android.view.WindowInsets.Type.systemBars()
+                                | android.view.WindowInsets.Type.displayCutout());
+                topNow = safe.top;
+                leftNow = safe.left;
+                rightNow = safe.right;
+                bottomNow = safe.bottom;
+            } else {
+                topNow = insets.getSystemWindowInsetTop();
+                leftNow = insets.getSystemWindowInsetLeft();
+                rightNow = insets.getSystemWindowInsetRight();
+                bottomNow = Math.max(0, insets.getSystemWindowInsetBottom() - imeBottom);
+            }
+            applyWindowInsets(topNow, leftNow, rightNow, bottomNow);
             composerCard.setTranslationY(-imeBottom);
             chatScroll.setPadding(
                     chatScroll.getPaddingLeft(),
@@ -355,10 +374,17 @@ public final class MainActivity extends Activity {
         playStartupMotion(contentRoot);
     }
 
-    private void applyTopInset(int top) {
-        if (top == statusInset || contentRootView == null) return;
+    private void applyWindowInsets(int top, int left, int right, int bottom) {
+        if (top == statusInset && left == horizontalInsetLeft
+                && right == horizontalInsetRight && bottom == navigationInset
+                || contentRootView == null) return;
         statusInset = top;
-        contentRootView.setPadding(dp(16), dp(14) + top + dp(8), dp(16), dp(10));
+        horizontalInsetLeft = left;
+        horizontalInsetRight = right;
+        navigationInset = bottom;
+        contentRootView.setPadding(
+                dp(16) + left, dp(14) + top + dp(8),
+                dp(16) + right, dp(10) + bottom);
         if (sideDashboard != null) sideDashboard.setTopInset(top);
     }
 
@@ -804,7 +830,12 @@ public final class MainActivity extends Activity {
                         + " memory={" + environmentSnapshot() + "}");
 
         List<ChatMessage> context = buildModelContext(message);
+        final boolean artifactRequest = isArtifactTask(message);
+        final String artifactTitleRequest = artifactRequest
+                ? findArtifactTitleRequest(message) : "";
         GenerationConfig config = new GenerationConfig();
+        if (artifactRequest) config.maxTokens = 1024;
+        final int generationTokenLimit = config.maxTokens;
         StringBuilder response = new StringBuilder();
         final String workspaceResponseId = java.util.UUID.randomUUID().toString();
         final String workspaceChatId = activeChat.id;
@@ -820,11 +851,17 @@ public final class MainActivity extends Activity {
                     lastWorkspaceDraftAt[0] = workspaceNow;
                     String workspaceDraft = response.toString();
                     runOnUiThread(() -> workspaceStore.updateResponse(workspaceResponseId,
-                            workspaceChatId, workspaceDraft, WorkspaceStore.State.IN_PROGRESS));
+                            workspaceChatId, workspaceDraft, WorkspaceStore.State.IN_PROGRESS,
+                            artifactTitleRequest));
                 }
                 runOnUiThread(() -> {
-                    streamingBubble.setText(response.toString());
-                    streamingBubble.setTextColor(TEXT);
+                    if (artifactRequest) {
+                        streamingBubble.setText("Creating your artifact…\nLive output is in Workspace.");
+                        streamingBubble.setTextColor(MUTED);
+                    } else {
+                        streamingBubble.setText(response.toString());
+                        streamingBubble.setTextColor(TEXT);
+                    }
                     scrollToBottom();
                 });
             }
@@ -840,11 +877,17 @@ public final class MainActivity extends Activity {
                 // llama.cpp invokes the callback while its native generation mutex is held;
                 // synchronously requesting diagnostics here would deadlock the executor.
                 String answer = response.toString().trim();
+                String generationDiagnostics = runtime.backend() instanceof GgufModelBackend
+                        ? ((GgufModelBackend) runtime.backend()).lastGenerationDiagnostics()
+                        : "Inference completed.";
+                boolean hitGenerationLimit = reachedGenerationLimit(
+                        generationDiagnostics, generationTokenLimit);
+                WorkspaceStore.State artifactState = WorkspaceStore.looksComplete(
+                        artifactTitleRequest, answer) && !hitGenerationLimit
+                        ? WorkspaceStore.State.COMPLETED : WorkspaceStore.State.FAILED;
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
-                        currentModelName(), runtime.backend() instanceof GgufModelBackend
-                                ? ((GgufModelBackend) runtime.backend()).lastGenerationDiagnostics()
-                                : "Inference completed.", "", "");
+                        currentModelName(), generationDiagnostics, "", "");
                 if (answer.isEmpty()) answer = "I got no response from the local model.";
                 ChatMessage assistant = new ChatMessage(
                         ChatMessage.Role.ASSISTANT, answer,
@@ -852,7 +895,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                            assistant.text, WorkspaceStore.State.COMPLETED);
+                            assistant.text, artifactState, artifactTitleRequest);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
@@ -880,7 +923,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                            response.toString(), WorkspaceStore.State.FAILED);
+                            response.toString(), WorkspaceStore.State.FAILED, artifactTitleRequest);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
                     activeGenerations = Math.max(0, activeGenerations - 1);
@@ -911,6 +954,15 @@ public final class MainActivity extends Activity {
                 + "For HTML deliverables, include a complete self-contained HTML document. Do not fence ordinary explanations; use a fence only when it is part of the requested deliverable. "
                 + "Deterministic Android tools handle device actions before the model. "
                 + runtime.preferences().getPersonalityInstruction();
+        if (isArtifactTask(current)) {
+            system += "\nARTIFACT QUALITY RULES: Return a complete, runnable deliverable, not pseudocode or a partial sketch. "
+                    + "Use one correctly labelled fenced block for the complete file. "
+                    + "Never leave TODOs, ellipses, placeholder variables, or unimplemented handlers. "
+                    + "Make every button/control perform its advertised action and ensure every referenced variable/function exists. "
+                    + "For interactive HTML, include responsive styling, accessible controls, all required CSS and JavaScript inline, and real working interaction/state updates. "
+                    + "For repairs, return the complete corrected file rather than a partial patch. "
+                    + "Do not claim you executed tests unless you actually did.";
+        }
         if (!memory.trim().isEmpty()) {
             String memoryText = memory.trim();
             if (memoryText.length() > 6000) {
@@ -925,6 +977,83 @@ public final class MainActivity extends Activity {
             messages.add(new ChatMessage(m.role, m.text));
         }
         return messages;
+    }
+
+    private boolean isArtifactTask(String message) {
+        String text = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        boolean action = containsAny(text, "create", "make", "build", "write", "generate",
+                "implement", "design", "develop", "fix", "repair", "update",
+                "modify", "improve", "finish", "continue")
+                || containsAny(text, "code a ", "code an ", "code the ", "code me ",
+                        "code this ", "code up ");
+        boolean artifact = containsAny(text, "code", "program", "app", "website", "webpage",
+                "html", "script", "file", "game", "artifact", "workspace", "javascript",
+                "python", "css", "java", "playable", "interactive", "document", "calculator",
+                "quiz", "timer", "todo", "counter");
+        if (action && artifact) return true;
+
+        if (containsAny(text, "fix it", "repair it", "update it", "modify it", "make it work",
+                "make it playable", "continue it", "finish it")) {
+            String fence = new String(new char[]{96, 96, 96});
+            int start = Math.max(0, activeChat.messages.size() - 6);
+            for (int i = activeChat.messages.size() - 1; i >= start; i--) {
+                ChatMessage previous = activeChat.messages.get(i);
+                if (previous.role == ChatMessage.Role.ASSISTANT && previous.text.contains(fence)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private String findArtifactTitleRequest(String current) {
+        int start = Math.max(0, activeChat.messages.size() - 10);
+        for (int i = activeChat.messages.size() - 1; i >= start; i--) {
+            ChatMessage item = activeChat.messages.get(i);
+            if (item.role != ChatMessage.Role.USER) continue;
+            String text = item.text == null ? "" : item.text.toLowerCase(Locale.ROOT);
+            boolean action = containsAny(text, "create", "make", "build", "write", "generate",
+                    "code", "implement", "design", "develop");
+            boolean namedArtifact = containsAny(text, "program", "website", "webpage", "html",
+                    "script", "file", "game", "document", "app", "python", "javascript", "css");
+            if (action && namedArtifact) return item.text;
+        }
+        return current == null ? "" : current;
+    }
+
+    private static boolean containsAny(String text, String... values) {
+        if (text == null) return false;
+        for (String value : values) if (text.contains(value)) return true;
+        return false;
+    }
+
+    private static boolean reachedGenerationLimit(String diagnostics, int limit) {
+        if (diagnostics == null || diagnostics.isEmpty() || limit < 1) return false;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("Generated tokens:\\s*(\\d+)").matcher(diagnostics);
+        if (!matcher.find()) return false;
+        try {
+            return Integer.parseInt(matcher.group(1)) >= limit;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
+
+    private String displayTextForMessage(ChatMessage message) {
+        if (message == null || message.role != ChatMessage.Role.ASSISTANT
+                || !WorkspaceStore.hasFencedBlock(message.text) || workspaceStore == null
+                || activeChat == null) return message == null ? "" : message.text;
+        for (WorkspaceStore.Artifact artifact : workspaceStore.all()) {
+            if (!activeChat.id.equals(artifact.chatId)) continue;
+            String content = artifact.content == null ? "" : artifact.content.trim();
+            if (content.isEmpty() || !message.text.contains(content)) continue;
+            if (artifact.state == WorkspaceStore.State.FAILED) {
+                return "Draft saved as " + artifact.title
+                        + " in Workspace, but it may be incomplete. Ask Sync to continue or repair it.";
+            }
+            return "Created " + artifact.title + " in Workspace.";
+        }
+        return message.text;
     }
 
     private String casualFallback(String message) {
@@ -988,7 +1117,7 @@ public final class MainActivity extends Activity {
                 user ? palette.secondary : actionFailed ? ERROR : accent, true);
         bubble.addView(label);
 
-        TextView body = text(message.text, 15, TEXT, false);
+        TextView body = text(displayTextForMessage(message), 15, TEXT, false);
         body.setLineSpacing(0, 1.12f);
         bubble.addView(body);
 
