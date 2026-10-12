@@ -78,8 +78,18 @@ public final class WorkspaceActivity extends Activity {
         store = new WorkspaceStore(getApplicationContext());
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         buildShell();
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            androidx.core.graphics.Insets safeInsets = windowInsets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                            | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            // Keep the header, artifact preview, and scroll content below Android's
+            // status bar and above the navigation/gesture area on edge-to-edge devices.
+            view.setPadding(safeInsets.left, safeInsets.top,
+                    safeInsets.right, safeInsets.bottom);
+            return windowInsets;
+        });
+        androidx.core.view.ViewCompat.requestApplyInsets(root);
         renderList();
     }
 

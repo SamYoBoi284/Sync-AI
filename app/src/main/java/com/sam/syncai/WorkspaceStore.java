@@ -90,6 +90,12 @@ public final class WorkspaceStore {
 
     public synchronized void updateResponse(String responseId, String chatId,
                                             String response, State state) {
+        updateResponse(responseId, chatId, response, state, "");
+    }
+
+    public synchronized void updateResponse(String responseId, String chatId,
+                                            String response, State state,
+                                            String preferredTitle) {
         if (responseId == null || responseId.trim().isEmpty() || response == null) return;
         List<ExtractedBlock> blocks = extractBlocks(response);
         if (blocks.isEmpty()) return;
@@ -99,7 +105,9 @@ public final class WorkspaceStore {
             ExtractedBlock block = blocks.get(i);
             String id = responseId + "-" + i;
             Artifact old = get(id);
-            String title = titleFor(response, block.start, block.language, i + 1);
+            String title = preferredTitle == null || preferredTitle.trim().isEmpty()
+                    ? titleFor(response, block.start, block.language, i + 1)
+                    : preferredTitle.trim();
             Artifact next = new Artifact(id, responseId, chatId == null ? "" : chatId,
                     title, block.language.isEmpty() ? "text" : block.language,
                     block.content, state, old == null ? now : old.createdAt, now);
