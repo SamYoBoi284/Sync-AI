@@ -9,7 +9,7 @@
 
 This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale. The original Canvas notes below preserve historical context; their initial pending status was superseded by the merge and v0.4.0 device verification.
 
-## 2026-10-11 — Sync Canvas / Workspace repair (in progress)
+## 2026-10-11 — Sync Canvas / Workspace repair (completed; historical notes)
 
 ### Clarification from Sam
 - Workspace is intended to be **Sync's Canvas/artifact viewer**, similar to ChatGPT Canvas or Claude Artifacts.
@@ -113,7 +113,7 @@ Implemented tool routing for device-known requests before model generation, incl
 
 ## 2026-10-12 — Generation quality, Workspace routing, and safe-area follow-up
 
-Branch: `fix/generation-quality-safe-area` (based on `fix/generation-timer-alarm-export`).
+Branch: `fix/generation-quality-safe-area` (based on `fix/generation-timer-alarm-export`). Draft PR: [#15 — Improve generation quality and Workspace safe areas](https://github.com/SamYoBoi284/Sync-AI/pull/15).
 
 ### Evidence from Sam's exported on-device logs
 - The two-player Rock/Paper/Scissors HTML artifact was visibly incomplete: its JavaScript stopped at `var rock`; there was no completed input handling, computer choice, round resolution, or result update.
