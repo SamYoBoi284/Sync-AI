@@ -90,6 +90,7 @@ public final class WorkspaceStore {
 
     /** Saves a user's edit or a generated continuation without creating a second artifact. */
     public synchronized Artifact updateArtifactContent(String id, String content, State requestedState) {
+        load();
         Artifact old = get(id);
         if (old == null) throw new IllegalArgumentException("That Workspace artifact no longer exists.");
         String updatedContent = content == null ? "" : content;
