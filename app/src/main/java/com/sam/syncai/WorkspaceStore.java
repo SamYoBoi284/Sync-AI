@@ -165,12 +165,20 @@ public final class WorkspaceStore {
 
     public static boolean hasClosedFencedBlock(String text) {
         if (text == null) return false;
-        Matcher open = OPEN_FENCE.matcher(text);
-        while (open.find()) {
-            Matcher close = CLOSE_FENCE.matcher(text);
-            if (close.find(open.end())) return true;
+        boolean insideFence = false;
+        boolean foundFence = false;
+        for (String line : text.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (!trimmed.startsWith(FENCE)) continue;
+            String remainder = trimmed.substring(FENCE.length()).trim();
+            if (!insideFence) {
+                insideFence = true;
+                foundFence = true;
+            } else if (remainder.isEmpty()) {
+                insideFence = false;
+            }
         }
-        return false;
+        return foundFence && !insideFence;
     }
 
     /**
