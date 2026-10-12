@@ -324,7 +324,7 @@ public final class WorkspaceActivity extends Activity {
         editLp.topMargin = dp(8);
         page.addView(editArtifact, editLp);
 
-        if (artifact.state == WorkspaceStore.State.FAILED) {
+        if (artifact.state != WorkspaceStore.State.COMPLETED) {
             Button continueArtifact = button("CONTINUE WITH SYNC", false);
             continueArtifact.setOnClickListener(v -> continueArtifactWithSync(artifact));
             LinearLayout.LayoutParams continueLp = new LinearLayout.LayoutParams(-1, dp(42));
