@@ -746,12 +746,22 @@ public final class MainActivity extends Activity {
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
-        final boolean continuingWorkspaceArtifact = pendingWorkspaceContinuationId != null
+        final boolean hasPendingWorkspaceContinuation = pendingWorkspaceContinuationId != null
                 && !pendingWorkspaceContinuationId.trim().isEmpty();
+        final boolean continuingWorkspaceArtifact = hasPendingWorkspaceContinuation
+                && message.contains("PARTIAL SOURCE START") && message.contains("PARTIAL SOURCE END");
         final String continuationArtifactId = pendingWorkspaceContinuationId;
         final String continuationArtifactTitle = pendingWorkspaceContinuationTitle;
         final String continuationArtifactLanguage = pendingWorkspaceContinuationLanguage;
         final String continuationArtifactContent = pendingWorkspaceContinuationContent;
+        if (hasPendingWorkspaceContinuation && !continuingWorkspaceArtifact) {
+            // If the user replaces the prefilled continuation prompt with a normal message,
+            // do not accidentally append that unrelated response to the old artifact.
+            pendingWorkspaceContinuationId = null;
+            pendingWorkspaceContinuationTitle = null;
+            pendingWorkspaceContinuationLanguage = null;
+            pendingWorkspaceContinuationContent = null;
+        }
 
         input.setText("");
         input.requestFocus();
