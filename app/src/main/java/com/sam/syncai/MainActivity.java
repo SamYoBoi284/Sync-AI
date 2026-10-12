@@ -984,7 +984,10 @@ public final class MainActivity extends Activity {
         }
         if (artifactRequest) {
             system += "\nARTIFACT MODE: Output only one short line in the form Artifact: filename.ext, followed by one complete Markdown fenced code/document block. "
-                    + "Use a descriptive filename based on the user's requested subject and the correct extension. Do not add an explanation before or after the artifact. "
+                    + (fileEditRequest
+                            ? "Use the exact existing File Library filename and original extension. "
+                            : "Use a descriptive filename based on the user's requested subject and the correct extension. ")
+                    + "Do not add an explanation before or after the artifact. "
                     + "For interactive HTML, include complete HTML, CSS, and JavaScript as needed; implement all game/program rules, event handlers, visible result updates, and reset/replay behavior. "
                     + "Do not create static headings in place of behavior. For a two-player Rock-Paper-Scissors game, both players must be able to choose independently, the choices must be compared using the real rules, and the round result and score must update.";
         }
