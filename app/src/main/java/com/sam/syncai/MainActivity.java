@@ -335,10 +335,10 @@ public final class MainActivity extends Activity {
         rootFrame = frame;
         setContentView(frame);
         rootFrame.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets ime = Build.VERSION.SDK_INT >= 30
-                    ? insets.getInsets(android.view.WindowInsets.Type.ime())
-                    : android.graphics.Insets.NONE;
-            int imeBottom = ime.bottom;
+            int imeBottom = 0;
+            if (Build.VERSION.SDK_INT >= 30) {
+                imeBottom = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+            }
             int topNow;
             int leftNow;
             int rightNow;
