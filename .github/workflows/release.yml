@@ -11,24 +11,33 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
+
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
     steps:
       - name: Checkout tagged source
         uses: actions/checkout@v4
 
-      - name: Require persistent release signing key
+      - name: Validate signing secrets and prepare keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
         run: |
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD repository Actions secrets before publishing releases."
+          set -euo pipefail
+
+          if [[ -z "$KEYSTORE_BASE64" ||
+                -z "$ANDROID_KEYSTORE_PASSWORD" ||
+                -z "$ANDROID_KEY_ALIAS" ||
+                -z "$ANDROID_KEY_PASSWORD" ]]; then
+            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in repository Actions secrets."
             exit 1
           fi
+
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/release.keystore
           test -s app/release.keystore
 
@@ -39,10 +48,16 @@ jobs:
           java-version: "17"
 
       - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-
-           - name: Install Android native toolchain
+        shell: bash
         run: |
+          set -o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+
+      - name: Install Android native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
@@ -58,14 +73,21 @@ jobs:
         id: version
         env:
           TAG: ${{ github.ref_name }}
+        shell: bash
         run: |
+          set -euo pipefail
+
           VERSION_NAME="${TAG#v}"
+
           if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Release tags must use vMAJOR.MINOR.PATCH (for example v0.3.0)."
             exit 1
           fi
+
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NAME"
+
           VERSION_CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 1000 + 10#$PATCH))
+
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
@@ -73,25 +95,50 @@ jobs:
         env:
           VERSION_NAME: ${{ steps.version.outputs.version_name }}
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
-        run: gradle --no-daemon assembleRelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon assembleRelease
 
       - name: Prepare APK and SHA-256 checksum
+        shell: bash
         run: |
-          cp app/build/outputs/apk/release/app-release.apk sync-ai-release.apk
+          set -euo pipefail
+
+          APK_PATH="app/build/outputs/apk/release/app-release.apk"
+
+          if [[ ! -f "$APK_PATH" ]]; then
+            echo "::error::Expected release APK was not produced: $APK_PATH"
+            exit 1
+          fi
+
+          cp "$APK_PATH" sync-ai-release.apk
           sha256sum sync-ai-release.apk > sync-ai-release.apk.sha256
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose sync-ai-release.apk
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify --verbose sync-ai-release.apk
 
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        shell: bash
         run: |
+          set -euo pipefail
+
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "Sync AI $VERSION_NAME" --generate-notes
+            gh release create "$TAG" \
+              --title "Sync AI $VERSION_NAME" \
+              --generate-notes
           fi
-          gh release upload "$TAG" sync-ai-release.apk sync-ai-release.apk.sha256 --clobber
+
+          gh release upload "$TAG" \
+            sync-ai-release.apk \
+            sync-ai-release.apk.sha256 \
+            --clobber
 
       - name: Remove signing key
         if: always()
+        shell: bash
         run: rm -f app/release.keystore
