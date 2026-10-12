@@ -893,17 +893,25 @@ public final class MainActivity extends Activity {
                 boolean continuationWasAdded = false;
                 if (continuingWorkspaceArtifact) {
                     String continuation = WorkspaceStore.extractFirstBlockContent(answer);
-                    if (!continuation.trim().isEmpty()) {
-                        String separator = continuationArtifactContent == null
-                                || continuationArtifactContent.isEmpty()
-                                || continuationArtifactContent.endsWith("\n")
+                    String existingSource = continuationArtifactContent == null ? "" : continuationArtifactContent;
+                    String existingTrimmed = existingSource.trim();
+                    String continuationTrimmed = continuation.trim();
+                    int duplicateCheckLength = Math.min(120, existingTrimmed.length());
+                    boolean looksLikeFullRewrite = duplicateCheckLength >= 80
+                            && continuationTrimmed.startsWith(existingTrimmed.substring(0, duplicateCheckLength));
+                    if (!continuationTrimmed.isEmpty() && !looksLikeFullRewrite) {
+                        String separator = existingSource.isEmpty() || existingSource.endsWith("\n")
                                 || continuation.startsWith("\n") ? "" : "\n";
-                        artifactDraft = (continuationArtifactContent == null ? "" : continuationArtifactContent)
-                                + separator + continuation;
+                        artifactDraft = existingSource + separator + continuation;
                         continuationWasAdded = true;
                     } else {
-                        // Preserve the original draft if Sync failed to return a usable code block.
-                        artifactDraft = continuationArtifactContent == null ? "" : continuationArtifactContent;
+                        // Preserve the original draft if Sync returned no block or restarted from the file's beginning.
+                        artifactDraft = existingSource;
+                        if (looksLikeFullRewrite) {
+                            SyncEventLogger.record(MainActivity.this, "WorkspaceStore",
+                                    "CONTINUATION_REWRITE_REJECTED", "WARN",
+                                    "artifactId=" + continuationArtifactId);
+                        }
                     }
                 }
                 boolean hasCompleteFence = continuingWorkspaceArtifact
