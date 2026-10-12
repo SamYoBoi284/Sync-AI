@@ -47,8 +47,8 @@ public final class WorkspaceStore {
     }
 
     private static final String FENCE = new String(new char[]{96, 96, 96});
-    private static final Pattern OPEN_FENCE = Pattern.compile("(?m)^\\s*" + FENCE + "([^\\r\\n]*)\\r?\\n");
-    private static final Pattern CLOSE_FENCE = Pattern.compile("(?m)^\\s*" + FENCE + "\\s*(?:\\r?\\n|$)");
+    private static final Pattern OPEN_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "([^\\r\\n]*)\\r?\\n");
+    private static final Pattern CLOSE_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "[ ]*(?:\\r?\\n|$)");
     private static final int MAX_ARTIFACTS = 100;
 
     private final File file;
