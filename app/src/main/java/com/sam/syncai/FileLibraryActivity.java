@@ -95,9 +95,9 @@ public final class FileLibraryActivity extends Activity {
         headings.addView(text("Files kept privately on this phone", 11, MUTED, false));
         header.addView(headings, new LinearLayout.LayoutParams(0, -2, 1));
 
-        Button import = button("+ IMPORT", true);
-        import.setOnClickListener(v -> openImportPicker());
-        header.addView(import, new LinearLayout.LayoutParams(-2, dp(44)));
+        Button importFilesButton = button("+ IMPORT", true);
+        importFilesButton.setOnClickListener(v -> openImportPicker());
+        header.addView(importFilesButton, new LinearLayout.LayoutParams(-2, dp(44)));
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         status = text("", 12, MUTED, false);
