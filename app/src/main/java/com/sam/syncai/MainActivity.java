@@ -1161,7 +1161,7 @@ public final class MainActivity extends Activity {
         if (referenced.isEmpty()) return false;
         FileLibraryStore.LibraryFile file = referenced.get(0);
         // Keep full-file edits bounded so the model is less likely to rewrite a truncated document.
-        return file.isTextReadable() && file.sizeBytes <= 5000L;
+        return file.isTextReadable() && file.sizeBytes <= 3000L;
     }
 
     private List<FileLibraryStore.LibraryFile> findMentionedLibraryFiles(String text, int maximum) {
