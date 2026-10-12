@@ -8,6 +8,13 @@
 >
 > This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
 
+## 2026-10-13 — Workspace continuation and artifact editing
+
+- Add an in-place **EDIT SOURCE** flow for every Workspace artifact. Users can edit the artifact text and save it back to the same Workspace item; obvious incompleteness remains flagged instead of being marked complete.
+- Add **CONTINUE WITH SYNC** for failed/incomplete Workspace artifacts. The continuation prompt includes the current partial source, asks the local model for only the missing fragment, appends it to the existing artifact rather than creating a duplicate, and reruns basic completeness checks. If Sync fails to return a fenced continuation, the original is left unchanged. The user can repeat continuation if the file still appears incomplete.
+- Reload Workspace storage before applying edits/continuations so a stale activity instance does not overwrite a newer artifact revision.
+- Existing generated artifacts, File Library flows, Memory import, chat history, and other features remain intact. Physical-device testing is still required.
+
 ## 2026-10-13 — File Library, referenced-file context, and 1024-token artifacts
 
 - Fix the drawer's Files route: it now opens a dedicated File Library instead of sending the selected file through the memory-import request handler. The separate Personalization → Import Memory File flow remains intact.
