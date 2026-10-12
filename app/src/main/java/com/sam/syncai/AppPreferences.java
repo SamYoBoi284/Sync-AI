@@ -15,6 +15,9 @@ public final class AppPreferences {
     private static final String KEY_PERSONALITY = "assistant_personality";
     private static final String KEY_SPEECH_RATE = "speech_rate";
     private static final String KEY_SPEECH_VOICE = "speech_voice";
+    private static final String KEY_AUTO_CHECK_UPDATES = "auto_check_updates";
+    private static final String KEY_AUTO_DOWNLOAD_UPDATES = "auto_download_updates";
+    private static final String KEY_UPDATE_NETWORK = "update_network";
 
     public static final int[] ACCENTS = {
             0xFF9A60FF, 0xFF4B8BFF, 0xFF50D7FF, 0xFF35C987,
@@ -159,5 +162,36 @@ public final class AppPreferences {
 
     public void setSpeechVoiceName(String voiceName) {
         prefs.edit().putString(KEY_SPEECH_VOICE, voiceName == null ? "" : voiceName.trim()).apply();
+    }
+
+    /** Check for releases when Sync AI is opened. */
+    public boolean isAutoCheckUpdatesEnabled() {
+        return prefs.getBoolean(KEY_AUTO_CHECK_UPDATES, true);
+    }
+
+    public void setAutoCheckUpdatesEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_AUTO_CHECK_UPDATES, enabled).apply();
+    }
+
+    /** Automatic downloads default on, with Wi-Fi-only network policy for safety. */
+    public boolean isAutoDownloadUpdatesEnabled() {
+        return prefs.getBoolean(KEY_AUTO_DOWNLOAD_UPDATES, true);
+    }
+
+    public void setAutoDownloadUpdatesEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_UPDATES, enabled).apply();
+    }
+
+    /** Accepted values: WIFI, MOBILE, BOTH. */
+    public String getUpdateNetworkPolicy() {
+        String value = prefs.getString(KEY_UPDATE_NETWORK, "WIFI");
+        if ("MOBILE".equals(value) || "BOTH".equals(value)) return value;
+        return "WIFI";
+    }
+
+    public void setUpdateNetworkPolicy(String policy) {
+        String value = "WIFI";
+        if ("MOBILE".equals(policy) || "BOTH".equals(policy)) value = policy;
+        prefs.edit().putString(KEY_UPDATE_NETWORK, value).apply();
     }
 }

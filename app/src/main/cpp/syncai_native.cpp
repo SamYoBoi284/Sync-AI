@@ -374,8 +374,6 @@ static void native_generate_impl(
         return size;
     };
 
-    LOGI("GENERATION_PROMPT_READY promptTokens=%d context=%u %s",
-         promptCount, contextSize, process_memory_snapshot().c_str());
     const int requestedGeneration = std::max(1, std::min(256, static_cast<int>(maxTokens)));
     const int reservedGeneration = std::min(requestedGeneration, 256);
     const int promptBudget = std::max(
@@ -421,6 +419,9 @@ static void native_generate_impl(
                 vocab, formatted.data(), formattedSize,
                 nullptr, 0, true, true);
     }
+
+    LOGI("GENERATION_PROMPT_READY promptTokens=%d context=%u %s",
+         promptCount, contextSize, process_memory_snapshot().c_str());
 
     if (promptCount <= 0 || promptCount + reservedGeneration >= static_cast<int>(contextSize)) {
         llama_free(ctx);
