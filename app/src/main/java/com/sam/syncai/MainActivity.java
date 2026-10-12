@@ -85,6 +85,7 @@ public final class MainActivity extends Activity {
 
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private SyncRuntime runtime;
+    private WorkspaceStore workspaceStore;
     private ChatRecord activeChat;
     private TextView modelText;
     private TextView statusText;
@@ -117,6 +118,7 @@ public final class MainActivity extends Activity {
                 "savedState=" + (state != null) + " taskId=" + getTaskId());
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         runtime = SyncRuntime.get(this);
+        workspaceStore = new WorkspaceStore(getApplicationContext());
         palette = AppTheme.from(this);
         BG = palette.background;
         SURFACE = palette.surface;
@@ -317,7 +319,9 @@ public final class MainActivity extends Activity {
                 intent.setType("*/*");
                 startActivityForResult(intent, REQ_IMPORT_MEMORY);
             }
-            @Override public void canvas() { showSettings(); }
+            @Override public void canvas() {
+                startActivity(new Intent(MainActivity.this, WorkspaceActivity.class));
+            }
             @Override public void toggleVoiceOutput() { showSettings(); }
             @Override public void appearance() { showAppearance(); }
             @Override public void personality() { showAssistantStyle(); }
@@ -802,10 +806,22 @@ public final class MainActivity extends Activity {
         List<ChatMessage> context = buildModelContext(message);
         GenerationConfig config = new GenerationConfig();
         StringBuilder response = new StringBuilder();
+        final String workspaceResponseId = java.util.UUID.randomUUID().toString();
+        final String workspaceChatId = activeChat.id;
+        final String codeFence = new String(new char[]{96, 96, 96});
+        final long[] lastWorkspaceDraftAt = {0L};
 
         runtime.backend().generate(context, config, new LocalModelBackend.GenerateCallback() {
             @Override public void onToken(String token) {
                 response.append(token);
+                long workspaceNow = System.currentTimeMillis();
+                if (response.indexOf(codeFence) >= 0
+                        && workspaceNow - lastWorkspaceDraftAt[0] >= 900L) {
+                    lastWorkspaceDraftAt[0] = workspaceNow;
+                    String workspaceDraft = response.toString();
+                    runOnUiThread(() -> workspaceStore.updateResponse(workspaceResponseId,
+                            workspaceChatId, workspaceDraft, WorkspaceStore.State.IN_PROGRESS));
+                }
                 runOnUiThread(() -> {
                     streamingBubble.setText(response.toString());
                     streamingBubble.setTextColor(TEXT);
@@ -835,6 +851,8 @@ public final class MainActivity extends Activity {
                         System.currentTimeMillis(), diag.format());
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
+                    workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
+                            answer, WorkspaceStore.State.COMPLETED);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
@@ -861,6 +879,8 @@ public final class MainActivity extends Activity {
                         System.currentTimeMillis(), diag.format());
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
+                    workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
+                            response.toString(), WorkspaceStore.State.FAILED);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
                     activeGenerations = Math.max(0, activeGenerations - 1);
