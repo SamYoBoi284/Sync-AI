@@ -16,7 +16,7 @@
 - Strengthen artifact instructions to require real runnable behavior, implemented handlers, visible state/results, no placeholders/unused variables, and a self-check. Use lower sampling temperature for artifacts.
 - If an artifact request ends without a complete fenced block or fails basic structural/behavior checks (including the known static Rock-Paper-Scissors failure pattern), mark the Workspace draft failed/incomplete rather than reporting it as successfully created. This is a lightweight guard, not a full runtime test of arbitrary code.
 - Keep the selected Workspace source view updating in place while generation streams; do not repeatedly reload a running HTML preview. Refresh the preview when generation completes.
-- Apply Android system-bar/display-cutout insets to Workspace so its header/content stay inside the safe area on edge-to-edge Android versions.
+- Apply Android system-bar/display-cutout insets to Workspace and the Appearance studio so headers/content stay inside the safe area on edge-to-edge Android versions.
 - Validation pending: GitHub Actions build and physical-device regression tests. No release tag or release assets are changed by this work.
 
 ## 2026-10-11 — Sync Canvas / Workspace repair (in progress)
