@@ -206,8 +206,10 @@ public final class WorkspaceStore {
                 boolean playerTwo = lower.contains("player 2") || lower.contains("player two")
                         || lower.contains("player2") || lower.contains("player-two")
                         || lower.contains("player b");
+                boolean playerVsComputer = lower.contains("computer")
+                        && (lower.contains("human") || lower.contains("you"));
                 if (!hasRealControls || !hasScript || !hasEventHandler || !updatesUi
-                        || !playerOne || !playerTwo) return false;
+                        || (!playerVsComputer && (!playerOne || !playerTwo))) return false;
             }
             // Keep the earlier targeted guard for variants using an explicit playRound handler.
             if (lower.contains("function playround") || lower.contains("playround(")) {
