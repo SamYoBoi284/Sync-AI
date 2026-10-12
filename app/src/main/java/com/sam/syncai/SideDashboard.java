@@ -130,7 +130,7 @@ public final class SideDashboard extends FrameLayout {
 
         section(mainContent, "WORKSPACE");
         item(mainContent, "◉  Voice mode", v -> actions.assistant(), true);
-        item(mainContent, "✎  Workspace", v -> actions.files(), true);
+        item(mainContent, "✎  Workspace", v -> actions.canvas(), true);
         item(mainContent, "◈  Appearance", v -> actions.appearance(), true);
 
         section(mainContent, "SETTINGS");

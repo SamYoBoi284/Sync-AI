@@ -47,6 +47,12 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity
+            android:name=".WorkspaceActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait"
             android:exported="true">
