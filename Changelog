@@ -82,7 +82,7 @@ Implemented tool routing for device-known requests before model generation, incl
 - Chat/composer fixes include queued follow-ups, keyboard behavior, and assistant-message persistence.
 - Inference diagnostics capture route, request time, prompt tokens, context size, CPU threads, prompt evaluation and generation times, token count/rate, model details, and failure stage/message.
 - A prior About/Diagnostics ANR was traced to a JNI mutex deadlock caused by querying native diagnostics during a completion callback while the native mutex was held; completion now passes already-computed diagnostics instead of re-entering native diagnostics.
-- Native inference context is already configured at 4096 tokens on the documented branch; do not blindly repeat old context-size changes.
+- The integration branch's native inference context was **2048 tokens**, intentionally conservative for 4 GB phones. The current follow-up branch raises it to **3072 tokens** and the native output ceiling to **1024 tokens**; memory, latency, and stability still require on-device verification.
 - Persistent flight recorder `SyncEventLogger.java` records lifecycle, voice, tool, model, exception, and related diagnostic events. Settings → About & Diagnostics includes Export Logs, which gathers app/device metadata, model/runtime info, chats and diagnostics, recorder timeline, and best-effort logcat.
 - Chat export includes per-assistant-message diagnostics.
 
