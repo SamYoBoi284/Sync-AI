@@ -118,3 +118,26 @@ Implemented tool routing for device-known requests before model generation, incl
 6. Keep GGUF/Vosk model binaries out of the repo unless Sam explicitly changes that decision.
 7. Do not ask for GitHub signing-secret values; they are already configured.
 8. Prioritize real build logs and on-device evidence over assumptions.
+
+
+## 2026-10-12 — Generation quality, Workspace routing, and safe-area follow-up
+
+Branch: `fix/generation-quality-safe-area` (based on `fix/generation-timer-alarm-export`).
+
+### Evidence from Sam's exported on-device logs
+- The two-player Rock/Paper/Scissors HTML artifact was visibly incomplete: its JavaScript stopped at `var rock`; there was no completed input handling, computer choice, round resolution, or result update.
+- Both attempts generated exactly 256 tokens. The second request used 1,114 prompt tokens with a 2,048-token context and again stopped at 256 generated tokens. This is consistent with the configured output ceiling, not a native crash.
+- The source also independently hard-clamped generation to 256 tokens in native C++, so changing only Java's `GenerationConfig` would not have been enough.
+
+### Changes in this branch
+- Raise the default output budget from 256 to 768 tokens; artifact requests use up to 1,024 tokens.
+- Raise the native hard generation ceiling to 1,024 tokens and increase the inference context modestly from 2,048 to 3,072 tokens. Do not raise further without memory/latency testing on the 4 GB Galaxy A16.
+- Strengthen artifact-specific instructions: complete runnable files, no placeholders, fully wired controls, complete self-contained interactive HTML, and full-file repairs.
+- Infer a useful artifact filename from the original user request (for example, a Rock/Paper/Scissors HTML request becomes a descriptive `.html` artifact name).
+- During artifact requests, keep the chat bubble to a status message while Workspace receives live fenced-block content. Preserve the full assistant response in chat storage for conversational context, and render a compact status bubble when the corresponding Workspace artifact exists.
+- Mark artifacts incomplete when generation hits its token ceiling or simple structural checks detect an unclosed fence / obviously incomplete HTML. These checks are conservative and do not claim to prove arbitrary JavaScript is correct.
+- Apply status/navigation-bar and display-cutout insets to Workspace and MainActivity layouts without removing existing animations, styling, keyboard behavior, or navigation.
+
+### Verification status
+- Source changes are prepared for CI review; build and on-device testing remain required.
+- Do not publish or retag a release from this branch. Preserve `main`, the current release/tag, model import, voice/wake-word, tools, chats, updater, SAF flows, and existing Workspace actions.
