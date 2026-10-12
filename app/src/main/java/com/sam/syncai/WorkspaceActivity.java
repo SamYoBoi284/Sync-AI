@@ -75,7 +75,6 @@ public final class WorkspaceActivity extends Activity {
                     if (latest != null && (latest.updatedAt != selected.updatedAt
                             || latest.state != selected.state
                             || !latest.content.equals(selected.content))) {
-                        boolean wasStreaming = selected.state == WorkspaceStore.State.IN_PROGRESS;
                         selected = latest;
                         // Update the visible source in place to preserve its scroll position.
                         // Avoid reloading an executing HTML preview every poll; refresh it once
@@ -83,7 +82,7 @@ public final class WorkspaceActivity extends Activity {
                         if (!showingPreview && activeSourceView != null
                                 && latest.state == WorkspaceStore.State.IN_PROGRESS) {
                             activeSourceView.setText(latest.content);
-                        } else if (wasStreaming || latest.state != WorkspaceStore.State.IN_PROGRESS) {
+                        } else if (latest.state != WorkspaceStore.State.IN_PROGRESS) {
                             showArtifact(latest.id);
                         }
                     }

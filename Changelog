@@ -14,7 +14,8 @@
 - Increase native context from 2048 to 4096 tokens while keeping the CPU micro-batch at 256. Validate memory, latency, and stability on the Galaxy A16 before considering a larger context.
 - Route explicit artifact requests and clear artifact follow-ups into Workspace: show progress in chat rather than duplicating source, derive a filename from the user's request, and keep the complete source in the artifact store.
 - Strengthen artifact instructions to require real runnable behavior, implemented handlers, visible state/results, no placeholders/unused variables, and a self-check. Use lower sampling temperature for artifacts.
-- If an artifact request ends without a complete fenced block, mark the Workspace draft failed/incomplete rather than reporting it as successfully created.
+- If an artifact request ends without a complete fenced block or fails basic structural/behavior checks (including the known static Rock-Paper-Scissors failure pattern), mark the Workspace draft failed/incomplete rather than reporting it as successfully created. This is a lightweight guard, not a full runtime test of arbitrary code.
+- Keep the selected Workspace source view updating in place while generation streams; do not repeatedly reload a running HTML preview. Refresh the preview when generation completes.
 - Apply Android system-bar/display-cutout insets to Workspace so its header/content stay inside the safe area on edge-to-edge Android versions.
 - Validation pending: GitHub Actions build and physical-device regression tests. No release tag or release assets are changed by this work.
 
