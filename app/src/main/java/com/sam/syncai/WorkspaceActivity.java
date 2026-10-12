@@ -56,16 +56,29 @@ public final class WorkspaceActivity extends Activity {
     private final Runnable workspacePoller = new Runnable() {
         @Override public void run() {
             if (isFinishing() || isDestroyed()) return;
-            if (selected == null && store != null) {
+            if (store != null) {
                 store.reload();
-                List<WorkspaceStore.Artifact> latest = store.all();
-                String currentSignature = signature(latest);
-                if (!currentSignature.equals(lastListSignature)) {
-                    int oldScrollY = listScroll == null ? 0 : listScroll.getScrollY();
-                    renderList();
-                    if (listScroll != null) {
-                        ScrollView updatedScroll = listScroll;
-                        updatedScroll.post(() -> updatedScroll.scrollTo(0, oldScrollY));
+                if (selected == null) {
+                    List<WorkspaceStore.Artifact> latest = store.all();
+                    String currentSignature = signature(latest);
+                    if (!currentSignature.equals(lastListSignature)) {
+                        int oldScrollY = listScroll == null ? 0 : listScroll.getScrollY();
+                        renderList();
+                        if (listScroll != null) {
+                            ScrollView updatedScroll = listScroll;
+                            updatedScroll.post(() -> updatedScroll.scrollTo(0, oldScrollY));
+                        }
+                    }
+                } else {
+                    WorkspaceStore.Artifact latest = store.get(selected.id);
+                    if (latest != null && (latest.updatedAt != selected.updatedAt
+                            || latest.state != selected.state
+                            || !latest.content.equals(selected.content))) {
+                        boolean refreshVisibleSource = !showingPreview || latest.state != WorkspaceStore.State.IN_PROGRESS;
+                        selected = latest;
+                        // Refresh source view as it streams; avoid reloading an executing HTML
+                        // preview every poll, then refresh it once generation finishes.
+                        if (refreshVisibleSource) showArtifact(latest.id);
                     }
                 }
             }

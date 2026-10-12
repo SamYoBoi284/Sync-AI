@@ -860,14 +860,15 @@ public final class MainActivity extends Activity {
                 String answer = response.toString().trim();
                 if (answer.isEmpty()) answer = "I got no response from the local model.";
                 final String artifactContent = answer;
-                boolean completeArtifactBlock = hasCompleteFencedBlock(artifactContent);
+                boolean completeArtifactBlock = hasCompleteFencedBlock(artifactContent)
+                        && WorkspaceStore.passesBasicQualityChecks(artifactContent);
                 WorkspaceStore.State artifactState = routeArtifactToWorkspace && !completeArtifactBlock
                         ? WorkspaceStore.State.FAILED : WorkspaceStore.State.COMPLETED;
                 String chatAnswer = routeArtifactToWorkspace
                         ? (completeArtifactBlock
                             ? "Created \"" + artifactFilename + "\" in Workspace."
                             : "The draft for \"" + artifactFilename
-                                    + "\" ended before a complete code block was produced. Workspace output may be incomplete.")
+                                    + "\" failed a basic completeness/behavior check or ended early. Workspace marked it incomplete; inspect the source before using it.")
                         : artifactContent;
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
