@@ -5,7 +5,7 @@
 - Manual update checks now always show release details and a DOWNLOAD / LATER choice; they no longer start downloads without confirmation. Automatic downloading remains configurable and defaults to off for new installs. Existing saved preferences are preserved.
 - Add a persistent update-check interval selector: every 3, 6, 9, or 12 hours, every day, or every week. Checks are evaluated when Sync AI opens/resumes; this is not a background polling service.
 - Add adjustable TTS pitch alongside existing speech-rate and installed Android TTS voice selection. This tunes an installed voice; it does not clone or synthesize a new voice.
-- Strengthen Workspace HTML checks so static Rock-Paper-Scissors mockups without real controls, event handlers, live UI updates, and two-player labels are rejected as incomplete. This remains a heuristic, not a full browser execution test.
+- Strengthen Workspace HTML checks so static Rock-Paper-Scissors mockups without real controls, event handlers, live UI updates, and appropriate player labels are rejected as incomplete. For an explicit two-player Rock-Paper-Scissors request whose local-model draft fails those checks, use a bundled, self-contained playable HTML fallback and tell the user transparently. This remains a targeted fallback and heuristic, not a full browser execution test.
 - Third-party dictation integration is not included here; a provider such as Wispr Flow needs a supported SDK or system-level speech-recognition integration and should be evaluated separately before adding dependencies.
 
 
