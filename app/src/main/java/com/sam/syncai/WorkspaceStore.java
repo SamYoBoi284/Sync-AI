@@ -179,8 +179,11 @@ public final class WorkspaceStore {
         String content = block.content == null ? "" : block.content.trim();
         if (!block.closed || content.isEmpty()) return false;
         String lower = content.toLowerCase(Locale.ROOT);
-        if (lower.contains("todo") || lower.contains("placeholder")
-                || lower.contains("your code here") || lower.contains("implement me")) return false;
+        String language = block.language == null ? "" : block.language.toLowerCase(Locale.ROOT);
+        boolean sourceCode = !("text".equals(language) || "txt".equals(language)
+                || "markdown".equals(language) || "md".equals(language) || "document".equals(language));
+        if (sourceCode && (lower.contains("your code here") || lower.contains("implement me")
+                || lower.contains("todo: implement") || lower.contains("replace this with code"))) return false;
 
         if ("html".equalsIgnoreCase(block.language) || "htm".equalsIgnoreCase(block.language)) {
             if (!lower.contains("<html") || !lower.contains("</html>")) return false;
