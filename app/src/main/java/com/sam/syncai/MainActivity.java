@@ -859,16 +859,36 @@ public final class MainActivity extends Activity {
                 // synchronously requesting diagnostics here would deadlock the executor.
                 String answer = response.toString().trim();
                 if (answer.isEmpty()) answer = "I got no response from the local model.";
-                final String artifactContent = answer;
-                boolean hasCompleteFence = hasCompleteFencedBlock(artifactContent);
+                String artifactDraft = answer;
+                boolean hasCompleteFence = hasCompleteFencedBlock(artifactDraft);
                 boolean completeArtifactBlock = hasCompleteFence
-                        && WorkspaceStore.passesBasicQualityChecks(artifactContent);
+                        && WorkspaceStore.passesBasicQualityChecks(artifactDraft);
+                boolean usedBuiltInRpsFallback = false;
+                if (routeArtifactToWorkspace && isTwoPlayerRpsRequest(message) && !completeArtifactBlock) {
+                    try {
+                        artifactDraft = "Artifact: " + artifactFilename + "\n\u0060\u0060\u0060html\n"
+                                + readTwoPlayerRpsFallback() + "\n\u0060\u0060\u0060";
+                        hasCompleteFence = hasCompleteFencedBlock(artifactDraft);
+                        completeArtifactBlock = hasCompleteFence
+                                && WorkspaceStore.passesBasicQualityChecks(artifactDraft);
+                        usedBuiltInRpsFallback = completeArtifactBlock;
+                        SyncEventLogger.record(MainActivity.this, "WorkspaceStore", "RPS_FALLBACK_USED",
+                                completeArtifactBlock ? "INFO" : "WARN",
+                                "modelDraftAccepted=" + !usedBuiltInRpsFallback);
+                    } catch (Exception fallbackError) {
+                        SyncEventLogger.recordException(MainActivity.this, "WorkspaceStore",
+                                "RPS_FALLBACK_ERROR", fallbackError, "retaining failed model draft");
+                    }
+                }
+                final String artifactContent = artifactDraft;
                 WorkspaceStore.State artifactState = routeArtifactToWorkspace && !completeArtifactBlock
                         ? WorkspaceStore.State.FAILED : WorkspaceStore.State.COMPLETED;
                 String chatAnswer = artifactContent;
                 if (routeArtifactToWorkspace) {
                     if (completeArtifactBlock) {
-                        chatAnswer = "Created \"" + artifactFilename + "\" in Workspace.";
+                        chatAnswer = usedBuiltInRpsFallback
+                                ? "The local model's draft failed a quality check, so Sync used its built-in playable two-player Rock-Paper-Scissors template in Workspace."
+                                : "Created \"" + artifactFilename + "\" in Workspace.";
                     } else if (hasCompleteFence) {
                         chatAnswer = "The output for \"" + artifactFilename
                                 + "\" failed a basic completeness/behavior check and was not accepted as a completed artifact. Inspect the source before using it.";
@@ -1073,6 +1093,25 @@ public final class MainActivity extends Activity {
         String slug = String.join("-", useful).replaceAll("-+", "-");
         if (slug.isEmpty()) slug = "sync-artifact";
         return slug + extension;
+    }
+
+    private boolean isTwoPlayerRpsRequest(String text) {
+        String lower = text == null ? "" : text.toLowerCase(Locale.US);
+        boolean isRps = lower.contains("rock") && lower.contains("paper") && lower.contains("scissors");
+        boolean twoPlayers = lower.contains("two player") || lower.contains("two-player")
+                || lower.contains("two players") || lower.contains("2 player")
+                || lower.contains("2-player") || lower.contains("2 players");
+        return isRps && twoPlayers;
+    }
+
+    private String readTwoPlayerRpsFallback() throws java.io.IOException {
+        try (InputStream input = getAssets().open("templates/two-player-rock-paper-scissors.html")) {
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        }
     }
 
     private boolean hasCompleteFencedBlock(String text) {
