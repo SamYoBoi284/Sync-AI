@@ -193,6 +193,15 @@ public final class WorkspaceStore {
                 if (interactive && (!code.contains("<script") || !code.contains("</script>")
                         || !(code.contains("addeventlistener") || code.contains("onclick")
                         || code.contains("onsubmit") || code.contains("onchange")))) return false;
+                if (prompt.contains("rock paper scissors")) {
+                    boolean randomChoice = code.contains("math.random") || code.contains("getrandomvalues");
+                    boolean opponentChoice = code.contains("computer") || code.contains("opponent");
+                    boolean resultOutput = code.contains("result") || code.contains("winner")
+                            || code.contains("outcome");
+                    if (!randomChoice || !opponentChoice || !resultOutput
+                            || !code.contains("rock") || !code.contains("paper")
+                            || !code.contains("scissors")) return false;
+                }
             }
         }
         return true;
