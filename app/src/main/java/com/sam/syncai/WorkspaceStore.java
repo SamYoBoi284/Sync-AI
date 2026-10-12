@@ -195,9 +195,10 @@ public final class WorkspaceStore {
                 boolean hasRules = lower.contains("if") || lower.contains("switch");
                 boolean updatesUi = lower.contains("textcontent") || lower.contains("innertext")
                         || lower.contains("innerhtml") || lower.contains("insertadjacenthtml");
-                boolean brokenSeparateRadioNames = lower.contains("name=\\"rock\\"")
-                        && lower.contains("name=\\"paper\\"")
-                        && lower.contains("name=\\"scissors\\"");
+                String quote = String.valueOf((char) 34);
+                boolean brokenSeparateRadioNames = lower.contains("name=" + quote + "rock" + quote)
+                        && lower.contains("name=" + quote + "paper" + quote)
+                        && lower.contains("name=" + quote + "scissors" + quote);
                 if (!hasChoices || !hasRules || !updatesUi || brokenSeparateRadioNames
                         || !lower.contains("rock") || !lower.contains("paper")
                         || !lower.contains("scissors")) return false;
