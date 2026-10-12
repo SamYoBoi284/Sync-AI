@@ -982,8 +982,10 @@ public final class MainActivity extends Activity {
     private boolean isArtifactTask(String message) {
         String text = message == null ? "" : message.toLowerCase(Locale.ROOT);
         boolean action = containsAny(text, "create", "make", "build", "write", "generate",
-                "code", "implement", "design", "develop", "fix", "repair", "update",
-                "modify", "improve", "finish", "continue");
+                "implement", "design", "develop", "fix", "repair", "update",
+                "modify", "improve", "finish", "continue")
+                || containsAny(text, "code a ", "code an ", "code the ", "code me ",
+                        "code this ", "code up ");
         boolean artifact = containsAny(text, "code", "program", "app", "website", "webpage",
                 "html", "script", "file", "game", "artifact", "workspace", "javascript",
                 "python", "css", "java", "playable", "interactive", "document", "calculator",
