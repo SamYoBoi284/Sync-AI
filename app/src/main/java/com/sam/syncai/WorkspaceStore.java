@@ -90,6 +90,12 @@ public final class WorkspaceStore {
 
     public synchronized void updateResponse(String responseId, String chatId,
                                             String response, State state) {
+        updateResponse(responseId, chatId, response, state, "");
+    }
+
+    public synchronized void updateResponse(String responseId, String chatId,
+                                            String response, State state,
+                                            String preferredTitle) {
         if (responseId == null || responseId.trim().isEmpty() || response == null) return;
         List<ExtractedBlock> blocks = extractBlocks(response);
         if (blocks.isEmpty()) return;
@@ -99,10 +105,16 @@ public final class WorkspaceStore {
             ExtractedBlock block = blocks.get(i);
             String id = responseId + "-" + i;
             Artifact old = get(id);
-            String title = titleFor(response, block.start, block.language, i + 1);
+            String title = preferredTitle == null || preferredTitle.trim().isEmpty()
+                    ? titleFor(response, block.start, block.language, i + 1)
+                    : preferredTitle.trim();
+            State storedState = state;
+            if (state == State.COMPLETED && !passesBasicQualityChecks(block)) {
+                storedState = State.FAILED;
+            }
             Artifact next = new Artifact(id, responseId, chatId == null ? "" : chatId,
                     title, block.language.isEmpty() ? "text" : block.language,
-                    block.content, state, old == null ? now : old.createdAt, now);
+                    block.content, storedState, old == null ? now : old.createdAt, now);
             replace(next);
         }
 
@@ -144,11 +156,55 @@ public final class WorkspaceStore {
         final int start;
         final String language;
         final String content;
-        ExtractedBlock(int start, String language, String content) {
+        final boolean closed;
+        ExtractedBlock(int start, String language, String content, boolean closed) {
             this.start = start;
             this.language = language;
             this.content = content;
+            this.closed = closed;
         }
+    }
+
+    /** Basic structural checks; this is a guard against obvious truncation, not a full runtime test. */
+    public static boolean passesBasicQualityChecks(String response) {
+        List<ExtractedBlock> blocks = extractBlocks(response == null ? "" : response);
+        if (blocks.isEmpty()) return false;
+        for (ExtractedBlock block : blocks) {
+            if (!passesBasicQualityChecks(block)) return false;
+        }
+        return true;
+    }
+
+    private static boolean passesBasicQualityChecks(ExtractedBlock block) {
+        String content = block.content == null ? "" : block.content.trim();
+        if (!block.closed || content.isEmpty()) return false;
+        String lower = content.toLowerCase(Locale.ROOT);
+        String language = block.language == null ? "" : block.language.toLowerCase(Locale.ROOT);
+        boolean sourceCode = !("text".equals(language) || "txt".equals(language)
+                || "markdown".equals(language) || "md".equals(language) || "document".equals(language));
+        if (sourceCode && (lower.contains("your code here") || lower.contains("implement me")
+                || lower.contains("todo: implement") || lower.contains("replace this with code"))) return false;
+
+        if ("html".equalsIgnoreCase(block.language) || "htm".equalsIgnoreCase(block.language)) {
+            if (!lower.contains("<html") || !lower.contains("</html>")) return false;
+            if (lower.contains("<script") != lower.contains("</script>")) return false;
+            // Catch the exact class of broken "game" artifact seen in v0.4.0:
+            // controls and headings existed, but no result logic updated the UI.
+            if (lower.contains("function playround") || lower.contains("playround(")) {
+                boolean hasChoices = lower.contains("<button") || lower.contains("<input");
+                boolean hasRules = lower.contains("if") || lower.contains("switch");
+                boolean updatesUi = lower.contains("textcontent") || lower.contains("innertext")
+                        || lower.contains("innerhtml") || lower.contains("insertadjacenthtml");
+                String quote = String.valueOf((char) 34);
+                boolean brokenSeparateRadioNames = lower.contains("name=" + quote + "rock" + quote)
+                        && lower.contains("name=" + quote + "paper" + quote)
+                        && lower.contains("name=" + quote + "scissors" + quote);
+                if (!hasChoices || !hasRules || !updatesUi || brokenSeparateRadioNames
+                        || !lower.contains("rock") || !lower.contains("paper")
+                        || !lower.contains("scissors")) return false;
+            }
+        }
+        return true;
     }
 
     private static List<ExtractedBlock> extractBlocks(String text) {
@@ -167,7 +223,7 @@ public final class WorkspaceStore {
             String content = text.substring(contentStart, closeStart >= 0 ? closeStart : text.length());
             String language = open.group(1) == null ? "" : open.group(1).trim();
             if (language.contains(" ")) language = language.substring(0, language.indexOf(' '));
-            result.add(new ExtractedBlock(open.start(), language, content));
+            result.add(new ExtractedBlock(open.start(), language, content, closeEnd >= 0));
             if (closeEnd >= 0) searchFrom = closeEnd;
             else break;
         }

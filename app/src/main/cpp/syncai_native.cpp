@@ -316,11 +316,10 @@ static void native_generate_impl(
 
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
-    // Sync AI targets 4 GB Android phones. A 4096-token KV cache can push
-    // the process into memory pressure alongside the resident GGUF weights and
-    // other apps. Prefer a conservative 2048-token context for reliability.
+    // A 4096-token context gives artifact requests more room while remaining
+    // a measured step for 4 GB devices. Keep the physical micro-batch bounded.
     const uint32_t contextSize = static_cast<uint32_t>(
-            std::min<int32_t>(2048, std::max<int32_t>(1024, trainedCtx)));
+            std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
     // The prompt is prefilled as one logical batch and can exceed 256 tokens.
     // Keep n_batch large enough for the bounded context while retaining a small
@@ -374,8 +373,9 @@ static void native_generate_impl(
         return size;
     };
 
-    const int requestedGeneration = std::max(1, std::min(256, static_cast<int>(maxTokens)));
-    const int reservedGeneration = std::min(requestedGeneration, 256);
+    // Allow longer answers, but retain a hard ceiling to bound CPU time and memory.
+    const int requestedGeneration = std::max(1, std::min(1024, static_cast<int>(maxTokens)));
+    const int reservedGeneration = requestedGeneration;
     const int promptBudget = std::max(
             1, static_cast<int>(contextSize) - reservedGeneration - 4);
 
@@ -484,7 +484,7 @@ static void native_generate_impl(
     const int generationLimit = std::max(
             1,
             std::min(
-                    256,
+                    1024,
                     std::min(
                             static_cast<int>(maxTokens),
                             static_cast<int>(contextSize) - promptCount - 1)));

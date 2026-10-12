@@ -792,8 +792,14 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        final boolean routeArtifactToWorkspace = isArtifactRequest(message);
+        final String artifactFilename = routeArtifactToWorkspace
+                ? inferArtifactFilename(message) : "";
         final TextView streamingBubble = addMessageView(
-                new ChatMessage(ChatMessage.Role.ASSISTANT, "Thinking…"), true);
+                new ChatMessage(ChatMessage.Role.ASSISTANT,
+                        routeArtifactToWorkspace
+                                ? "Preparing " + artifactFilename + " in Workspace…"
+                                : "Thinking…"), true);
         streamingBubble.setTextColor(MUTED);
         activeGenerations++;
         SyncEventLogger.record(this, "GgufModelBackend", "GENERATION_START", "INFO",
@@ -805,6 +811,12 @@ public final class MainActivity extends Activity {
 
         List<ChatMessage> context = buildModelContext(message);
         GenerationConfig config = new GenerationConfig();
+        if (routeArtifactToWorkspace) {
+            // Keep code output more deterministic and give it more room than chat replies.
+            config.maxTokens = 768;
+            config.temperature = 0.25f;
+            config.topP = 0.85f;
+        }
         StringBuilder response = new StringBuilder();
         final String workspaceResponseId = java.util.UUID.randomUUID().toString();
         final String workspaceChatId = activeChat.id;
@@ -820,11 +832,17 @@ public final class MainActivity extends Activity {
                     lastWorkspaceDraftAt[0] = workspaceNow;
                     String workspaceDraft = response.toString();
                     runOnUiThread(() -> workspaceStore.updateResponse(workspaceResponseId,
-                            workspaceChatId, workspaceDraft, WorkspaceStore.State.IN_PROGRESS));
+                            workspaceChatId, workspaceDraft, WorkspaceStore.State.IN_PROGRESS,
+                            artifactFilename));
                 }
                 runOnUiThread(() -> {
-                    streamingBubble.setText(response.toString());
-                    streamingBubble.setTextColor(TEXT);
+                    if (routeArtifactToWorkspace) {
+                        streamingBubble.setText("Generating " + artifactFilename + " in Workspace…");
+                        streamingBubble.setTextColor(MUTED);
+                    } else {
+                        streamingBubble.setText(response.toString());
+                        streamingBubble.setTextColor(TEXT);
+                    }
                     scrollToBottom();
                 });
             }
@@ -840,19 +858,37 @@ public final class MainActivity extends Activity {
                 // llama.cpp invokes the callback while its native generation mutex is held;
                 // synchronously requesting diagnostics here would deadlock the executor.
                 String answer = response.toString().trim();
+                if (answer.isEmpty()) answer = "I got no response from the local model.";
+                final String artifactContent = answer;
+                boolean hasCompleteFence = hasCompleteFencedBlock(artifactContent);
+                boolean completeArtifactBlock = hasCompleteFence
+                        && WorkspaceStore.passesBasicQualityChecks(artifactContent);
+                WorkspaceStore.State artifactState = routeArtifactToWorkspace && !completeArtifactBlock
+                        ? WorkspaceStore.State.FAILED : WorkspaceStore.State.COMPLETED;
+                String chatAnswer = artifactContent;
+                if (routeArtifactToWorkspace) {
+                    if (completeArtifactBlock) {
+                        chatAnswer = "Created \"" + artifactFilename + "\" in Workspace.";
+                    } else if (hasCompleteFence) {
+                        chatAnswer = "The output for \"" + artifactFilename
+                                + "\" failed a basic completeness/behavior check and was not accepted as a completed artifact. Inspect the source before using it.";
+                    } else {
+                        chatAnswer = "Sync stopped before producing a complete code block for \"" + artifactFilename
+                                + "\". No complete artifact was saved; ask Sync to continue or try a smaller request.";
+                    }
+                }
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
                         currentModelName(), runtime.backend() instanceof GgufModelBackend
                                 ? ((GgufModelBackend) runtime.backend()).lastGenerationDiagnostics()
                                 : "Inference completed.", "", "");
-                if (answer.isEmpty()) answer = "I got no response from the local model.";
                 ChatMessage assistant = new ChatMessage(
-                        ChatMessage.Role.ASSISTANT, answer,
+                        ChatMessage.Role.ASSISTANT, chatAnswer,
                         System.currentTimeMillis(), diag.format());
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                            assistant.text, WorkspaceStore.State.COMPLETED);
+                            artifactContent, artifactState, artifactFilename);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
@@ -880,7 +916,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                            response.toString(), WorkspaceStore.State.FAILED);
+                            response.toString(), WorkspaceStore.State.FAILED, artifactFilename);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
                     activeGenerations = Math.max(0, activeGenerations - 1);
@@ -899,6 +935,7 @@ public final class MainActivity extends Activity {
     private List<ChatMessage> buildModelContext(String current) {
         java.util.ArrayList<ChatMessage> messages = new java.util.ArrayList<>();
         String memory = runtime.preferences().getMemory();
+        boolean artifactRequest = isArtifactRequest(current);
         String system = "You are Sync AI, a helpful local Android AI companion. "
                 + "Answer the user's actual question directly and naturally. "
                 + "Be conversational, concise when the question is simple, and detailed when detail is useful. "
@@ -909,8 +946,16 @@ public final class MainActivity extends Activity {
                 + "Do not volunteer robotic identity disclaimers unless identity is relevant. "
                 + "When asked to create a code file, webpage, script, or document artifact, provide the complete deliverable in a Markdown fenced block with its language and put a short descriptive heading immediately before it. "
                 + "For HTML deliverables, include a complete self-contained HTML document. Do not fence ordinary explanations; use a fence only when it is part of the requested deliverable. "
+                + "For runnable programs, implement real behavior rather than static labels or pseudocode. Wire every visible control to working logic, define every referenced function and variable, show results/state changes in the UI, and remove placeholders, unused variables, TODOs, and unfinished handlers. "
+                + "Before finalizing code, check that the requested behavior is actually implemented and that the code is complete, internally consistent, and runnable. "
                 + "Deterministic Android tools handle device actions before the model. "
                 + runtime.preferences().getPersonalityInstruction();
+        if (artifactRequest) {
+            system += "\nARTIFACT MODE: Output only one short line in the form Artifact: filename.ext, followed by one complete Markdown fenced code/document block. "
+                    + "Use a descriptive filename based on the user's requested subject and the correct extension. Do not add an explanation before or after the artifact. "
+                    + "For interactive HTML, include complete HTML, CSS, and JavaScript as needed; implement all game/program rules, event handlers, visible result updates, and reset/replay behavior. "
+                    + "Do not create static headings in place of behavior. For a two-player Rock-Paper-Scissors game, both players must be able to choose independently, the choices must be compared using the real rules, and the round result and score must update.";
+        }
         if (!memory.trim().isEmpty()) {
             String memoryText = memory.trim();
             if (memoryText.length() > 6000) {
@@ -925,6 +970,116 @@ public final class MainActivity extends Activity {
             messages.add(new ChatMessage(m.role, m.text));
         }
         return messages;
+    }
+
+    private boolean isArtifactRequest(String current) {
+        if (isExplicitArtifactRequest(current)) return true;
+        String lower = current == null ? "" : current.toLowerCase(Locale.US);
+        boolean followUp = lower.contains("fix it") || lower.contains("make it playable")
+                || lower.contains("not static") || lower.contains("make it work")
+                || lower.contains("make it functional") || lower.contains("finish it")
+                || lower.contains("complete it") || lower.contains("continue")
+                || lower.contains("debug it") || lower.contains("repair it")
+                || lower.contains("improve it") || lower.contains("fix the code");
+        if (!followUp) return false;
+        int end = Math.max(0, activeChat.messages.size() - 1);
+        int start = Math.max(0, end - 8);
+        for (int i = end - 1; i >= start; i--) {
+            ChatMessage prior = activeChat.messages.get(i);
+            if (prior.role == ChatMessage.Role.USER && isExplicitArtifactRequest(prior.text)) return true;
+        }
+        return false;
+    }
+
+    private boolean isExplicitArtifactRequest(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase(Locale.US);
+        boolean createIntent = lower.contains("create") || lower.contains("make ")
+                || lower.contains("build") || lower.contains("write") || lower.contains("generate")
+                || lower.contains("implement") || lower.contains("code a ")
+                || lower.contains("code an ") || lower.contains("output it to workspace")
+                || lower.contains("output to workspace");
+        boolean artifact = lower.contains("document") || lower.contains("file")
+                || lower.contains("html") || lower.contains("webpage") || lower.contains("website")
+                || lower.contains("script") || lower.contains("program") || lower.contains("game")
+                || lower.contains(" app ") || lower.contains("code") || lower.contains("json")
+                || lower.contains("python") || lower.contains("javascript") || lower.contains("spreadsheet");
+        return createIntent && artifact;
+    }
+
+    private String inferArtifactFilename(String prompt) {
+        String lower = prompt == null ? "" : prompt.toLowerCase(Locale.US);
+        String extension = ".txt";
+        if (lower.contains("html") || lower.contains("webpage") || lower.contains("website")) extension = ".html";
+        else if (lower.contains("python") || lower.contains(".py")) extension = ".py";
+        else if (lower.contains("javascript") || lower.contains(".js")) extension = ".js";
+        else if (lower.contains("css")) extension = ".css";
+        else if (lower.contains("json")) extension = ".json";
+        else if (lower.contains("markdown") || lower.contains(".md")) extension = ".md";
+        else if (lower.contains("java") && !lower.contains("javascript")) extension = ".java";
+        else if (lower.contains("code") || lower.contains("program") || lower.contains("game") || lower.contains(" app ")) extension = ".html";
+
+        String subject = "";
+        int namedAt = lower.indexOf("named ");
+        int calledAt = lower.indexOf("called ");
+        int aboutAt = lower.indexOf("about ");
+        int nameAt = namedAt >= 0 ? namedAt + 6 : (calledAt >= 0 ? calledAt + 7 : -1);
+        if (nameAt >= 0) {
+            subject = lower.substring(nameAt);
+        } else if (aboutAt >= 0) {
+            subject = lower.substring(aboutAt + 6);
+        } else {
+            subject = lower;
+            String[] remove = {
+                    "can we", "can you", "could you", "please", "pls", "yo", "make",
+                    "create", "build", "write", "generate", "implement", "code",
+                    "output it to workspace", "output to workspace", "in workspace",
+                    "to workspace", "if so", "a small", "a simple", "a basic",
+                    "program that is", "program", "document", "text", "file", "script",
+                    "website", "webpage", "html", "python", "javascript", "json",
+                    "markdown", "game", "app", "a", "an", "the", "on", "in", "using", "with"
+            };
+            subject = subject.replaceAll("[^a-zA-Z0-9 ]", " ").toLowerCase(Locale.US);
+            subject = " " + subject + " ";
+            for (String word : remove) subject = subject.replace(" " + word + " ", " ");
+        }
+        subject = subject.trim();
+        String[] knownExtensions = {".html", ".htm", ".txt", ".md", ".js", ".py", ".css", ".json", ".java", ".xml", ".csv"};
+        for (String knownExtension : knownExtensions) {
+            if (subject.toLowerCase(Locale.US).endsWith(knownExtension)) {
+                subject = subject.substring(0, subject.length() - knownExtension.length());
+                break;
+            }
+        }
+        int suffixAt = subject.indexOf(" output");
+        if (suffixAt >= 0) subject = subject.substring(0, suffixAt);
+        suffixAt = subject.indexOf(" to workspace");
+        if (suffixAt >= 0) subject = subject.substring(0, suffixAt);
+        suffixAt = subject.indexOf(" in workspace");
+        if (suffixAt >= 0) subject = subject.substring(0, suffixAt);
+        subject = subject.replaceAll("[^a-zA-Z0-9 ]", " ").trim().toLowerCase(Locale.US);
+        String[] words = subject.split(" +");
+        java.util.ArrayList<String> useful = new java.util.ArrayList<>();
+        java.util.Set<String> stop = new java.util.HashSet<>(java.util.Arrays.asList(
+                "can", "we", "you", "i", "it", "is", "that", "this", "my", "me", "for",
+                "a", "an", "the", "to", "of", "and", "or", "on", "in", "using", "with", "pls", "please",
+                "output", "workspace", "requested", "small", "simple", "basic", "make",
+                "create", "build", "write", "generate", "program", "document", "file"));
+        for (String word : words) {
+            if (word.isEmpty() || stop.contains(word)) continue;
+            useful.add(word);
+            if (useful.size() == 5) break;
+        }
+        String slug = String.join("-", useful).replaceAll("-+", "-");
+        if (slug.isEmpty()) slug = "sync-artifact";
+        return slug + extension;
+    }
+
+    private boolean hasCompleteFencedBlock(String text) {
+        if (text == null) return false;
+        String fence = new String(new char[]{96, 96, 96});
+        int first = text.indexOf(fence);
+        return first >= 0 && text.indexOf(fence, first + fence.length()) >= 0;
     }
 
     private String casualFallback(String message) {

@@ -45,6 +45,7 @@ public final class WorkspaceActivity extends Activity {
     private LinearLayout root;
     private FrameLayout body;
     private WorkspaceStore.Artifact selected;
+    private TextView activeSourceView;
     private String pendingExport;
     private String pendingMime = "text/plain";
     private WebView activeWebView;
@@ -56,16 +57,34 @@ public final class WorkspaceActivity extends Activity {
     private final Runnable workspacePoller = new Runnable() {
         @Override public void run() {
             if (isFinishing() || isDestroyed()) return;
-            if (selected == null && store != null) {
+            if (store != null) {
                 store.reload();
-                List<WorkspaceStore.Artifact> latest = store.all();
-                String currentSignature = signature(latest);
-                if (!currentSignature.equals(lastListSignature)) {
-                    int oldScrollY = listScroll == null ? 0 : listScroll.getScrollY();
-                    renderList();
-                    if (listScroll != null) {
-                        ScrollView updatedScroll = listScroll;
-                        updatedScroll.post(() -> updatedScroll.scrollTo(0, oldScrollY));
+                if (selected == null) {
+                    List<WorkspaceStore.Artifact> latest = store.all();
+                    String currentSignature = signature(latest);
+                    if (!currentSignature.equals(lastListSignature)) {
+                        int oldScrollY = listScroll == null ? 0 : listScroll.getScrollY();
+                        renderList();
+                        if (listScroll != null) {
+                            ScrollView updatedScroll = listScroll;
+                            updatedScroll.post(() -> updatedScroll.scrollTo(0, oldScrollY));
+                        }
+                    }
+                } else {
+                    WorkspaceStore.Artifact latest = store.get(selected.id);
+                    if (latest != null && (latest.updatedAt != selected.updatedAt
+                            || latest.state != selected.state
+                            || !latest.content.equals(selected.content))) {
+                        selected = latest;
+                        // Update the visible source in place to preserve its scroll position.
+                        // Avoid reloading an executing HTML preview every poll; refresh it once
+                        // generation finishes so scripts run against the complete document.
+                        if (!showingPreview && activeSourceView != null
+                                && latest.state == WorkspaceStore.State.IN_PROGRESS) {
+                            activeSourceView.setText(latest.content);
+                        } else if (latest.state != WorkspaceStore.State.IN_PROGRESS) {
+                            showArtifact(latest.id);
+                        }
                     }
                 }
             }
@@ -78,8 +97,18 @@ public final class WorkspaceActivity extends Activity {
         store = new WorkspaceStore(getApplicationContext());
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         buildShell();
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            androidx.core.graphics.Insets safeInsets = windowInsets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                            | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            // Keep the header, artifact preview, and scroll content below Android's
+            // status bar and above the navigation/gesture area on edge-to-edge devices.
+            view.setPadding(safeInsets.left, safeInsets.top,
+                    safeInsets.right, safeInsets.bottom);
+            return windowInsets;
+        });
+        androidx.core.view.ViewCompat.requestApplyInsets(root);
         renderList();
     }
 
@@ -242,6 +271,7 @@ public final class WorkspaceActivity extends Activity {
             return;
         }
         selected = artifact;
+        activeSourceView = null;
         if (activeWebView != null) {
             activeWebView.destroy();
             activeWebView = null;
@@ -331,6 +361,7 @@ public final class WorkspaceActivity extends Activity {
         } else {
             ScrollView codeScroll = new ScrollView(this);
             TextView code = text(artifact.content, 12, TEXT, false);
+            activeSourceView = code;
             code.setTypeface(Typeface.MONOSPACE);
             code.setTextIsSelectable(true);
             code.setGravity(Gravity.TOP | Gravity.START);
