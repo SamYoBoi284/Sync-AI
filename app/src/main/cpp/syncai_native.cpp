@@ -396,9 +396,9 @@ static void native_generate_impl(
             vocab, formatted.data(), formattedSize,
             nullptr, 0, true, true);
 
-    // Keep enough room for the response. Older versions only checked that the
-    // prompt itself fit, then could decode past the context window during the
-    // 128-token generation loop and terminate the app inside llama.cpp.
+    // Keep enough room for the requested response. Older versions only checked
+    // that the prompt itself fit, then could decode past the context window during
+    // generation and terminate the app inside llama.cpp.
     while (promptCount > promptBudget && roleStrings.size() > 1) {
         // Preserve the system prompt and discard the oldest conversation turn.
         roleStrings.erase(roleStrings.begin() + 1);
