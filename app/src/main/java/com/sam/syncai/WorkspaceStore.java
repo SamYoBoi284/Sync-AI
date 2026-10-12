@@ -61,6 +61,10 @@ public final class WorkspaceStore {
         load();
     }
 
+    public synchronized void reload() {
+        load();
+    }
+
     public synchronized List<Artifact> all() {
         ArrayList<Artifact> result = new ArrayList<>(artifacts);
         Collections.sort(result, (left, right) -> Long.compare(right.updatedAt, left.updatedAt));
