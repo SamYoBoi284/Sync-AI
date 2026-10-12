@@ -49,6 +49,8 @@ public final class WorkspaceStore {
     private static final String FENCE = new String(new char[]{96, 96, 96});
     private static final Pattern OPEN_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "([^\\r\\n]*)\\r?\\n");
     private static final Pattern CLOSE_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "[ ]*(?:\\r?\\n|$)");
+    private static final Pattern EXPLICIT_FILENAME = Pattern.compile(
+            "(?i)(?<![\\\\w.-])([\\\\w-]{1,48}\\\\.(?:html?|css|js|mjs|cjs|py|java|kt|json|md|txt|xml|sh|cpp|c|h|ts|tsx|jsx))(?![\\\\w.-])");
     private static final int MAX_ARTIFACTS = 100;
 
     private final File file;
@@ -90,6 +92,11 @@ public final class WorkspaceStore {
 
     public synchronized void updateResponse(String responseId, String chatId,
                                             String response, State state) {
+        updateResponse(responseId, chatId, response, state, null);
+    }
+
+    public synchronized void updateResponse(String responseId, String chatId,
+                                            String response, State state, String titleRequest) {
         if (responseId == null || responseId.trim().isEmpty() || response == null) return;
         List<ExtractedBlock> blocks = extractBlocks(response);
         if (blocks.isEmpty()) return;
@@ -99,7 +106,8 @@ public final class WorkspaceStore {
             ExtractedBlock block = blocks.get(i);
             String id = responseId + "-" + i;
             Artifact old = get(id);
-            String title = titleFor(response, block.start, block.language, i + 1);
+            String title = titleForRequest(titleRequest, block.language, i + 1);
+            if (title.isEmpty()) title = titleFor(response, block.start, block.language, i + 1);
             Artifact next = new Artifact(id, responseId, chatId == null ? "" : chatId,
                     title, block.language.isEmpty() ? "text" : block.language,
                     block.content, state, old == null ? now : old.createdAt, now);
@@ -149,6 +157,88 @@ public final class WorkspaceStore {
             this.language = language;
             this.content = content;
         }
+    }
+
+    public static boolean hasFencedBlock(String text) {
+        return text != null && OPEN_FENCE.matcher(text).find();
+    }
+
+    public static boolean hasClosedFencedBlock(String text) {
+        if (text == null) return false;
+        Matcher open = OPEN_FENCE.matcher(text);
+        while (open.find()) {
+            Matcher close = CLOSE_FENCE.matcher(text);
+            if (close.find(open.end())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Conservative structural checks for artifacts. This cannot prove arbitrary
+     * JavaScript is bug-free, but it catches the most common truncated HTML drafts.
+     */
+    public static boolean looksComplete(String request, String response) {
+        if (!hasClosedFencedBlock(response)) return false;
+        List<ExtractedBlock> blocks = extractBlocks(response);
+        if (blocks.isEmpty()) return false;
+        String prompt = request == null ? "" : request.toLowerCase(Locale.ROOT);
+        boolean interactive = prompt.matches("(?s).*\\\\b(game|playable|interactive|calculator|quiz|timer|todo|counter|form|button)\\\\b.*");
+        for (ExtractedBlock block : blocks) {
+            String language = block.language.toLowerCase(Locale.ROOT);
+            String code = block.content.toLowerCase(Locale.ROOT);
+            if ("html".equals(language) || "htm".equals(language) || "html5".equals(language)) {
+                if (code.contains("<html") && !code.contains("</html>")) return false;
+                if (code.contains("<script") && !code.contains("</script>")) return false;
+                if (interactive && (!code.contains("<script") || !code.contains("</script>")
+                        || !(code.contains("addeventlistener") || code.contains("onclick")
+                        || code.contains("onsubmit") || code.contains("onchange")))) return false;
+            }
+        }
+        return true;
+    }
+
+    private static String titleForRequest(String request, String language, int index) {
+        if (request == null || request.trim().isEmpty()) return "";
+        Matcher explicit = EXPLICIT_FILENAME.matcher(request);
+        if (explicit.find()) return explicit.group(1);
+        String clean = request.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9\\\\s-]", " ")
+                .replaceAll("\\\\s+", " ").trim();
+        java.util.Set<String> stop = new java.util.HashSet<>(java.util.Arrays.asList(
+                "can", "could", "you", "we", "please", "pls", "if", "so", "output", "it",
+                "to", "workspace", "a", "an", "the", "small", "simple", "program", "code",
+                "write", "create", "make", "build", "generate", "implement", "design", "develop",
+                "fix", "repair", "update", "modify", "that", "is", "be", "on", "in", "using",
+                "with", "for", "me", "us", "html", "page", "file", "app", "website", "webpage",
+                "script", "document", "called", "named", "titled", "playable", "static",
+                "instead", "of", "as", "would", "like", "want", "i", "my", "this", "help",
+                "do", "what", "something", "and", "then", "it", "please", "pls"));
+        List<String> words = new ArrayList<>();
+        for (String word : clean.split("\\\\s+")) {
+            if (!word.isEmpty() && !stop.contains(word) && word.length() > 1) {
+                words.add(word);
+                if (words.size() == 6) break;
+            }
+        }
+        String base = words.isEmpty() ? "sync-artifact" : String.join("-", words);
+        String ext;
+        switch (language == null ? "" : language.toLowerCase(Locale.ROOT)) {
+            case "html": case "htm": case "html5": ext = ".html"; break;
+            case "css": ext = ".css"; break;
+            case "js": case "javascript": case "mjs": ext = ".js"; break;
+            case "py": case "python": ext = ".py"; break;
+            case "java": ext = ".java"; break;
+            case "kt": case "kotlin": ext = ".kt"; break;
+            case "json": ext = ".json"; break;
+            case "md": case "markdown": ext = ".md"; break;
+            case "ts": case "typescript": ext = ".ts"; break;
+            case "tsx": ext = ".tsx"; break;
+            case "jsx": ext = ".jsx"; break;
+            case "xml": ext = ".xml"; break;
+            default: ext = ".txt"; break;
+        }
+        if (index > 1) base += "-" + index;
+        return base + ext;
     }
 
     private static List<ExtractedBlock> extractBlocks(String text) {
