@@ -171,7 +171,7 @@ public final class SideDashboard extends FrameLayout {
         item(settingsContent, "✦  Personality & voice", v -> actions.personality(), true);
 
         section(settingsContent, "WORKSPACE");
-        item(settingsContent, "📎  Files / memory", v -> actions.files(), true);
+        item(settingsContent, "▤  File Library", v -> actions.files(), true);
         item(settingsContent, "▣  Local models", v -> actions.models(), true);
         item(settingsContent, "↓  Import model", v -> actions.importModel(), true);
         item(settingsContent, "▤  Runtime", v -> actions.runtime(), true);

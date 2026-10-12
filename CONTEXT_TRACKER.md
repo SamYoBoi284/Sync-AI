@@ -1,11 +1,27 @@
 # Sync AI — Context Tracker
 
 > Living handoff/context document for the Sync AI project.
-> Updated: 2026-10-09
-> Latest verified source branch: `sync-ai-context-visual-813e999-v2`
+> Updated: 2026-10-13
+> Current feature branch: `feat/file-library-context-generation-1024` (build and phone verification pending)
+> Stable development base: `fix/generation-timer-alarm-export`
 > This tracker records implemented work and known verification status. Source code / CI remains authoritative.
 
-## Project
+## 2026-10-13 — Current File Library work (in progress)
+
+Branch: `feat/file-library-context-generation-1024`
+
+- PR #18: [Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18) (draft; build and phone verification pending).
+- Drawer → Settings → File Library now uses its own activity/import flow; it must not reuse the Memory import result code. The existing Personalization → Import Memory File action remains separate.
+- `FileLibraryStore` keeps user-imported file copies and metadata inside app-private storage, detects exact-content duplicates by SHA-256, permits import/export/delete, and previews supported text files.
+- `MainActivity.buildModelContext` attaches only specifically mentioned (or clearly referenced in an immediate follow-up) library files, up to two items and a bounded text excerpt. It treats file contents as user data, not instructions, and tells the model not to claim a truncated excerpt is a full file.
+- Unambiguous small single-file text edits (up to 3,000 bytes) route to Workspace with the original filename; saving back requires an explicit Replace or Save as Copy action. Multiple file mentions are available for analysis, but full-file replacement is one source file at a time. Original files are not silently overwritten.
+- Artifact generation is now configured for 1,024 tokens; normal chat remains at 512. The native hard ceiling is already 1,024. 4 GB device memory/latency needs physical testing.
+- Workspace artifacts now have an **EDIT SOURCE** action that saves changes in place. Basic completeness checks can keep an edited source marked failed if it still appears incomplete.
+- Failed/incomplete artifacts expose **CONTINUE WITH SYNC**. It passes the partial source to the model, expects only the continuation fragment in a fenced block, appends that fragment to the same artifact, and rechecks completeness. If the model gives no usable fenced fragment, the existing artifact is preserved unchanged. Repeated continuation is available if it still appears incomplete.
+- Workspace updates reload persisted artifacts before modifying them to avoid stale activity instances overwriting edits.
+- Binary files (PDF/office/images/etc.) can be stored and exported but their content is not extracted for local-model context in this initial iteration.
+- Do not publish a release. Run CI, inspect source diffs/build failures, and test File Library/import, text-file context/edit/save paths, old Memory import, Workspace, updater, voice/wake-word, model import, and SAF export flows on the Galaxy A16.
+
 
 - Repository: `SamYoBoi284/Sync-AI`
 - Android offline-first local AI assistant.
@@ -13,6 +29,8 @@
 - Android Java + C++ JNI + llama.cpp, CPU-first, arm64-v8a.
 - GGUF model files remain on-device and are not committed to GitHub.
 - App name is **Sync AI**; the old `Sync//AI` naming is no longer the desired user-facing name.
+
+## Project
 
 ## Deterministic Sync Tool Core — implemented
 

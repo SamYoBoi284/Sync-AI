@@ -1,5 +1,29 @@
 # Sync AI — Changelog & Development Handoff
 
+> Last updated: 2026-10-13
+> Repository: `SamYoBoi284/Sync-AI`
+> Current work branch: `feat/file-library-context-generation-1024`
+> Current draft PR: [#18 — Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18)
+> Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
+>
+> This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
+
+## 2026-10-13 — Workspace continuation and artifact editing
+
+- Add an in-place **EDIT SOURCE** flow for every Workspace artifact. Users can edit the artifact text and save it back to the same Workspace item; obvious incompleteness remains flagged instead of being marked complete.
+- Add **CONTINUE WITH SYNC** for failed/incomplete Workspace artifacts. The continuation prompt includes the current partial source, asks the local model for only the missing fragment, appends it to the existing artifact rather than creating a duplicate, and reruns basic completeness checks. If Sync fails to return a fenced continuation, the original is left unchanged. The user can repeat continuation if the file still appears incomplete.
+- Reload Workspace storage before applying edits/continuations so a stale activity instance does not overwrite a newer artifact revision.
+- Existing generated artifacts, File Library flows, Memory import, chat history, and other features remain intact. Physical-device testing is still required.
+
+## 2026-10-13 — File Library, referenced-file context, and 1024-token artifacts
+
+- Fix the drawer's Files route: it now opens a dedicated File Library instead of sending the selected file through the memory-import request handler. The separate Personalization → Import Memory File flow remains intact.
+- Add persistent app-private File Library storage with multi-select document import, SHA-256 duplicate detection, metadata, preview for readable text, export, delete, and a “Ask Sync” shortcut. Imported copies do not depend on the original SAF URI staying available. Individual files are limited to 32 MiB.
+- When a message mentions a library filename (or unambiguously follows up on a recently mentioned file), attach the contents of up to two matching files to local-model context. Supported text/code formats include TXT, Markdown, CSV/TSV, JSON, XML, HTML, CSS, JavaScript, Java/Kotlin, Python, YAML, SQL, logs, and similar source/text files. PDF, office, image, and other binary formats can be stored/exported but are not yet content-extracted for the local model.
+- For small text-library files (up to 3,000 bytes), an unambiguous single-file edit request routes to Workspace and preserves the original filename. The original is never overwritten automatically: Workspace offers explicit replace or save-as-copy choices in File Library. Multi-file mentions can be used for analysis; full-file rewrites are handled one source file at a time.
+- Raise artifact generation from 768 to 1,024 tokens, matching the existing native generation ceiling. Ordinary chat remains at 512 tokens. Validate latency and memory on the 4 GB Galaxy A16 before assuming 1,024-token artifact requests are safe for every prompt.
+- Build/phone regression verification pending for this change. No release tag or release assets are changed.
+
 ## 2026-10-12 — Update consent, check intervals, voice tuning, artifact guards
 
 - Manual update checks now always show release details and a DOWNLOAD / LATER choice; they no longer start downloads without confirmation. Automatic downloading remains configurable and defaults to off for new installs. Existing saved preferences are preserved.
@@ -7,15 +31,6 @@
 - Add adjustable TTS pitch alongside existing speech-rate and installed Android TTS voice selection. This tunes an installed voice; it does not clone or synthesize a new voice.
 - Strengthen Workspace HTML checks so static Rock-Paper-Scissors mockups without real controls, event handlers, live UI updates, and appropriate player labels are rejected as incomplete. For an explicit two-player Rock-Paper-Scissors request whose local-model draft fails those checks, use a bundled, self-contained playable HTML fallback and tell the user transparently. This remains a targeted fallback and heuristic, not a full browser execution test.
 - Third-party dictation integration is not included here; a provider such as Wispr Flow needs a supported SDK or system-level speech-recognition integration and should be evaluated separately before adding dependencies.
-
-
-> Last updated: 2026-10-12
-> Repository: `SamYoBoi284/Sync-AI`
-> Current work branch: `feat/update-controls-voice-artifact-guards`
-> Current draft PR: [#17 — Add update download consent, intervals, and voice controls](https://github.com/SamYoBoi284/Sync-AI/pull/17)
-> Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
->
-> This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
 
 ## 2026-10-12 — Artifact quality, generation limits, and safe-area follow-up
 
@@ -132,3 +147,4 @@ Implemented tool routing for device-known requests before model generation, incl
 6. Keep GGUF/Vosk model binaries out of the repo unless Sam explicitly changes that decision.
 7. Do not ask for GitHub signing-secret values; they are already configured.
 8. Prioritize real build logs and on-device evidence over assumptions.
+

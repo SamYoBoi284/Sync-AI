@@ -19,6 +19,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -34,6 +35,11 @@ import java.util.List;
 import java.util.Locale;
 
 public final class WorkspaceActivity extends Activity {
+    public static final String EXTRA_CONTINUE_ID = "com.sam.syncai.extra.CONTINUE_ARTIFACT_ID";
+    public static final String EXTRA_CONTINUE_TITLE = "com.sam.syncai.extra.CONTINUE_ARTIFACT_TITLE";
+    public static final String EXTRA_CONTINUE_LANGUAGE = "com.sam.syncai.extra.CONTINUE_ARTIFACT_LANGUAGE";
+    public static final String EXTRA_CONTINUE_CONTENT = "com.sam.syncai.extra.CONTINUE_ARTIFACT_CONTENT";
+
     private static final int BG = Color.rgb(7, 8, 14);
     private static final int SURFACE = Color.rgb(17, 19, 30);
     private static final int SURFACE_2 = Color.rgb(25, 28, 43);
@@ -306,6 +312,26 @@ public final class WorkspaceActivity extends Activity {
         actions.addView(delete, deleteLp);
         page.addView(actions);
 
+        Button saveToLibrary = button("SAVE TO FILE LIBRARY", false);
+        saveToLibrary.setOnClickListener(v -> saveArtifactToLibrary(artifact));
+        LinearLayout.LayoutParams libraryLp = new LinearLayout.LayoutParams(-1, dp(42));
+        libraryLp.topMargin = dp(8);
+        page.addView(saveToLibrary, libraryLp);
+
+        Button editArtifact = button("EDIT SOURCE", false);
+        editArtifact.setOnClickListener(v -> editArtifact(artifact));
+        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(-1, dp(42));
+        editLp.topMargin = dp(8);
+        page.addView(editArtifact, editLp);
+
+        if (artifact.state != WorkspaceStore.State.COMPLETED) {
+            Button continueArtifact = button("CONTINUE WITH SYNC", false);
+            continueArtifact.setOnClickListener(v -> continueArtifactWithSync(artifact));
+            LinearLayout.LayoutParams continueLp = new LinearLayout.LayoutParams(-1, dp(42));
+            continueLp.topMargin = dp(8);
+            page.addView(continueArtifact, continueLp);
+        }
+
         boolean html = isHtml(artifact);
         if (html) {
             LinearLayout viewToggle = new LinearLayout(this);
@@ -374,6 +400,101 @@ public final class WorkspaceActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(page);
         body.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private void editArtifact(WorkspaceStore.Artifact artifact) {
+        EditText editor = new EditText(this);
+        editor.setText(artifact.content);
+        editor.setTextSize(12);
+        editor.setTypeface(Typeface.MONOSPACE);
+        editor.setGravity(Gravity.TOP | Gravity.START);
+        editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        editor.setMinLines(14);
+        editor.setPadding(dp(12), dp(12), dp(12), dp(12));
+        editor.setSelection(editor.getText().length());
+
+        ScrollView editScroll = new ScrollView(this);
+        editScroll.addView(editor);
+        new AlertDialog.Builder(this)
+                .setTitle("Edit " + artifact.title)
+                .setMessage("Your changes stay in Workspace until you save them.")
+                .setView(editScroll)
+                .setNegativeButton("CANCEL", null)
+                .setPositiveButton("SAVE EDITS", (dialog, which) -> {
+                    try {
+                        WorkspaceStore.Artifact updated = store.updateArtifactContent(
+                                artifact.id, editor.getText().toString(),
+                                WorkspaceStore.State.COMPLETED);
+                        selected = updated;
+                        showingPreview = false;
+                        showArtifact(updated.id);
+                        Toast.makeText(this,
+                                updated.state == WorkspaceStore.State.COMPLETED
+                                        ? "Artifact edits saved" : "Saved, but the artifact still looks incomplete",
+                                Toast.LENGTH_LONG).show();
+                    } catch (Exception error) {
+                        Toast.makeText(this, "Could not save edits: " + error.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                }).show();
+    }
+
+    private void continueArtifactWithSync(WorkspaceStore.Artifact artifact) {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtra(EXTRA_CONTINUE_ID, artifact.id);
+        intent.putExtra(EXTRA_CONTINUE_TITLE, artifact.title);
+        intent.putExtra(EXTRA_CONTINUE_LANGUAGE, artifact.language);
+        intent.putExtra(EXTRA_CONTINUE_CONTENT, artifact.content);
+        startActivity(intent);
+    }
+
+    private void saveArtifactToLibrary(WorkspaceStore.Artifact artifact) {
+        FileLibraryStore library = new FileLibraryStore(getApplicationContext());
+        FileLibraryStore.LibraryFile existing = library.findByName(artifact.title);
+        if (existing != null && existing.isTextReadable()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("File already exists")
+                    .setMessage("A library file named \"" + existing.name
+                            + "\" already exists. Choose whether to replace it or keep a separate copy.")
+                    .setNegativeButton("CANCEL", null)
+                    .setNeutralButton("SAVE AS COPY", (dialog, which) ->
+                            saveArtifactCopy(library, artifact))
+                    .setPositiveButton("REPLACE EXISTING", (dialog, which) -> {
+                        try {
+                            library.saveGeneratedText(existing.name, artifact.content, existing.id);
+                            Toast.makeText(this, "Updated " + existing.name + " in File Library",
+                                    Toast.LENGTH_LONG).show();
+                        } catch (Exception error) {
+                            Toast.makeText(this, "Could not update file: " + error.getMessage(),
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    }).show();
+        } else if (existing != null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("File name already used")
+                    .setMessage("A non-text file already uses this name. Save the generated text as a separate copy?")
+                    .setNegativeButton("CANCEL", null)
+                    .setPositiveButton("SAVE COPY", (dialog, which) ->
+                            saveArtifactCopy(library, artifact))
+                    .show();
+        } else {
+            saveArtifactCopy(library, artifact);
+        }
+    }
+
+    private void saveArtifactCopy(FileLibraryStore library, WorkspaceStore.Artifact artifact) {
+        try {
+            FileLibraryStore.LibraryFile saved =
+                    library.saveGeneratedText(artifact.title, artifact.content, null);
+            Toast.makeText(this, "Saved " + saved.name + " to File Library",
+                    Toast.LENGTH_LONG).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "Could not save to File Library: " + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void copyArtifact(WorkspaceStore.Artifact artifact) {
