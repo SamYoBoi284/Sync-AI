@@ -16,6 +16,9 @@ Branch: `feat/file-library-context-generation-1024`
 - `MainActivity.buildModelContext` attaches only specifically mentioned (or clearly referenced in an immediate follow-up) library files, up to two items and a bounded text excerpt. It treats file contents as user data, not instructions, and tells the model not to claim a truncated excerpt is a full file.
 - Unambiguous small single-file text edits (up to 3,000 bytes) route to Workspace with the original filename; saving back requires an explicit Replace or Save as Copy action. Multiple file mentions are available for analysis, but full-file replacement is one source file at a time. Original files are not silently overwritten.
 - Artifact generation is now configured for 1,024 tokens; normal chat remains at 512. The native hard ceiling is already 1,024. 4 GB device memory/latency needs physical testing.
+- Workspace artifacts now have an **EDIT SOURCE** action that saves changes in place. Basic completeness checks can keep an edited source marked failed if it still appears incomplete.
+- Failed/incomplete artifacts expose **CONTINUE WITH SYNC**. It passes the partial source to the model, expects only the continuation fragment in a fenced block, appends that fragment to the same artifact, and rechecks completeness. If the model gives no usable fenced fragment, the existing artifact is preserved unchanged. Repeated continuation is available if it still appears incomplete.
+- Workspace updates reload persisted artifacts before modifying them to avoid stale activity instances overwriting edits.
 - Binary files (PDF/office/images/etc.) can be stored and exported but their content is not extracted for local-model context in this initial iteration.
 - Do not publish a release. Run CI, inspect source diffs/build failures, and test File Library/import, text-file context/edit/save paths, old Memory import, Workspace, updater, voice/wake-word, model import, and SAF export flows on the Galaxy A16.
 
