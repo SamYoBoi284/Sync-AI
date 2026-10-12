@@ -923,7 +923,7 @@ public final class MainActivity extends Activity {
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
                     workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                            response.toString(), WorkspaceStore.State.FAILED);
+                            response.toString(), WorkspaceStore.State.FAILED, artifactTitleRequest);
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
                     activeGenerations = Math.max(0, activeGenerations - 1);
