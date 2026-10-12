@@ -190,9 +190,12 @@ public final class WorkspaceStore {
             if (lower.contains("function playround") || lower.contains("playround(")) {
                 boolean hasChoices = lower.contains("<button") || lower.contains("<input");
                 boolean hasRules = lower.contains("if") || lower.contains("switch");
-                boolean updatesUi = lower.contains("textcontent") || lower.contains("innerhtml")
-                        || lower.contains("insertadjacenthtml");
-                if (!hasChoices || !hasRules || !updatesUi
+                boolean updatesUi = lower.contains("textcontent") || lower.contains("innertext")
+                        || lower.contains("innerhtml") || lower.contains("insertadjacenthtml");
+                boolean brokenSeparateRadioNames = lower.contains("name=\\"rock\\"")
+                        && lower.contains("name=\\"paper\\"")
+                        && lower.contains("name=\\"scissors\\"");
+                if (!hasChoices || !hasRules || !updatesUi || brokenSeparateRadioNames
                         || !lower.contains("rock") || !lower.contains("paper")
                         || !lower.contains("scissors")) return false;
             }

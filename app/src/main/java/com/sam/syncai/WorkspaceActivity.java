@@ -45,6 +45,7 @@ public final class WorkspaceActivity extends Activity {
     private LinearLayout root;
     private FrameLayout body;
     private WorkspaceStore.Artifact selected;
+    private TextView activeSourceView;
     private String pendingExport;
     private String pendingMime = "text/plain";
     private WebView activeWebView;
@@ -74,11 +75,17 @@ public final class WorkspaceActivity extends Activity {
                     if (latest != null && (latest.updatedAt != selected.updatedAt
                             || latest.state != selected.state
                             || !latest.content.equals(selected.content))) {
-                        boolean refreshVisibleSource = !showingPreview || latest.state != WorkspaceStore.State.IN_PROGRESS;
+                        boolean wasStreaming = selected.state == WorkspaceStore.State.IN_PROGRESS;
                         selected = latest;
-                        // Refresh source view as it streams; avoid reloading an executing HTML
-                        // preview every poll, then refresh it once generation finishes.
-                        if (refreshVisibleSource) showArtifact(latest.id);
+                        // Update the visible source in place to preserve its scroll position.
+                        // Avoid reloading an executing HTML preview every poll; refresh it once
+                        // generation finishes so scripts run against the complete document.
+                        if (!showingPreview && activeSourceView != null
+                                && latest.state == WorkspaceStore.State.IN_PROGRESS) {
+                            activeSourceView.setText(latest.content);
+                        } else if (wasStreaming || latest.state != WorkspaceStore.State.IN_PROGRESS) {
+                            showArtifact(latest.id);
+                        }
                     }
                 }
             }
@@ -265,6 +272,7 @@ public final class WorkspaceActivity extends Activity {
             return;
         }
         selected = artifact;
+        activeSourceView = null;
         if (activeWebView != null) {
             activeWebView.destroy();
             activeWebView = null;
@@ -354,6 +362,7 @@ public final class WorkspaceActivity extends Activity {
         } else {
             ScrollView codeScroll = new ScrollView(this);
             TextView code = text(artifact.content, 12, TEXT, false);
+            activeSourceView = code;
             code.setTypeface(Typeface.MONOSPACE);
             code.setTextIsSelectable(true);
             code.setGravity(Gravity.TOP | Gravity.START);
