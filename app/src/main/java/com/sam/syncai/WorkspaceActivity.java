@@ -10,6 +10,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.webkit.WebResourceRequest;
@@ -47,6 +49,29 @@ public final class WorkspaceActivity extends Activity {
     private String pendingMime = "text/plain";
     private WebView activeWebView;
     private boolean showingPreview = true;
+    private ScrollView listScroll;
+    private String lastListSignature = "";
+    private boolean pollScheduled;
+    private final Handler workspaceHandler = new Handler(Looper.getMainLooper());
+    private final Runnable workspacePoller = new Runnable() {
+        @Override public void run() {
+            if (isFinishing() || isDestroyed()) return;
+            if (selected == null && store != null) {
+                store.reload();
+                List<WorkspaceStore.Artifact> latest = store.all();
+                String currentSignature = signature(latest);
+                if (!currentSignature.equals(lastListSignature)) {
+                    int oldScrollY = listScroll == null ? 0 : listScroll.getScrollY();
+                    renderList();
+                    if (listScroll != null) {
+                        ScrollView updatedScroll = listScroll;
+                        updatedScroll.post(() -> updatedScroll.scrollTo(0, oldScrollY));
+                    }
+                }
+            }
+            workspaceHandler.postDelayed(this, 900L);
+        }
+    };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -61,6 +86,16 @@ public final class WorkspaceActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (body != null && selected == null) renderList();
+        if (!pollScheduled) {
+            pollScheduled = true;
+            workspaceHandler.postDelayed(workspacePoller, 900L);
+        }
+    }
+
+    @Override protected void onPause() {
+        workspaceHandler.removeCallbacks(workspacePoller);
+        pollScheduled = false;
+        super.onPause();
     }
 
     private void buildShell() {
@@ -109,6 +144,8 @@ public final class WorkspaceActivity extends Activity {
 
     private void renderList() {
         selected = null;
+        showingPreview = true;
+        store.reload();
         if (activeWebView != null) {
             activeWebView.destroy();
             activeWebView = null;
@@ -116,6 +153,7 @@ public final class WorkspaceActivity extends Activity {
         body.removeAllViews();
 
         List<WorkspaceStore.Artifact> items = store.all();
+        lastListSignature = signature(items);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(16), dp(18), dp(16), dp(24));
@@ -192,6 +230,7 @@ public final class WorkspaceActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(page);
+        listScroll = scroll;
         body.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
     }
 
@@ -358,6 +397,15 @@ public final class WorkspaceActivity extends Activity {
                     renderList();
                 })
                 .show();
+    }
+
+    private static String signature(List<WorkspaceStore.Artifact> items) {
+        StringBuilder value = new StringBuilder();
+        for (WorkspaceStore.Artifact item : items) {
+            value.append(item.id).append(':').append(item.state.name()).append(':')
+                    .append(item.updatedAt).append(':').append(item.content.hashCode()).append('|');
+        }
+        return value.toString();
     }
 
     private LinearLayout card() {
