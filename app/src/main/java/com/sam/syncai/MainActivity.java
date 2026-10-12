@@ -1149,10 +1149,9 @@ public final class MainActivity extends Activity {
 
     private boolean isFileEditIntent(String text) {
         String lower = text == null ? "" : text.toLowerCase(Locale.US);
-        return lower.contains("edit") || lower.contains("modify") || lower.contains("update")
-                || lower.contains("rewrite") || lower.contains("revise") || lower.contains("patch")
-                || lower.contains("refactor") || lower.contains("change") || lower.contains("fix")
-                || lower.contains("add to") || lower.contains("remove from") || lower.contains("correct");
+        boolean editVerb = lower.matches("(?s).*\\b(edit|modify|update|rewrite|revise|patch|refactor|fix|correct|replace)\\b.*");
+        return editVerb || lower.contains("add to") || lower.contains("remove from")
+                || lower.contains("change to") || lower.contains("change in");
     }
 
     private boolean isFileLibraryEditRequest(String text) {
