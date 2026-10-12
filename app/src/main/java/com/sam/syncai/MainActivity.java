@@ -943,10 +943,10 @@ public final class MainActivity extends Activity {
                 + "Deterministic Android tools handle device actions before the model. "
                 + runtime.preferences().getPersonalityInstruction();
         if (artifactRequest) {
-            system += \"\\nARTIFACT MODE: Output only one short line in the form Artifact: filename.ext, followed by one complete Markdown fenced code/document block. \"
-                    + \"Use a descriptive filename based on the user's requested subject and the correct extension. Do not add an explanation before or after the artifact. \"
-                    + \"For interactive HTML, include complete HTML, CSS, and JavaScript as needed; implement all game/program rules, event handlers, visible result updates, and reset/replay behavior. \"
-                    + \"Do not create static headings in place of behavior. For a two-player Rock-Paper-Scissors game, both players must be able to choose independently, the choices must be compared using the real rules, and the round result and score must update.\";
+            system += "\nARTIFACT MODE: Output only one short line in the form Artifact: filename.ext, followed by one complete Markdown fenced code/document block. "
+                    + "Use a descriptive filename based on the user's requested subject and the correct extension. Do not add an explanation before or after the artifact. "
+                    + "For interactive HTML, include complete HTML, CSS, and JavaScript as needed; implement all game/program rules, event handlers, visible result updates, and reset/replay behavior. "
+                    + "Do not create static headings in place of behavior. For a two-player Rock-Paper-Scissors game, both players must be able to choose independently, the choices must be compared using the real rules, and the round result and score must update.";
         }
         if (!memory.trim().isEmpty()) {
             String memoryText = memory.trim();
@@ -1031,7 +1031,9 @@ public final class MainActivity extends Activity {
                     "website", "webpage", "html", "python", "javascript", "json",
                     "markdown", "game", "app", "a", "an", "the", "on", "in", "using", "with"
             };
-            for (String word : remove) subject = subject.replace(word, " ");
+            subject = subject.replaceAll("[^a-zA-Z0-9 ]", " ").toLowerCase(Locale.US);
+            subject = " " + subject + " ";
+            for (String word : remove) subject = subject.replace(" " + word + " ", " ");
         }
         int suffixAt = subject.indexOf(" output");
         if (suffixAt >= 0) subject = subject.substring(0, suffixAt);
@@ -1044,7 +1046,7 @@ public final class MainActivity extends Activity {
         java.util.ArrayList<String> useful = new java.util.ArrayList<>();
         java.util.Set<String> stop = new java.util.HashSet<>(java.util.Arrays.asList(
                 "can", "we", "you", "i", "it", "is", "that", "this", "my", "me", "for",
-                "to", "of", "and", "or", "on", "in", "using", "with", "pls", "please",
+                "a", "an", "the", "to", "of", "and", "or", "on", "in", "using", "with", "pls", "please",
                 "output", "workspace", "requested", "small", "simple", "basic", "make",
                 "create", "build", "write", "generate", "program", "document", "file"));
         for (String word : words) {
