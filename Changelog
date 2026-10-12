@@ -65,21 +65,15 @@ Changes included in the PR:
 - PR #14 was subsequently merged into `fix/generation-timer-alarm-export` on 2026-10-12. No new version tag/release was created by that merge.
 - The latest known CI attempt was GitHub Actions run **#672**, building a debug APK. At the time of this handoff, its final result and on-device verification were not confirmed. Check the live run before relying on this status.
 
-### Next steps
-1. Check the latest CI result for PR #14 / run #672.
-2. If it failed, inspect the actual failing job/log and make the smallest targeted correction on `fix/sync-workspace-canvas`; preserve unrelated working behavior.
-3. If it passed, obtain/install the debug APK and test on Sam's Galaxy A16:
-   - Workspace opens Canvas, not Android's file picker or Settings.
-   - Generated fenced code/document artifacts appear in Workspace.
-   - Artifacts update during generation and finish as completed/incomplete.
-   - Reopening Workspace retains saved artifacts.
-   - HTML preview and source view work.
-   - Copy/save/remove actions work.
-   - Existing SAF file/memory import/export remains accessible through its own entry.
-   - Existing calling, alarms, voice, and other core functionality remain unaffected.
-4. Once build and behavior are satisfactory, ask Sam before merging/publishing if confirmation is needed; PR #14 is intentionally still a draft.
-5. Merge only after verification and Sam's approval.
-6. Publish the next version only after explicit confirmation. Then test the updater from Sam's already-installed **v0.3.0** to the new release. Do not create a tag/release prematurely.
+### Outstanding physical-device verification
+PR #14 and the generation/Workspace follow-up in PR #16 have merged into the development baseline, but the remaining tests below still need real-device confirmation on Sam's Galaxy A16:
+1. Workspace opens Canvas, not Android's file picker or Settings.
+2. Generated code/document artifacts appear in Workspace, stream safely, and finish as completed or incomplete.
+3. Reopening Workspace retains artifacts; HTML preview/source view and copy/save/remove actions work.
+4. Existing SAF import/export, model import, voice/wake-word, calling, alarms, and other core behavior remain intact.
+5. Validate 4096-token context memory/latency and artifact generation; verify the new two-player RPS fallback when the local model returns a static mockup.
+6. After PR #17 CI succeeds, test manual update consent, interval persistence, auto-download preference, and voice pitch on-device.
+7. Do not publish a tag/release until the user explicitly approves and the regression tests are satisfactory.
 
 ## 2026-10-11 — Updater/release baseline confirmed
 
@@ -89,7 +83,7 @@ Changes included in the PR:
 - The release workflow `.github/workflows/release.yml` on `fix/generation-timer-alarm-export` is correctly indented and triggers on tags matching `v*.*.*`. Do not re-edit it for the already-fixed YAML indentation issue.
 - A prior failed workflow run (#6) used an older commit with the indentation issue; the working pipeline was subsequently verified by a successful build (run #670) and installation.
 - Android signing secrets are configured in GitHub Actions. Never request or expose their values.
-- Current goal: fix and verify Canvas on a separate branch, then publish a new version to exercise the updater from installed v0.3.0.
+- Historical goal was to fix Canvas and exercise the updater from installed v0.3.0. Current work is tracked by PR #17 on `feat/update-controls-voice-artifact-guards`; the PR remains a draft and no release/tag has been created.
 
 ## Existing project architecture and completed capabilities
 
