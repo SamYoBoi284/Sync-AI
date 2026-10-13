@@ -158,3 +158,11 @@ Implemented tool routing for device-known requests before model generation, incl
 7. Do not ask for GitHub signing-secret values; they are already configured.
 8. Prioritize real build logs and on-device evidence over assumptions.
 
+
+
+## 2026-10-13 — PR #19 Vulkan build follow-up
+
+- GitHub Actions run #732 (ID `38336103642`) passed CMake configuration and found the Vulkan-Hpp C++ headers, but native compilation then failed because `ggml-vulkan.cpp` could not find `spirv/unified1/spirv.hpp`.
+- Root cause: the CI-installed SPIRV-Headers package makes the CMake package discoverable, but its include path was not explicitly added to the Android `ggml-vulkan` target.
+- Follow-up fix commit `390cf4673b4eee04020b96201f71a237d182dd76` fetches the pinned Khronos SPIRV-Headers tag `vulkan-sdk-1.3.290.0` through CMake FetchContent and adds its `include` directory alongside Vulkan-Headers, scoped to `ggml-vulkan`.
+- CPU inference remains unchanged and Vulkan remains experimental/opt-in. Await the next CI result; do not claim the APK builds until Actions passes, and do not merge or release without Sam's approval.
