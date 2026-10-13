@@ -35,6 +35,10 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
     GIT_TAG 4a89937
     GIT_SHALLOW TRUE
+    # Android's NDK Vulkan loader does not expose every Vulkan 1.1 function
+    # as a link-time symbol at the app's minimum API level. Route the one
+    # raw Vulkan-Hpp call through its initialized dynamic dispatcher.
+    PATCH_COMMAND git apply "${CMAKE_CURRENT_SOURCE_DIR}/patches/llama-vulkan-android-dispatch.patch"
 )
 FetchContent_MakeAvailable(llama)
 
