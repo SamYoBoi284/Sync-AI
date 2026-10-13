@@ -712,7 +712,7 @@ public final class MainActivity extends Activity {
         setBusy(true);
         showProgress(true);
         modelText.setText("LOADING • " + model.name);
-        statusText.setText("GGUF • INITIALIZING LOCAL CPU RUNTIME…");
+        statusText.setText("GGUF • INITIALIZING CPU / GPU BACKENDS…");
         SyncEventLogger.record(this, "ModelManager", "MODEL_LOAD_START", "INFO",
                 "model=" + model.name + " id=" + model.id);
 
@@ -2080,6 +2080,10 @@ public final class MainActivity extends Activity {
         models.setOnClickListener(v -> { closeSettings.run(); showModelsDialog(); });
         content.addView(models);
 
+        Button acceleration = sectionButton("INFERENCE ACCELERATION", "CPU only or experimental CPU + Vulkan GPU layers");
+        acceleration.setOnClickListener(v -> { closeSettings.run(); showInferenceAcceleration(); });
+        content.addView(acceleration);
+
         Button health = sectionButton("PERFORMANCE & HEALTH", "Loaded model, memory, listener status");
         health.setOnClickListener(v -> { closeSettings.run(); showPerformanceHealth(); });
         content.addView(health);
@@ -2356,9 +2360,48 @@ public final class MainActivity extends Activity {
                 +"System memory available: "+(info.availMem/(1024L*1024L))+" MB\n"
                 +"Low-memory state: "+info.lowMemory+"\n"
                 +"Wake preference: "+runtime.preferences().isWakeWordEnabled()+"\n"
-                +"Model size: "+(model==null?"n/a":model.sizeLabel());
+                +"Model size: "+(model==null?"n/a":model.sizeLabel())+"\n"
+                +"Requested GPU layers: "+runtime.preferences().getGpuLayers()+" (0 = CPU only)";
         new SyncDialog.Builder(this,accent).setTitle("PERFORMANCE & HEALTH").setMessage(details)
                 .setPositiveButton("COPY",(d,w)->copyDiagnostics(details)).setNegativeButton("CLOSE",null).show();
+    }
+
+    private void showInferenceAcceleration() {
+        int currentLayers = runtime.preferences().getGpuLayers();
+        int selected = currentLayers == 2 ? 1 : currentLayers == 4 ? 2 : 0;
+        String[] modes = {
+                "CPU only • 0 GPU layers (stable default)",
+                "CPU + Vulkan • 2 GPU layers (experimental)",
+                "CPU + Vulkan • 4 GPU layers (experimental)"
+        };
+        String note = "Vulkan acceleration requires a working Vulkan backend and device driver. "
+                + "On the Galaxy A16 with 4 GB RAM, start with 2 layers; more offload can increase "
+                + "memory pressure or run slower. If GPU model loading fails, Sync retries CPU-only. "
+                + "The setting is opt-in and the existing CPU path remains available.";
+        new SyncDialog.Builder(this, accent)
+                .setTitle("INFERENCE ACCELERATION")
+                .setMessage(note)
+                .setSingleChoiceItems(modes, selected, (dialog, which) -> {
+                    int layers = which == 1 ? 2 : which == 2 ? 4 : 0;
+                    runtime.preferences().setGpuLayers(layers);
+                    SyncEventLogger.record(this, "GgufModelBackend",
+                            "INFERENCE_ACCELERATION_CHANGED", "INFO",
+                            "requestedGpuLayers=" + layers);
+                    dialog.dismiss();
+                    ModelInfo loaded = runtime.modelManager().getLoadedModel();
+                    if (loaded != null) {
+                        runtime.backend().unload();
+                        runtime.modelManager().clearLoaded();
+                        showToast(layers == 0 ? "CPU-only mode saved. Reloading model…"
+                                : "GPU offload preference saved. Reloading model…");
+                        loadModel(loaded);
+                    } else {
+                        showToast(layers == 0 ? "CPU-only mode saved."
+                                : "GPU offload preference saved for the next model load.");
+                    }
+                })
+                .setNegativeButton("CLOSE", null)
+                .show();
     }
 
     private void showCommandTimeline() {
@@ -2583,7 +2626,7 @@ public final class MainActivity extends Activity {
         String info = "Sync AI " + BuildConfig.VERSION_NAME + "\n\n" +
                 "Runtime: llama.cpp\n" +
                 "Model format: GGUF\n" +
-                "Execution: local CPU\n" +
+                "Execution: local CPU; optional experimental Vulkan layer offload (" + runtime.preferences().getGpuLayers() + " layers requested)\n" +
                 "ABI: arm64-v8a\n" +
                 "Network required: no\n\n" +
                 runtime.backend().diagnostics();
