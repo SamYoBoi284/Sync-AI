@@ -264,8 +264,10 @@ public final class SideDashboard extends FrameLayout {
     private void section(LinearLayout target, String title) {
         TextView t = label(title, 9, palette.muted, true);
         t.setLetterSpacing(0.16f);
-        t.setPadding(0, dp(16), 0, dp(6));
-        target.addView(t, new LinearLayout.LayoutParams(-1, dp(28)));
+        // Keep the heading's text line inside its measured height. A fixed 28dp
+        // box combined with 22dp of vertical padding clipped the glyphs on phones.
+        t.setPadding(0, dp(12), 0, dp(4));
+        target.addView(t, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private int iconFor(String glyph) {
