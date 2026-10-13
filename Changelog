@@ -190,3 +190,11 @@ Implemented tool routing for device-known requests before model generation, incl
 - Likely cause: CMake's `FetchContent` `PATCH_COMMAND` is skipped when Gradle/CMake reuses an already-populated llama.cpp source directory. This is a diagnosis based on the unchanged linker references; it still needs confirmation from the next build.
 - Commits `4de7490` and `fd86aad` make the patch script idempotent and explicitly apply/verify it after `FetchContent_MakeAvailable(llama)` on every CMake configure, including cached-source builds.
 - Await CI for the new head `fd86aad110421ac5b1fd55d41cac398bfc87bebb`. No APK/device verification yet. CPU-only remains default; PR #19 stays draft; no merge or release without Sam's approval.
+
+
+## 2026-10-13 — PR #19 follow-up: force rebuild of patched Vulkan source
+
+- Actions run #751 (ID `38340037015`, head `7e6b0ad4`) failed again with the same `undefined symbol: vkGetPhysicalDeviceFeatures2` at `ggml-vulkan.cpp:7636` and `:20098` while linking `libggml-vulkan.so`.
+- The latest build still emitted references from the original raw calls. The current working theory is that a cached native object was not rebuilt after the source patch; this is not yet proven.
+- Commit `13552c6f8a757d1d423a98e4b19b74bbcd45844e` updates the patch script to verify no raw calls remain and touch `ggml-vulkan.cpp` after patching, forcing Ninja to recompile it even when the source is already patched.
+- Next checkpoint: inspect the new CI log for the script's verification message and whether `ggml-vulkan.cpp.o` is rebuilt. If the symbol remains after a confirmed rebuild, revise the dispatcher implementation instead of repeating this cache hypothesis. APK and device tests remain pending; CPU-only remains default; PR #19 stays draft.
