@@ -27,6 +27,7 @@ add_library(syncai_native SHARED syncai_native.cpp)
 
 target_include_directories(syncai_native PRIVATE
     ${llama_SOURCE_DIR}/include
+    ${llama_SOURCE_DIR}/ggml/include
 )
 
 target_link_libraries(syncai_native
