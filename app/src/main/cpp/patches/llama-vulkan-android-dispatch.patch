@@ -1,0 +1,9 @@
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@
+-    vkGetPhysicalDeviceFeatures2(device->physical_device, &device_features2);
++    // Android's Vulkan loader may not export Vulkan 1.1 core functions as
++    // link-time symbols for the app's minimum API level. Resolve this through
++    // Vulkan-Hpp's instance-initialized dynamic dispatcher instead.
++    VULKAN_HPP_DEFAULT_DISPATCHER.vkGetPhysicalDeviceFeatures2(device->physical_device, &device_features2);
