@@ -3,6 +3,20 @@ project(syncai_native)
 
 include(FetchContent)
 
+# Android NDK ships the Vulkan C headers, but not the Vulkan-Hpp C++ wrapper
+# required by llama.cpp's Vulkan backend. Fetch the official Khronos headers
+# and add them only to the Vulkan backend's include path.
+FetchContent_Declare(
+    vulkan_headers
+    GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+    GIT_TAG v1.3.290
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(vulkan_headers)
+if(NOT vulkan_headers_POPULATED)
+    FetchContent_Populate(vulkan_headers)
+endif()
+
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -23,6 +37,12 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(llama)
+
+if(TARGET ggml-vulkan)
+    target_include_directories(ggml-vulkan PRIVATE
+        "${vulkan_headers_SOURCE_DIR}/include"
+    )
+endif()
 
 add_library(syncai_native SHARED syncai_native.cpp)
 
