@@ -37,12 +37,7 @@ public final class FileLibraryActivity extends Activity {
     public static final String EXTRA_PREFILL_PROMPT = "com.sam.syncai.extra.FILE_LIBRARY_PROMPT";
     private static final int REQ_IMPORT = 7101;
     private static final int REQ_EXPORT = 7102;
-    private static final int BG = Color.rgb(7, 8, 14);
-    private static final int SURFACE = Color.rgb(17, 19, 30);
-    private static final int SURFACE_2 = Color.rgb(25, 28, 43);
-    private static final int TEXT = Color.rgb(239, 240, 250);
-    private static final int MUTED = Color.rgb(151, 156, 180);
-    private static final int ACCENT = Color.rgb(154, 96, 255);
+    private int BG, SURFACE, SURFACE_2, TEXT, MUTED, ACCENT;
 
     private FileLibraryStore store;
     private LinearLayout root;
@@ -55,9 +50,11 @@ public final class FileLibraryActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         store = new FileLibraryStore(getApplicationContext());
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
+        final AppTheme palette = AppTheme.from(this);
+        BG = palette.background; SURFACE = palette.surface; SURFACE_2 = palette.surface2;
+        TEXT = palette.text; MUTED = palette.muted; ACCENT = palette.primary;
         buildShell();
+        AppTheme.applySystemBars(this, palette);
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
             androidx.core.graphics.Insets safe = windowInsets.getInsets(
                     androidx.core.view.WindowInsetsCompat.Type.systemBars()
@@ -368,8 +365,8 @@ public final class FileLibraryActivity extends Activity {
         card.setPadding(dp(14), dp(13), dp(14), dp(13));
         GradientDrawable background = new GradientDrawable();
         background.setColor(SURFACE);
-        background.setCornerRadius(dp(15));
-        background.setStroke(dp(1), 0xFF33364A);
+        background.setCornerRadius(dp(16));
+        background.setStroke(dp(1), AppTheme.mix(TEXT, SURFACE, 0.85f));
         card.setBackground(background);
         return card;
     }
@@ -379,11 +376,11 @@ public final class FileLibraryActivity extends Activity {
         button.setText(label);
         button.setTextSize(11);
         button.setAllCaps(false);
-        button.setTextColor(TEXT);
+        button.setTextColor(prominent ? AppTheme.onAccent(ACCENT) : TEXT);
         button.setMinHeight(dp(40));
         button.setPadding(dp(9), 0, dp(9), 0);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(prominent ? 0xFF6744AC : SURFACE_2);
+        bg.setColor(prominent ? ACCENT : SURFACE_2);
         bg.setCornerRadius(dp(12));
         button.setBackground(bg);
         button.setOnClickListener(v -> { });

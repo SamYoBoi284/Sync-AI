@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same base as before (Material, no action bar) but with Sync's own dark window
+         background so the launch frame is not the stock gray. Per-theme and light-mode
+         backgrounds are applied in code by AppTheme.applySystemBars(). -->
+    <style name="Theme.SyncAI" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/sync_window_background</item>
+    </style>
+</resources>

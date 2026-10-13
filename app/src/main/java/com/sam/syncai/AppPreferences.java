@@ -11,6 +11,7 @@ public final class AppPreferences {
     private static final String KEY_ACTIVE_CHAT = "active_chat";
     private static final String KEY_WAKE_WORD = "wake_word_enabled";
     private static final String KEY_THEME = "appearance_theme";
+    private static final String KEY_THEME_MODE = "appearance_mode";
     private static final String KEY_MOTION = "motion_intensity";
     private static final String KEY_PERSONALITY = "assistant_personality";
     private static final String KEY_SPEECH_RATE = "speech_rate";
@@ -29,6 +30,9 @@ public final class AppPreferences {
     public static final String[] ACCENT_NAMES = {
             "Purple", "Blue", "Cyan", "Green", "Lime", "Orange", "Red", "Pink"
     };
+
+    public static final String[] THEME_MODE_IDS = {"system", "dark", "light"};
+    public static final String[] THEME_MODE_NAMES = {"System", "Dark", "Light"};
 
     public static final String[] MOTION_INTENSITIES = {"Minimal", "Balanced", "Immersive"};
     public static final String[] PERSONALITY_IDS = {
@@ -84,6 +88,19 @@ public final class AppPreferences {
 
     public void setWakeWordEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_WAKE_WORD, enabled).apply();
+    }
+
+    /** "system", "dark" or "light". Defaults to dark so existing installs look unchanged. */
+    public String getThemeMode() {
+        String value = prefs.getString(KEY_THEME_MODE, "dark");
+        for (String id : THEME_MODE_IDS) if (id.equals(value)) return value;
+        return "dark";
+    }
+
+    public void setThemeMode(String mode) {
+        String safe = "dark";
+        for (String id : THEME_MODE_IDS) if (id.equals(mode)) safe = mode;
+        prefs.edit().putString(KEY_THEME_MODE, safe).apply();
     }
 
     public String getTheme() {

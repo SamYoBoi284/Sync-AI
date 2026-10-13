@@ -545,10 +545,10 @@ public final class SyncVoiceSession extends VoiceInteractionSession {
     private Button smallButton(String value) {
         Button b = new Button(getContext());
         b.setText(value);
-        b.setTextColor(Color.WHITE);
+        b.setTextColor(palette.text);
         b.setTextSize(22);
         b.setAllCaps(false);
-        b.setBackground(round(0x40262A3A, 40));
+        b.setBackground(round(AppTheme.mix(palette.text, palette.surface, 0.9f), 40));
         Motion.pressable(b);
         return b;
     }
