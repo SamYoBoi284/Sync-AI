@@ -1,10 +1,9 @@
-# Sync AI — Context Tracker
-
 ### CI failure and follow-up — 2026-10-13
-- Run `38334541554` initially failed at `configureCMakeRelease[arm64-v8a]`: llama.cpp's `ggml-vulkan/CMakeLists.txt` could not find `SPIRV-HeadersConfig.cmake`.
-- The next run, `38334950000` (job `115092818239`), confirmed the SPIR-V package was built and installed to `/usr/local/share/cmake/SPIRV-Headers`, but Android's CMake invocation still did not search that host path. So the first fix was incomplete; the failure is still the same missing package config.
-- Follow-up commits `f65682ab190e6a2ae046a092db4e6018b8f25aa6` and `a80fa5ef6e2761b9f26b66100a2a8d281f220a86` now pass the explicit `SPIRV-Headers_DIR` from the CI environment into Gradle's Android CMake arguments. Local builds do not get a hard-coded CI path.
-- The next CI run must verify this path fix. Do not merge or release until the APK build succeeds and physical-device checks are completed.
+- Run `38334541554` initially failed at CMake configure because llama.cpp could not find `SPIRV-HeadersConfig.cmake`.
+- Run `38334950000` still failed during configure because Android's CMake invocation did not discover the installed SPIR-V package. Follow-up commits `f65682a` and `a80fa5e` passed the package path explicitly.
+- Run `38335294670` got past configure and generated Vulkan shaders, then failed compiling `ggml-vulkan.cpp`: `fatal error: 'vulkan/vulkan.hpp' file not found`. The Android NDK's Vulkan headers do not include the Vulkan-Hpp C++ wrapper needed by this llama.cpp backend.
+- Commit `a323bbd5ebb34c29221c577b9fdaa686851cfc88` adds the official KhronosGroup/Vulkan-Headers v1.3.290 source to native CMake and adds its include directory to `ggml-vulkan` only. The next CI run must verify this dependency fix; further compiler errors may still surface.
+- Keep the Vulkan path experimental and CPU-only as default. Do not merge or release until CI succeeds and the Galaxy A16 device checks are complete.
 
 ## 2026-10-13 — Experimental CPU + Vulkan inference (new work)
 
