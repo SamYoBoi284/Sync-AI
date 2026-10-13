@@ -182,3 +182,11 @@ Implemented tool routing for device-known requests before model generation, incl
 - Root cause: the prior script changed only the first matching call; a second direct call remained and was still emitted as a link-time reference.
 - Updated `patch_llama_vulkan_android.py` to replace every matching raw `vkGetPhysicalDeviceFeatures2(device->physical_device, &device_features2);` call, and to fail safely if none match. Fix commit: `53b65b7c33bb3dacfcad8deb0fe388595579a7dd`.
 - Await CI for the updated head. APK build and on-device Vulkan behavior remain unverified. CPU-only default and fallback are preserved; PR #19 remains draft; do not merge/release without Sam's approval.
+
+
+## 2026-10-13 — PR #19 follow-up: ensure Vulkan patch runs with cached native sources
+
+- Actions run #747 (ID `38338813787`, head `ddd4a44d`) failed again at the `libggml-vulkan.so` link step with `undefined symbol: vkGetPhysicalDeviceFeatures2` at both `ggml-vulkan.cpp:7636` and `:20098`. The output showed the same raw-symbol link failure, so the previous all-call replacement was not reflected in the compiled source.
+- Likely cause: CMake's `FetchContent` `PATCH_COMMAND` is skipped when Gradle/CMake reuses an already-populated llama.cpp source directory. This is a diagnosis based on the unchanged linker references; it still needs confirmation from the next build.
+- Commits `4de7490` and `fd86aad` make the patch script idempotent and explicitly apply/verify it after `FetchContent_MakeAvailable(llama)` on every CMake configure, including cached-source builds.
+- Await CI for the new head `fd86aad110421ac5b1fd55d41cac398bfc87bebb`. No APK/device verification yet. CPU-only remains default; PR #19 stays draft; no merge or release without Sam's approval.
