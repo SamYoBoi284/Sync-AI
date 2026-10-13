@@ -316,3 +316,12 @@ The older core branch remains:
 - Keep wake-word/background microphone behavior out of the project.
 - Keep model files out of GitHub.
 - Treat source code + CI + physical-device tests as the authority; tracker text alone never proves runtime behavior.
+
+
+## 2026-10-13 — PR #19 Vulkan build follow-up
+
+- Latest failed Actions run before this fix: #732, run ID `38336103642`, commit `a323bbd5ebb34c29221c577b9fdaa686851cfc88`.
+- Build progressed further: CMake configuration succeeded and the compiler found `vulkan/vulkan.hpp`; compilation then failed at `ggml-vulkan.cpp:48` with `fatal error: 'spirv/unified1/spirv.hpp' file not found`.
+- Root cause: the host CI SPIRV-Headers package config does not ensure that its include directory reaches the Android cross-compiled `ggml-vulkan` target.
+- Fix pushed to PR branch in commit `390cf4673b4eee04020b96201f71a237d182dd76`: fetch Khronos SPIRV-Headers at `vulkan-sdk-1.3.290.0` and add `${spirv_headers_SOURCE_DIR}/include` to `ggml-vulkan` only.
+- Next step: inspect CI for commit `390cf4673b4eee04020b96201f71a237d182dd76`. If it fails again, inspect the first actual compiler/CMake error rather than treating the final Gradle stack trace as the cause. No merge/release; device validation is still pending.
