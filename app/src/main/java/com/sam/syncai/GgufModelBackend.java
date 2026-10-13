@@ -6,6 +6,11 @@ import java.util.concurrent.Executors;
 
 public final class GgufModelBackend implements LocalModelBackend {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final AppPreferences preferences;
+
+    public GgufModelBackend(AppPreferences preferences) {
+        this.preferences = preferences;
+    }
     private volatile ModelInfo loaded;
     private volatile String lastGenerationDiagnostics = "";
     private volatile String runtimeDiagnostics = "No model loaded.";
@@ -20,7 +25,8 @@ public final class GgufModelBackend implements LocalModelBackend {
                             "The model you selected is " + model.format.toUpperCase() + "."
                     );
                 }
-                int result = GgufNative.nativeLoad(model.path);
+                int gpuLayers = preferences.getGpuLayers();
+                int result = GgufNative.nativeLoad(model.path, gpuLayers);
                 if (result != 0) {
                     String details = GgufNative.nativeDiagnostics();
                     throw new IllegalStateException(
