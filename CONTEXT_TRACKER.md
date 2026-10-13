@@ -325,3 +325,12 @@ The older core branch remains:
 - Root cause: the host CI SPIRV-Headers package config does not ensure that its include directory reaches the Android cross-compiled `ggml-vulkan` target.
 - Fix pushed to PR branch in commit `390cf4673b4eee04020b96201f71a237d182dd76`: fetch Khronos SPIRV-Headers at `vulkan-sdk-1.3.290.0` and add `${spirv_headers_SOURCE_DIR}/include` to `ggml-vulkan` only.
 - Next step: inspect CI for commit `390cf4673b4eee04020b96201f71a237d182dd76`. If it fails again, inspect the first actual compiler/CMake error rather than treating the final Gradle stack trace as the cause. No merge/release; device validation is still pending.
+
+
+## 2026-10-13 — PR #19 Android Vulkan link fix
+
+- Latest failed Actions run: #737, ID `38336543038`, at commit `583863baa48c2ac6d85aff88b81c356f0cc89f31`.
+- Header issues are resolved in that run: the Vulkan backend compiled through the final link step. The actual link failure is `ld.lld: error: undefined symbol: vkGetPhysicalDeviceFeatures2`, referenced from `ggml-vulkan.cpp`.
+- This is an Android Vulkan loader/linkage issue: Vulkan 1.1 entry points should be resolved through Vulkan-Hpp's initialized dynamic dispatcher instead of directly linked from the NDK's `libvulkan.so`.
+- Added patch `app/src/main/cpp/patches/llama-vulkan-android-dispatch.patch` and set the llama.cpp FetchContent `PATCH_COMMAND` in `app/src/main/cpp/CMakeLists.txt` to apply it to the pinned source.
+- Fix commit: `c021d4bf268daa2fcb2f5d039e8bf0f0887515bd`. Next: inspect its Actions run and validate the patch actually applies. If another failure occurs, identify the first real error. No merge/release; device testing remains pending.
