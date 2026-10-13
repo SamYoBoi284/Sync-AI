@@ -694,11 +694,12 @@ public final class VoiceModeActivity extends Activity {
                 + isFinishing() + " changingConfigurations=" + isChangingConfigurations()
                 + " taskId=" + getTaskId());
         destroyed = true;
+        // Release SpeechRecognizer and TTS before the wake service reclaims the microphone.
+        cleanup();
         if (SyncAssistantService.isRunning()) {
             sendBroadcast(new Intent(SyncAssistantService.ACTION_VOICE_MODE_FINISHED)
                     .setPackage(getPackageName()));
         }
-        cleanup();
         super.onDestroy();
     }
 

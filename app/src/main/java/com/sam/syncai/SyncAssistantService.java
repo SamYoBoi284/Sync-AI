@@ -104,9 +104,18 @@ public final class SyncAssistantService extends Service implements RecognitionLi
                 voiceModeActive = false;
                 waitingForVoiceStart = false;
                 main.removeCallbacks(launchTimeout);
+                // Release any stale Vosk pipeline before the overlay hands back the mic.
+                stopSpeechPipeline();
                 SyncEventLogger.record(SyncAssistantService.this, "SyncAssistantService",
-                        "VOICE_MODE_FINISHED", "INFO", "resuming wake listener");
-                main.postDelayed(SyncAssistantService.this::startWakeListening, 650L);
+                        "VOICE_MODE_FINISHED", "INFO",
+                        "voice overlay released; clearing stale wake pipeline before resume");
+                main.postDelayed(() -> {
+                    if (running && !voiceModeActive && !voiceModeUiActive
+                            && getPreferences().isWakeWordEnabled()) {
+                        stopSpeechPipeline();
+                        startWakeListening();
+                    }
+                }, 1100L);
             }
         }
     };
