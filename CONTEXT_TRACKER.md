@@ -334,3 +334,11 @@ The older core branch remains:
 - This is an Android Vulkan loader/linkage issue: Vulkan 1.1 entry points should be resolved through Vulkan-Hpp's initialized dynamic dispatcher instead of directly linked from the NDK's `libvulkan.so`.
 - Added patch `app/src/main/cpp/patches/llama-vulkan-android-dispatch.patch` and set the llama.cpp FetchContent `PATCH_COMMAND` in `app/src/main/cpp/CMakeLists.txt` to apply it to the pinned source.
 - Fix commit: `c021d4bf268daa2fcb2f5d039e8bf0f0887515bd`. Next: inspect its Actions run and validate the patch actually applies. If another failure occurs, identify the first real error. No merge/release; device testing remains pending.
+
+
+## 2026-10-13 — PR #19 follow-up: patch all Vulkan 1.1 calls
+
+- Actions run #744 (ID `38338028422`) successfully applied the source-matching patch and compiled the Vulkan backend, but linking still failed with `undefined symbol: vkGetPhysicalDeviceFeatures2` at both lines 7636 and 20098 in the pinned `ggml-vulkan.cpp`.
+- Root cause: the prior script changed only the first matching call; a second direct call remained and was still emitted as a link-time reference.
+- Updated `patch_llama_vulkan_android.py` to replace every matching raw `vkGetPhysicalDeviceFeatures2(device->physical_device, &device_features2);` call, and to fail safely if none match. Fix commit: `53b65b7c33bb3dacfcad8deb0fe388595579a7dd`.
+- Await CI for the updated head. APK build and on-device Vulkan behavior remain unverified. CPU-only default and fallback are preserved; PR #19 remains draft; do not merge/release without Sam's approval.
