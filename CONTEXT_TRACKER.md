@@ -1,8 +1,22 @@
 # Sync AI — Context Tracker
 
+## 2026-10-13 — Experimental CPU + Vulkan inference (new work)
+
+Branch: `feat/cpu-vulkan-hybrid-inference` (build and device verification pending)
+
+- Read the full Library log `sync-ai-full-logs-gemma.txt` before changing inference. Gemma 3 4B Q4_K_M latest request: 262,231 ms total; 123,534 ms prompt evaluation; 137,763 ms generation; 26 generated tokens; 0.19 tokens/sec. Device snapshot: 823 MB available RAM out of 3,653 MB before the request.
+- Current native code hardcoded `n_gpu_layers=0`; this branch enables the llama.cpp Vulkan backend and adds an opt-in persisted setting: 0 layers (CPU-only default), 2 GPU layers, or 4 GPU layers.
+- Native loader checks for a registered Vulkan backend/device. If no device is detected, it keeps CPU-only inference. If Vulkan model loading fails, it retries once on CPU. Diagnostics include requested/active GPU layers, device summary, and fallback status.
+- Context cap is memory-aware: 2,048 tokens below 5 GiB reported physical RAM; 4,096 tokens at or above that threshold. This should reduce memory pressure on the 4 GB Galaxy A16; performance benefit must be measured.
+- CI now installs `glslc` and `spirv-headers` for the Vulkan backend build. The first successful native build and a real-device Vulkan enumeration are required before calling GPU acceleration supported.
+- Keep CPU-only as the default, preserve all existing flows, and do not merge/release before CI review and phone testing.
+
+---
+
+
 > Living handoff/context document for the Sync AI project.
 > Updated: 2026-10-13
-> Current feature branch: `feat/file-library-context-generation-1024` (build and phone verification pending)
+> Current feature branch: `feat/cpu-vulkan-hybrid-inference` (build and phone verification pending)
 > Stable development base: `fix/generation-timer-alarm-export`
 > This tracker records implemented work and known verification status. Source code / CI remains authoritative.
 
@@ -10,7 +24,7 @@
 
 Branch: `feat/file-library-context-generation-1024`
 
-- PR #18: [Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18) (draft; build and phone verification pending).
+- PR #18: [Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18) (merged into `fix/generation-timer-alarm-export` on 2026-10-12).
 - Drawer → Settings → File Library now uses its own activity/import flow; it must not reuse the Memory import result code. The existing Personalization → Import Memory File action remains separate.
 - `FileLibraryStore` keeps user-imported file copies and metadata inside app-private storage, detects exact-content duplicates by SHA-256, permits import/export/delete, and previews supported text files.
 - `MainActivity.buildModelContext` attaches only specifically mentioned (or clearly referenced in an immediate follow-up) library files, up to two items and a bounded text excerpt. It treats file contents as user data, not instructions, and tells the model not to claim a truncated excerpt is a full file.
