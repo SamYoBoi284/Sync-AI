@@ -38,9 +38,24 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(llama)
 
+# llama.cpp's Vulkan backend also includes the SPIRV-Headers C++ declarations.
+# The host package installed by CI satisfies find_package(), but its include
+# directory is not propagated to ggml-vulkan during the Android cross-build.
+FetchContent_Declare(
+    spirv_headers
+    GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Headers.git
+    GIT_TAG vulkan-sdk-1.3.290.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(spirv_headers)
+if(NOT spirv_headers_POPULATED)
+    FetchContent_Populate(spirv_headers)
+endif()
+
 if(TARGET ggml-vulkan)
     target_include_directories(ggml-vulkan PRIVATE
         "${vulkan_headers_SOURCE_DIR}/include"
+        "${spirv_headers_SOURCE_DIR}/include"
     )
 endif()
 
