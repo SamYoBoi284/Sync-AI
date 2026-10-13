@@ -2,7 +2,7 @@ name: Build Sync//AI APK
 
 on:
   push:
-    branches: [ "main", "native-gguf-chat-ui" ]
+    branches: [ "main", "native-gguf-chat-ui", "feature/**" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
           gradle-version: "8.10"
 
       - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
