@@ -76,6 +76,7 @@ public final class MainActivity extends Activity {
     private int SURFACE_2;
     private int TEXT;
     private int MUTED;
+    private String appliedMode = "dark";
     private int ERROR = Color.rgb(255, 130, 145);
     private AppTheme palette;
     private String appliedThemeId;
@@ -110,6 +111,7 @@ public final class MainActivity extends Activity {
     private boolean modelBusy;
     private LinearLayout contentRootView;
     private int statusInset;
+    private static final int EDGE_ZONE_DP = 64;
     private boolean edgeTracking;
     private boolean edgeDragging;
     private float edgeStartX;
@@ -132,7 +134,9 @@ public final class MainActivity extends Activity {
         TEXT = palette.text;
         MUTED = palette.muted;
         accent = palette.primary;
+        if (palette.isLight) ERROR = Color.rgb(200, 40, 70);
         appliedThemeId = runtime.preferences().getTheme();
+        appliedMode = runtime.preferences().getThemeMode();
         appliedAccentIndex = runtime.preferences().getAccent();
         appliedMotionIntensity = runtime.preferences().getMotionIntensity();
         activeChat = getActiveChat();
@@ -155,6 +159,7 @@ public final class MainActivity extends Activity {
                 "taskId=" + getTaskId());
         if (runtime != null) {
             if (!appliedThemeId.equals(runtime.preferences().getTheme())
+                    || !appliedMode.equals(runtime.preferences().getThemeMode())
                     || appliedAccentIndex != runtime.preferences().getAccent()
                     || !appliedMotionIntensity.equals(runtime.preferences().getMotionIntensity())) {
                 recreate();
@@ -224,7 +229,8 @@ public final class MainActivity extends Activity {
         coreLp.rightMargin = dp(8);
         header.addView(coreOrb, coreLp);
 
-        TextView title = text("SYNC AI", 23, TEXT, true);
+        TextView title = text("SYNC AI", 22, TEXT, true);
+        title.setLetterSpacing(0.1f);
         title.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         contentRoot.addView(header);
@@ -269,12 +275,16 @@ public final class MainActivity extends Activity {
         LinearLayout composerCard = card();
         this.composerCard = composerCard;
         composerCard.setPadding(dp(7), dp(7), dp(7), dp(7));
+        GradientDrawable composerSurface = round(SURFACE, dp(35));
+        composerSurface.setStroke(dp(1), palette.border);
+        composerCard.setBackground(composerSurface);
+        composerCard.setElevation(palette.isLight ? dp(3) : 0);
         LinearLayout composer = new LinearLayout(this);
         composer.setGravity(Gravity.BOTTOM);
 
         input = new EditText(this);
         input.setHint("Message Sync AI…");
-        input.setHintTextColor(Color.rgb(92, 100, 123));
+        input.setHintTextColor(AppTheme.mix(MUTED, SURFACE_2, 0.3f));
         input.setTextColor(TEXT);
         input.setTextSize(15);
         input.setGravity(Gravity.TOP | Gravity.START);
@@ -290,11 +300,12 @@ public final class MainActivity extends Activity {
             }
             return false;
         });
-        input.setBackground(round(SURFACE_2, dp(15)));
+        input.setBackground(round(SURFACE_2, dp(28)));
         composer.addView(input, new LinearLayout.LayoutParams(0, dp(56), 1));
 
         Button composerVoice = actionButton("VOICE");
         composerVoice.setOnClickListener(v -> launchVoiceMode());
+        composerVoice.setBackground(round(SURFACE_2, dp(28)));
         LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(dp(68), dp(56));
         voiceLp.leftMargin = dp(7);
         composer.addView(composerVoice, voiceLp);
@@ -357,6 +368,7 @@ public final class MainActivity extends Activity {
             return insets;
         });
         rootFrame.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        AppTheme.applySystemBars(this, palette);
         applyAccent();
         installEdgeGestureExclusion();
         playStartupMotion(contentRoot);
@@ -383,8 +395,8 @@ public final class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT < 29) return;
         rootFrame.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int h = b - t;
-            int top = (int) (h * 0.30f);
-            Rect edge = new Rect(0, top, dp(40), top + dp(200));
+            int top = (int) (h * 0.45f);
+            Rect edge = new Rect(0, top, dp(48), top + dp(200));
             rootFrame.setSystemGestureExclusionRects(java.util.Collections.singletonList(edge));
         });
     }
@@ -398,7 +410,8 @@ public final class MainActivity extends Activity {
         int slop = ViewConfiguration.get(this).getScaledTouchSlop();
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                edgeTracking = !sideDashboard.isOpen() && ev.getRawX() <= dp(40);
+                edgeTracking = !sideDashboard.isOpen() && ev.getRawX() <= dp(EDGE_ZONE_DP)
+                        && !(input != null && input.hasFocus() && input.hasSelection());
                 edgeDragging = false;
                 if (edgeTracking) {
                     edgeStartX = ev.getRawX(); edgeStartY = ev.getRawY();
@@ -406,6 +419,9 @@ public final class MainActivity extends Activity {
                     edgeVelocity = VelocityTracker.obtain(); edgeVelocity.addMovement(ev);
                 }
                 return false;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                if (edgeTracking && !edgeDragging) edgeTracking = false;
+                return edgeDragging;
             case MotionEvent.ACTION_MOVE: {
                 if (!edgeTracking) return false;
                 edgeVelocity.addMovement(ev);
@@ -417,6 +433,8 @@ public final class MainActivity extends Activity {
                         MotionEvent cancel = MotionEvent.obtain(ev); cancel.setAction(MotionEvent.ACTION_CANCEL);
                         super.dispatchTouchEvent(cancel); cancel.recycle();
                         hideKeyboard(); sideDashboard.beginDrag();
+                        SyncEventLogger.record(this, "MainActivity", "EDGE_SWIPE_BEGIN", "INFO",
+                                "startX=" + Math.round(edgeStartX) + " dx=" + Math.round(dx));
                     } else if (dy > slop * 2 && dy > dx) { edgeTracking = false; return false; }
                     else return false;
                 }
@@ -425,6 +443,10 @@ public final class MainActivity extends Activity {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
                 boolean wasDragging = edgeDragging;
+                if (edgeTracking && !wasDragging && ev.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                    SyncEventLogger.record(this, "MainActivity", "EDGE_SWIPE_CANCELLED", "INFO",
+                            "startX=" + Math.round(edgeStartX) + " (system or parent took the gesture)");
+                }
                 if (edgeTracking && edgeVelocity != null) {
                     edgeVelocity.addMovement(ev); edgeVelocity.computeCurrentVelocity(1000);
                     if (wasDragging) sideDashboard.endDrag(edgeVelocity.getXVelocity());
@@ -439,16 +461,16 @@ public final class MainActivity extends Activity {
     private LinearLayout card() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable surface = round(SURFACE, dp(18));
+        GradientDrawable surface = round(SURFACE, dp(16));
         surface.setStroke(dp(1), palette.border);
         layout.setBackground(surface);
-        layout.setElevation(dp(2));
+        layout.setElevation(palette.isLight ? dp(1) : 0);
         return layout;
     }
 
     private Button dashboardButton(String label) {
         Button b = actionButton(label);
-        b.setTextSize(9.5f);
+        b.setTextSize(11f);
         b.setMinHeight(dp(44));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(44));
         lp.topMargin = dp(5);
@@ -460,11 +482,11 @@ public final class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(label);
         b.setTextColor(TEXT);
-        b.setTextSize(10.5f);
+        b.setTextSize(11.5f);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         b.setAllCaps(false);
         b.setPadding(dp(7), 0, dp(7), 0);
-        GradientDrawable buttonSurface = round(palette.button, dp(13));
+        GradientDrawable buttonSurface = round(palette.button, dp(14));
         buttonSurface.setStroke(dp(1), palette.border);
         b.setBackground(buttonSurface);
         Motion.pressable(b);
@@ -489,8 +511,8 @@ public final class MainActivity extends Activity {
 
     private void applyAccent() {
         if (sendButton != null) {
-            sendButton.setBackground(round(accent, dp(13)));
-            sendButton.setTextColor(Color.WHITE);
+            sendButton.setBackground(round(accent, dp(28)));
+            sendButton.setTextColor(AppTheme.onAccent(accent));
         }
         if (importButton != null) importButton.setTextColor(TEXT);
     }
@@ -1391,7 +1413,16 @@ public final class MainActivity extends Activity {
         boolean actionFailed = deterministic && message.diagnostics.contains("\nERROR\n");
         int bubbleColor = user ? palette.userBubble
                 : deterministic ? palette.surface2 : palette.assistantBubble;
-        bubble.setBackground(round(bubbleColor, dp(16)));
+        if (user) {
+            GradientDrawable userShape = round(bubbleColor, dp(20));
+            userShape.setCornerRadii(new float[]{dp(20), dp(20), dp(20), dp(20), dp(6), dp(6), dp(20), dp(20)});
+            bubble.setBackground(userShape);
+        } else if (deterministic) {
+            bubble.setBackground(round(bubbleColor, dp(16)));
+        } else {
+            bubble.setBackground(null);
+            bubble.setPadding(dp(4), dp(6), dp(4), dp(6));
+        }
         if (deterministic) {
             GradientDrawable actionSurface = round(bubbleColor, dp(16));
             actionSurface.setStroke(dp(1), actionFailed ? ERROR : palette.primary);
@@ -1402,10 +1433,11 @@ public final class MainActivity extends Activity {
                         ? (actionFailed ? "SYNC CORE • ACTION NEEDS ATTENTION" : "SYNC CORE • ACTION")
                         : "SYNC AI", 10,
                 user ? palette.secondary : actionFailed ? ERROR : accent, true);
+        label.setLetterSpacing(0.12f);
         bubble.addView(label);
 
         TextView body = text(message.text, 15, TEXT, false);
-        body.setLineSpacing(0, 1.12f);
+        body.setLineSpacing(0, 1.22f);
         bubble.addView(body);
 
         if (message.hasDiagnostics()) {
@@ -2109,6 +2141,35 @@ public final class MainActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
         final SyncDialog[] personalizationDialog = new SyncDialog[1];
+
+        TextView themeHeading = text("THEME", 11, MUTED, true);
+        themeHeading.setLetterSpacing(0.12f);
+        themeHeading.setPadding(0, dp(2), 0, dp(8));
+        content.addView(themeHeading);
+        LinearLayout modeRow = new LinearLayout(this);
+        String currentMode = runtime.preferences().getThemeMode();
+        for (int i = 0; i < AppPreferences.THEME_MODE_IDS.length; i++) {
+            final String modeId = AppPreferences.THEME_MODE_IDS[i];
+            Button modeButton = actionButton(AppPreferences.THEME_MODE_NAMES[i]);
+            modeButton.setTextSize(12);
+            if (modeId.equals(currentMode)) {
+                modeButton.setBackground(round(accent, dp(14)));
+                modeButton.setTextColor(AppTheme.onAccent(accent));
+            }
+            modeButton.setOnClickListener(v -> {
+                if (modeId.equals(runtime.preferences().getThemeMode())) return;
+                runtime.preferences().setThemeMode(modeId);
+                if (personalizationDialog[0] != null) personalizationDialog[0].dismiss();
+                recreate();
+            });
+            LinearLayout.LayoutParams modeLp = new LinearLayout.LayoutParams(0, dp(44), 1);
+            if (i > 0) modeLp.leftMargin = dp(7);
+            modeRow.addView(modeButton, modeLp);
+        }
+        content.addView(modeRow);
+        TextView modeHint = text("System follows your phone's light / dark setting.", 12, MUTED, false);
+        modeHint.setPadding(0, dp(8), 0, dp(14));
+        content.addView(modeHint);
 
         TextView summary = text("Memory is kept on-device and is used as optional context for local generation.",
                 13, MUTED, false);

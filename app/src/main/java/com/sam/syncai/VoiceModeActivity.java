@@ -111,7 +111,7 @@ public final class VoiceModeActivity extends Activity {
         coreOrb = new SyncCoreView(this);
         coreOrb.setState(SyncCoreView.State.READY);
         top.addView(coreOrb, new LinearLayout.LayoutParams(dp(30), dp(30)));
-        TextView title = text("SYNC AI", 18, Color.WHITE, true);
+        TextView title = text("SYNC AI", 18, palette.text, true);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, dp(35), 1);
         titleLp.leftMargin = dp(10);
         top.addView(title, titleLp);
@@ -129,7 +129,7 @@ public final class VoiceModeActivity extends Activity {
         micButton = new Button(this);
         ((Button) micButton).setText("◉");
         ((Button) micButton).setTextSize(28);
-        ((Button) micButton).setTextColor(Color.WHITE);
+        ((Button) micButton).setTextColor(AppTheme.onAccent(accent));
         ((Button) micButton).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         ((Button) micButton).setAllCaps(false);
         ((Button) micButton).setBackground(round(accent, 90));
@@ -143,7 +143,7 @@ public final class VoiceModeActivity extends Activity {
         micLp.bottomMargin = dp(10);
         panel.addView(micButton, micLp);
 
-        transcriptView = text("Listening for your voice…", 12, Color.rgb(175, 185, 207), false);
+        transcriptView = text("Listening for your voice…", 12, palette.muted, false);
         transcriptView.setGravity(Gravity.CENTER);
         transcriptView.setMaxLines(2);
         transcriptView.setPadding(dp(6), dp(4), dp(6), dp(8));
@@ -666,10 +666,10 @@ public final class VoiceModeActivity extends Activity {
     private Button smallButton(String value) {
         Button b = new Button(this);
         b.setText(value);
-        b.setTextColor(Color.WHITE);
+        b.setTextColor(palette.text);
         b.setTextSize(22);
         b.setAllCaps(false);
-        b.setBackground(round(0x40262A3A, 40));
+        b.setBackground(round(AppTheme.mix(palette.text, palette.surface, 0.9f), 40));
         Motion.pressable(b);
         return b;
     }

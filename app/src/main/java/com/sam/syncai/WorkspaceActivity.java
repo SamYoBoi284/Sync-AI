@@ -40,12 +40,7 @@ public final class WorkspaceActivity extends Activity {
     public static final String EXTRA_CONTINUE_LANGUAGE = "com.sam.syncai.extra.CONTINUE_ARTIFACT_LANGUAGE";
     public static final String EXTRA_CONTINUE_CONTENT = "com.sam.syncai.extra.CONTINUE_ARTIFACT_CONTENT";
 
-    private static final int BG = Color.rgb(7, 8, 14);
-    private static final int SURFACE = Color.rgb(17, 19, 30);
-    private static final int SURFACE_2 = Color.rgb(25, 28, 43);
-    private static final int TEXT = Color.rgb(239, 240, 250);
-    private static final int MUTED = Color.rgb(151, 156, 180);
-    private static final int ACCENT = Color.rgb(154, 96, 255);
+    private int BG, SURFACE, SURFACE_2, TEXT, MUTED, ACCENT;
 
     private WorkspaceStore store;
     private LinearLayout root;
@@ -101,9 +96,11 @@ public final class WorkspaceActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         store = new WorkspaceStore(getApplicationContext());
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
+        final AppTheme palette = AppTheme.from(this);
+        BG = palette.background; SURFACE = palette.surface; SURFACE_2 = palette.surface2;
+        TEXT = palette.text; MUTED = palette.muted; ACCENT = palette.primary;
         buildShell();
+        AppTheme.applySystemBars(this, palette);
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
             androidx.core.graphics.Insets safeInsets = windowInsets.getInsets(
                     androidx.core.view.WindowInsetsCompat.Type.systemBars()
@@ -578,7 +575,7 @@ public final class WorkspaceActivity extends Activity {
         button.setTextSize(12);
         button.setAllCaps(false);
         button.setTextColor(selected ? ACCENT : (quiet ? MUTED : TEXT));
-        button.setBackground(round(selected ? Color.rgb(44, 31, 70) : SURFACE_2, dp(12)));
+        button.setBackground(round(selected ? AppTheme.mix(ACCENT, SURFACE_2, 0.82f) : SURFACE_2, dp(12)));
         button.setPadding(dp(8), 0, dp(8), 0);
         return button;
     }
@@ -628,8 +625,8 @@ public final class WorkspaceActivity extends Activity {
 
     private static int stateColor(WorkspaceStore.State state) {
         return state == WorkspaceStore.State.COMPLETED ? ACCENT
-                : (state == WorkspaceStore.State.FAILED ? Color.rgb(255, 130, 145)
-                : Color.rgb(255, 200, 105));
+                : (state == WorkspaceStore.State.FAILED ? Color.rgb(226, 74, 98)
+                : Color.rgb(217, 140, 20));
     }
 
     private static String snippet(String content) {

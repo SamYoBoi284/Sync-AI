@@ -6,6 +6,29 @@
 > Stable development base: `fix/generation-timer-alarm-export`
 > This tracker records implemented work and known verification status. Source code / CI remains authoritative.
 
+## 2026-10-13 — Premium UI redesign + light/dark mode (build and phone verification pending)
+
+Branch: `feat/file-library-context-generation-1024`. Visual/styling pass only; inference, model loading, storage, chat history, file handling, voice logic and every sidebar destination are unchanged. **Not compiled or device-tested when written** (only a syntax parse); run CI and test on the Galaxy A16.
+
+**Light / dark mode**
+- New pref `appearance_mode` (`system` | `dark` | `light`) in `AppPreferences` (`getThemeMode` / `setThemeMode`, `THEME_MODE_IDS/NAMES`). Default is **dark** so existing installs look unchanged.
+- Toggle lives in **Settings → Personalization → Theme** (`MainActivity.showPersonalization`) and in **Appearance → MODE**. Main chat recreates itself when the mode changes (`appliedMode` check in `onResume`, plus `recreate()` from the Personalization toggle).
+- `AppTheme` now has `isLight`, a light variant of all six identities (`light()`; the old palettes are `dark()`), and helpers: `isLightMode`, `mix`, `contrast`, `onAccent` (readable text on accent fills), `applySystemBars` (bar colors + light-icon flags + window background). In light mode the accent is auto-darkened for contrast. Identity and accent stay independent preferences.
+- `FileLibraryActivity` / `WorkspaceActivity` no longer use hardcoded dark constants; they read `AppTheme` in `onCreate`. `VoiceModeActivity`, `SyncVoiceSession`, `SyncDialog`, `AppearanceActivity` no longer hardcode white text on accent fills.
+- `VoiceModeActivity` is a translucent assistant overlay: it intentionally does **not** call `applySystemBars`.
+- Launch frame: new `res/values/themes.xml` (`Theme.SyncAI`) + `colors.xml` give a dark launch background; manifest uses it for the app and the 3 non-translucent activities. Known limit: a user who forces Light while the system is dark may still see a brief dark frame before `onCreate`, because the launch window cannot read preferences.
+
+**Visual changes**
+- Chat: Sync AI replies are bubble-less with looser line spacing; user messages are an accent-tinted pill with a small tail; composer is a floating pill with a filled Send button; cards 16dp; action buttons 11.5sp/14dp radius; letter-spaced title/labels.
+- Sidebar (`SideDashboard.item()` / `iconFor()`): flat 48dp rows with accent ripple and 11 new vector icons (`res/drawable/ic_*.xml`, 24dp, tinted in code) replacing unicode glyphs. Item strings in the same `"glyph  Label"` format still work; unknown glyphs fall back to text.
+
+**Edge swipe to open sidebar** (existing feature in `MainActivity.handleEdgeSwipe`, left edge)
+- Reported not working on the phone. Likely cause: Android's Back gesture takes swipes outside the single ≤200dp system-gesture exclusion band. Changes: start zone widened 40→64dp (`EDGE_ZONE_DP`), exclusion band moved to 45% height and 48dp wide, ignored while text is selected or when a second finger lands.
+- New log events in Command/diagnostics log: `EDGE_SWIPE_BEGIN` (gesture committed) and `EDGE_SWIPE_CANCELLED` (system/parent took it). If neither appears after a swipe, the system Back gesture is eating it: switch to 3-button nav to confirm, or start the swipe lower on the screen inside the exclusion band.
+- RTL: the drawer is still anchored/animated for LTR only (`translationX` sign, raw-X zone). Not mirrored.
+
+**Verify on device:** both modes in all 6 identities; Personalization + Appearance toggles; accent Lime/Cyan on light backgrounds; File Library and Workspace in light mode; dialogs; sidebar icons render; swipe from x≈20–60dp near mid-screen; Voice overlay still looks right; no status-bar icon contrast problems.
+
 ## 2026-10-13 — Current File Library work (in progress)
 
 Branch: `feat/file-library-context-generation-1024`

@@ -266,7 +266,7 @@ public final class SyncDialog implements DialogInterface {
             btn.setGravity(Gravity.CENTER);
             btn.setSingleLine(true);
             boolean primary = slot == 0;
-            btn.setTextColor(primary ? Color.WHITE : TEXT);
+            btn.setTextColor(primary ? AppTheme.onAccent(accent) : TEXT);
             btn.setBackground(round(primary ? accent : BUTTON, dp(13)));
             btn.setOnClickListener(v -> {
                 if (listener != null) listener.onClick(this, which);
@@ -456,7 +456,7 @@ public final class SyncDialog implements DialogInterface {
     private void styleEditText(EditText e) {
         e.setBackground(round(SURFACE_2, dp(15)));
         e.setTextColor(TEXT);
-        e.setHintTextColor(Color.rgb(92, 100, 123));
+        e.setHintTextColor(AppTheme.mix(MUTED, SURFACE_2, 0.3f));
         e.setPadding(dp(14), dp(12), dp(14), dp(12));
     }
 

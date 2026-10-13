@@ -32,14 +32,14 @@
         android:label="Sync AI"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:theme="@style/Theme.SyncAI"
         android:supportsRtl="true">
 
         <activity
             android:name=".AppearanceActivity"
             android:screenOrientation="portrait"
             android:exported="false"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Theme.SyncAI" />
 
         <activity
             android:name=".CallPermissionActivity"
@@ -50,13 +50,13 @@
             android:name=".WorkspaceActivity"
             android:screenOrientation="portrait"
             android:exported="false"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Theme.SyncAI" />
 
         <activity
             android:name=".FileLibraryActivity"
             android:screenOrientation="portrait"
             android:exported="false"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/Theme.SyncAI" />
 
         <activity
             android:name=".MainActivity"
