@@ -20,6 +20,7 @@ public final class AppPreferences {
     private static final String KEY_AUTO_CHECK_INTERVAL_HOURS = "auto_check_interval_hours";
     private static final String KEY_AUTO_DOWNLOAD_UPDATES = "auto_download_updates";
     private static final String KEY_UPDATE_NETWORK = "update_network";
+    private static final String KEY_GPU_LAYERS = "experimental_gpu_layers";
 
     public static final int[] ACCENTS = {
             0xFF9A60FF, 0xFF4B8BFF, 0xFF50D7FF, 0xFF35C987,
@@ -43,6 +44,17 @@ public final class AppPreferences {
     public AppPreferences(Context context) {
         prefs = context.getApplicationContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
+    }
+
+    /** GPU offload is opt-in; zero preserves the existing CPU-only behavior. */
+    public int getGpuLayers() {
+        int layers = prefs.getInt(KEY_GPU_LAYERS, 0);
+        return layers == 2 || layers == 4 ? layers : 0;
+    }
+
+    public void setGpuLayers(int layers) {
+        int accepted = layers == 2 || layers == 4 ? layers : 0;
+        prefs.edit().putInt(KEY_GPU_LAYERS, accepted).apply();
     }
 
     public int getAccent() {
