@@ -1,9 +1,10 @@
 # Sync AI — Context Tracker
 
-### CI failure and fix — 2026-10-13
-- Run `38334541554` failed at `configureCMakeRelease[arm64-v8a]`: llama.cpp's `ggml-vulkan/CMakeLists.txt` could not find `SPIRV-HeadersConfig.cmake`. Installing Ubuntu's `spirv-headers` package alone provides headers but not the required CMake package config.
-- Updated `.github/workflows/build.yml` to clone KhronosGroup/SPIRV-Headers, configure/build it with CMake, and install to `/usr/local` before the Android build. Fix commit: `6dac0b7e54226492ab6ebbe96fd9acbbc593e98b`; next CI verification is pending.
-- Do not merge or release until the new build succeeds and device checks are completed.
+### CI failure and follow-up — 2026-10-13
+- Run `38334541554` initially failed at `configureCMakeRelease[arm64-v8a]`: llama.cpp's `ggml-vulkan/CMakeLists.txt` could not find `SPIRV-HeadersConfig.cmake`.
+- The next run, `38334950000` (job `115092818239`), confirmed the SPIR-V package was built and installed to `/usr/local/share/cmake/SPIRV-Headers`, but Android's CMake invocation still did not search that host path. So the first fix was incomplete; the failure is still the same missing package config.
+- Follow-up commits `f65682ab190e6a2ae046a092db4e6018b8f25aa6` and `a80fa5ef6e2761b9f26b66100a2a8d281f220a86` now pass the explicit `SPIRV-Headers_DIR` from the CI environment into Gradle's Android CMake arguments. Local builds do not get a hard-coded CI path.
+- The next CI run must verify this path fix. Do not merge or release until the APK build succeeds and physical-device checks are completed.
 
 ## 2026-10-13 — Experimental CPU + Vulkan inference (new work)
 
