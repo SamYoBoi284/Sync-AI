@@ -27,8 +27,16 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
 
-      - name: Install Vulkan shader compiler
-        run: sudo apt-get update && sudo apt-get install -y glslc spirv-headers
+      - name: Install Vulkan shader compiler and SPIR-V CMake package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslc spirv-headers
+          # Ubuntu's spirv-headers package provides the headers but not the
+          # SPIRV-HeadersConfig.cmake required by llama.cpp's Vulkan backend.
+          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git "$RUNNER_TEMP/SPIRV-Headers"
+          cmake -S "$RUNNER_TEMP/SPIRV-Headers" -B "$RUNNER_TEMP/SPIRV-Headers/build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/SPIRV-Headers/build" --parallel 2
+          sudo cmake --install "$RUNNER_TEMP/SPIRV-Headers/build"
 
       - name: Install Android native toolchain
         run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
