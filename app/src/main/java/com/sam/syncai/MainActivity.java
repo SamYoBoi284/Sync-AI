@@ -111,7 +111,7 @@ public final class MainActivity extends Activity {
     private boolean modelBusy;
     private LinearLayout contentRootView;
     private int statusInset;
-    private static final int EDGE_ZONE_DP = 64;
+    private static final float EDGE_ZONE_FRACTION = 0.5f;
     private boolean edgeTracking;
     private boolean edgeDragging;
     private float edgeStartX;
@@ -274,13 +274,17 @@ public final class MainActivity extends Activity {
 
         LinearLayout composerCard = card();
         this.composerCard = composerCard;
-        composerCard.setPadding(dp(7), dp(7), dp(7), dp(7));
+        composerCard.setPadding(dp(8), dp(10), dp(8), dp(10));
+        composerCard.setClipChildren(false);
+        composerCard.setClipToPadding(false);
         GradientDrawable composerSurface = round(SURFACE, dp(35));
         composerSurface.setStroke(dp(1), palette.border);
         composerCard.setBackground(composerSurface);
         composerCard.setElevation(palette.isLight ? dp(3) : 0);
         LinearLayout composer = new LinearLayout(this);
-        composer.setGravity(Gravity.BOTTOM);
+        composer.setGravity(Gravity.CENTER_VERTICAL);
+        composer.setClipChildren(false);
+        composer.setClipToPadding(false);
 
         input = new EditText(this);
         input.setHint("Message Sync AI…");
@@ -317,7 +321,7 @@ public final class MainActivity extends Activity {
         composer.addView(sendButton, sendLp);
 
         composerCard.addView(composer);
-        contentRoot.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(70)));
+        contentRoot.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(82)));
 
         FrameLayout frame = new FrameLayout(this);
         frame.setBackgroundColor(BG);
@@ -410,7 +414,10 @@ public final class MainActivity extends Activity {
         int slop = ViewConfiguration.get(this).getScaledTouchSlop();
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                edgeTracking = !sideDashboard.isOpen() && ev.getRawX() <= dp(EDGE_ZONE_DP)
+                int availableWidth = rootFrame != null && rootFrame.getWidth() > 0
+                        ? rootFrame.getWidth() : getResources().getDisplayMetrics().widthPixels;
+                edgeTracking = !sideDashboard.isOpen()
+                        && ev.getRawX() <= availableWidth * EDGE_ZONE_FRACTION
                         && !(input != null && input.hasFocus() && input.hasSelection());
                 edgeDragging = false;
                 if (edgeTracking) {
@@ -1446,6 +1453,25 @@ public final class MainActivity extends Activity {
             debug.setOnClickListener(v -> showDiagnostic(message.diagnostics));
             bubble.addView(debug);
         }
+
+        TextView copyAction = text("⧉ COPY", 10, MUTED, true);
+        copyAction.setGravity(Gravity.END);
+        copyAction.setPadding(0, dp(7), 0, 0);
+        copyAction.setContentDescription(user ? "Copy your message" : "Copy Sync AI reply");
+        copyAction.setOnClickListener(v -> {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText(
+                        user ? "Your message" : "Sync AI reply",
+                        message.text == null ? "" : message.text));
+                showToast(user ? "Your message copied." : "Sync AI reply copied.");
+            } else {
+                showToast("Couldn't access the clipboard.");
+            }
+        });
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(-1, -2);
+        copyLp.gravity = Gravity.END;
+        bubble.addView(copyAction, copyLp);
 
         LinearLayout.LayoutParams bubbleLp = new LinearLayout.LayoutParams(
                 user ? (int)(getResources().getDisplayMetrics().widthPixels * 0.78f) :
