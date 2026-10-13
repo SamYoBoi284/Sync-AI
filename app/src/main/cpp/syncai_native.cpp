@@ -36,6 +36,9 @@ static std::mutex g_mutex;
 static llama_model *g_model = nullptr;
 static std::string g_last_diagnostics = "No inference request recorded yet.";
 static std::string g_last_load_error = "";
+static int g_requested_gpu_layers = 0;
+static int g_active_gpu_layers = 0;
+static std::string g_backend_status = "CPU-only inference selected.";
 
 static void append_utf8(std::string &out, uint32_t cp) {
     if (cp <= 0x7F) {
@@ -147,6 +150,21 @@ static bool emit(JNIEnv *env, jobject callback, jmethodID tokenMethod, const std
     return true;
 }
 
+static std::string vulkan_device_summary() {
+    ggml_backend_reg_t reg = ggml_backend_reg_by_name("Vulkan");
+    if (!reg) return "Vulkan backend: not compiled";
+    const size_t count = ggml_backend_reg_dev_count(reg);
+    if (count == 0) return "Vulkan backend: compiled, but no Vulkan device detected";
+    std::string summary = "Vulkan devices: ";
+    for (size_t i = 0; i < count; ++i) {
+        ggml_backend_dev_t device = ggml_backend_reg_dev_get(reg, i);
+        if (i > 0) summary += ", ";
+        const char *name = ggml_backend_dev_name(device);
+        summary += name ? name : "unnamed";
+    }
+    return summary;
+}
+
 static std::string model_info_text_locked() {
     if (!g_model) return "No model loaded.";
 
@@ -158,11 +176,16 @@ static std::string model_info_text_locked() {
     const double paramsB = static_cast<double>(llama_model_n_params(g_model)) / 1e9;
     const int32_t trainCtx = llama_model_n_ctx_train(g_model);
 
-    char info[768];
+    char info[1536];
+    const std::string deviceSummary = vulkan_device_summary();
     snprintf(info, sizeof(info),
              "Architecture: %s\nParameters: %.2fB\nTensor size: %.2f GiB\n"
-             "Training context: %d\nBackend: CPU",
-             desc, paramsB, sizeGiB, trainCtx);
+             "Training context: %d\nBackend: %s\nRequested GPU layers: %d\n"
+             "Active GPU layers: %d\n%s\nStatus: %s",
+             desc, paramsB, sizeGiB, trainCtx,
+             g_active_gpu_layers > 0 ? "CPU + Vulkan (experimental)" : "CPU only",
+             g_requested_gpu_layers, g_active_gpu_layers,
+             deviceSummary.c_str(), g_backend_status.c_str());
     return info;
 }
 
@@ -180,7 +203,7 @@ static void set_error_diagnostics(
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path) {
+Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path, jint gpuLayers) {
     std::lock_guard<std::mutex> lock(g_mutex);
 
     if (!path) return 2;
@@ -193,10 +216,23 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path) {
         }
     }, nullptr);
 
-    // Current llama.cpp can load CPU backends dynamically; explicitly load them
-    // before model initialization so Android builds do not end up with zero backends.
+    // Register available backends before model initialization. CPU remains the
+    // mandatory fallback; Vulkan offload is strictly opt-in.
     ggml_backend_load_all();
     llama_backend_init();
+
+    g_requested_gpu_layers = std::max(0, std::min(4, static_cast<int>(gpuLayers)));
+    g_active_gpu_layers = 0;
+    g_backend_status = "CPU-only inference selected.";
+    if (g_requested_gpu_layers > 0) {
+        ggml_backend_reg_t vulkan = ggml_backend_reg_by_name("Vulkan");
+        if (vulkan && ggml_backend_reg_dev_count(vulkan) > 0) {
+            g_active_gpu_layers = g_requested_gpu_layers;
+            g_backend_status = "Vulkan device detected; GPU offload is experimental.";
+        } else {
+            g_backend_status = "GPU offload requested, but no Vulkan device is available. Using CPU.";
+        }
+    }
 
     if (g_model) {
         llama_model_free(g_model);
@@ -218,10 +254,21 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path) {
     }
 
     llama_model_params params = llama_model_default_params();
-    params.n_gpu_layers = 0;
+    params.n_gpu_layers = g_active_gpu_layers;
     params.check_tensors = true;
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
+    if (!g_model && g_active_gpu_layers > 0) {
+        // A GPU backend can exist yet reject a particular allocation. Retry once
+        // on CPU rather than breaking the existing working inference path.
+        const std::string gpuError = g_last_load_error;
+        LOGE("Vulkan model load failed; retrying CPU-only. %s", gpuError.c_str());
+        g_last_load_error.clear();
+        params.n_gpu_layers = 0;
+        g_active_gpu_layers = 0;
+        g_backend_status = "Vulkan model load failed; retrying with CPU-only inference.";
+        g_model = llama_model_load_from_file(modelPath.c_str(), params);
+    }
     if (!g_model) {
         if (g_last_load_error.empty()) {
             g_last_load_error = "llama.cpp rejected the GGUF model without reporting a detailed error.";
@@ -231,6 +278,10 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv *env, jclass, jstring path) {
     }
 
     g_last_load_error.clear();
+    if (g_active_gpu_layers == 0 && g_requested_gpu_layers > 0
+            && g_backend_status.find("retrying with CPU-only") != std::string::npos) {
+        g_backend_status = "Vulkan model load failed; CPU-only fallback loaded successfully.";
+    }
     g_last_diagnostics = "Model loaded. No inference request recorded yet.";
     return 0;
 }
@@ -245,6 +296,9 @@ Java_com_sam_syncai_GgufNative_nativeUnload(JNIEnv *, jclass) {
     }
     llama_backend_free();
     g_last_diagnostics = "No model loaded.";
+    g_requested_gpu_layers = 0;
+    g_active_gpu_layers = 0;
+    g_backend_status = "CPU-only inference selected.";
 }
 
 extern "C"
@@ -318,8 +372,16 @@ static void native_generate_impl(
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
     // A 4096-token context gives artifact requests more room while remaining
     // a measured step for 4 GB devices. Keep the physical micro-batch bounded.
+    const long pageSize = sysconf(_SC_PAGESIZE);
+    const long pages = sysconf(_SC_PHYS_PAGES);
+    const long long totalRam = pageSize > 0 && pages > 0
+            ? static_cast<long long>(pageSize) * static_cast<long long>(pages) : 0;
+    // The 4 GB class devices represented by the A16 have little spare RAM once
+    // a multi-GB GGUF is mapped. Use a smaller default context there to reduce
+    // KV-cache and temporary-buffer pressure; keep 4096 for larger devices.
+    const int32_t contextCap = totalRam >= (5LL * 1024LL * 1024LL * 1024LL) ? 4096 : 2048;
     const uint32_t contextSize = static_cast<uint32_t>(
-            std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx)));
+            std::min<int32_t>(contextCap, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
     // The prompt is prefilled as one logical batch and can exceed 256 tokens.
     // Keep n_batch large enough for the bounded context while retaining a small
