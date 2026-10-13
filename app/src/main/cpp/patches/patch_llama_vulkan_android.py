@@ -17,9 +17,9 @@ replacement = (
     r"vkGetPhysicalDeviceFeatures2(device->physical_device, &device_features2);"
 )
 text2, count = pattern.subn(replacement, text)
-if count != 1:
+if count < 1:
     raise SystemExit(
-        f"Expected exactly one raw vkGetPhysicalDeviceFeatures2 call in {source}, found {count}; refusing to patch."
+        f"No raw vkGetPhysicalDeviceFeatures2 calls matched in {source}; refusing to patch."
     )
 source.write_text(text2, encoding="utf-8")
-print(f"Applied Android Vulkan dynamic-dispatch fix to {source}")
+print(f"Applied Android Vulkan dynamic-dispatch fix to {count} call(s) in {source}")
