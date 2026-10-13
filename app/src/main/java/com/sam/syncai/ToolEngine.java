@@ -78,7 +78,7 @@ public final class ToolEngine {
     private static final Pattern ALARM =
             Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,4})(?::(\\d{2}))?(?!\\d)\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
-            Pattern.compile("(?i)^(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+)$");
+            Pattern.compile("(?i)^(?:(?:hey|bro|also|okay|alright|please)\\s+)*(?:(?:can|could|would|will)\\s+(?:you|u)\\s+)?(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+?)\\s*[.!?,;]*$");
     private static final Pattern CALL =
             Pattern.compile("(?i)^(?:please\\s+)?(?:call|phone|ring)\\s+(.+)$");
 
@@ -140,6 +140,10 @@ public final class ToolEngine {
             }
 
             Result result = handleSingle(command);
+            if (!result.handled) {
+                String embedded = extractEmbeddedCommand(command);
+                if (!embedded.isEmpty()) result = handleSingle(embedded);
+            }
             if (result.handled && result.success) remember(command, result.toolName);
             return withDuration(result, started);
         } catch (Exception e) {
@@ -173,16 +177,14 @@ public final class ToolEngine {
         if (parts.length < 2) return Result.none();
 
         List<Result> results = new ArrayList<>();
-        boolean allHandled = true;
         for (String part : parts) {
-            Result r = handleSingle(part.trim());
-            if (!r.handled) {
-                allHandled = false;
-                break;
-            }
-            results.add(r);
+            String candidate = stripConversationalLead(part.trim());
+            if (candidate.isEmpty()) continue;
+            Result r = handleSingle(candidate);
+            if (r.handled) results.add(r);
         }
-        if (!allHandled || results.size() < 2) return Result.none();
+        if (results.isEmpty()) return Result.none();
+        if (results.size() == 1) return results.get(0);
 
         StringBuilder response = new StringBuilder();
         StringBuilder tools = new StringBuilder();
@@ -197,6 +199,25 @@ public final class ToolEngine {
             tools.append(r.toolName);
         }
         return new Result(true, ok, response.toString(), tools.toString(), 0, permission);
+    }
+
+    private String stripConversationalLead(String command) {
+        String candidate = command == null ? "" : command.trim();
+        candidate = candidate.replaceFirst(
+                "(?i)^(?:(?:hey|bro|also|okay|alright|well|so|by the way|btw|please)\\b[\\s,:-]*)+",
+                "");
+        candidate = candidate.replaceFirst("(?i)^(?:can|could|would|will)\\s+(?:you|u)\\s+", "");
+        candidate = candidate.replaceFirst("(?i)^please\\s+", "");
+        return candidate.trim();
+    }
+
+    private String extractEmbeddedCommand(String command) {
+        if (command == null) return "";
+        Matcher request = Pattern.compile(
+                "(?i)\\b(?:(?:can|could|would|will)\\s+(?:you|u)|i need you to|please)\\s+(?:please\\s+)?(?=(?:open|launch|start|run|go to|call|phone|ring)\\b)(.+)$")
+                .matcher(command);
+        if (!request.find()) return "";
+        return request.group(1).trim();
     }
 
     private Result handleSingle(String command) throws Exception {
@@ -554,10 +575,10 @@ public final class ToolEngine {
         }
 
         Matcher open = OPEN_APP.matcher(command);
-        if (open.find()) return launchApp(open.group(1).trim());
+        if (open.find()) return launchApp(open.group(1).trim().replaceAll("[.!?,;]+$", ""));
 
         Matcher call = CALL.matcher(command);
-        if (call.find()) return callContact(call.group(1).trim());
+        if (call.find()) return callContact(call.group(1).trim().replaceAll("[.!?,;]+$", ""));
 
         return Result.none();
     }
