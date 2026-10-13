@@ -1,5 +1,10 @@
 # Sync AI — Context Tracker
 
+### CI failure and fix — 2026-10-13
+- Run `38334541554` failed at `configureCMakeRelease[arm64-v8a]`: llama.cpp's `ggml-vulkan/CMakeLists.txt` could not find `SPIRV-HeadersConfig.cmake`. Installing Ubuntu's `spirv-headers` package alone provides headers but not the required CMake package config.
+- Updated `.github/workflows/build.yml` to clone KhronosGroup/SPIRV-Headers, configure/build it with CMake, and install to `/usr/local` before the Android build. Fix commit: `6dac0b7e54226492ab6ebbe96fd9acbbc593e98b`; next CI verification is pending.
+- Do not merge or release until the new build succeeds and device checks are completed.
+
 ## 2026-10-13 — Experimental CPU + Vulkan inference (new work)
 
 Branch: `feat/cpu-vulkan-hybrid-inference` (build and device verification pending)
