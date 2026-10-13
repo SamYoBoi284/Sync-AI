@@ -35,11 +35,24 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
     GIT_TAG 4a89937
     GIT_SHALLOW TRUE
-    # Patch the pinned llama.cpp source by matching the call itself rather
-    # than relying on a brittle line-number-based unified diff.
+    # Keep this for clean FetchContent checkouts. The compatibility script is
+    # also run after MakeAvailable below because cached source trees may skip
+    # PATCH_COMMAND on subsequent Gradle/CMake configure runs.
     PATCH_COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/patches/patch_llama_vulkan_android.py" "<SOURCE_DIR>"
 )
 FetchContent_MakeAvailable(llama)
+
+# Always apply/verify the patch after FetchContent_MakeAvailable. Gradle's
+# native-build cache can retain _deps/llama-src and skip PATCH_COMMAND, which
+# otherwise leaves raw Vulkan 1.1 symbols in the object file and breaks linking.
+execute_process(
+    COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/patches/patch_llama_vulkan_android.py" "${llama_SOURCE_DIR}"
+    RESULT_VARIABLE llama_android_patch_result
+    COMMAND_ECHO STDOUT
+)
+if(NOT llama_android_patch_result EQUAL 0)
+    message(FATAL_ERROR "Failed to apply/verify Android Vulkan dynamic-dispatch patch")
+endif()
 
 # llama.cpp's Vulkan backend also includes the SPIRV-Headers C++ declarations.
 # The host package installed by CI satisfies find_package(), but its include
