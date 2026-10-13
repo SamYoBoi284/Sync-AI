@@ -2,11 +2,20 @@
 
 > Last updated: 2026-10-13
 > Repository: `SamYoBoi284/Sync-AI`
-> Current work branch: `feat/file-library-context-generation-1024`
-> Current draft PR: [#18 — Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18)
+> Current work branch: `feat/cpu-vulkan-hybrid-inference`
+> Merged PR #18: [Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18). Current inference work is on `feat/cpu-vulkan-hybrid-inference`.
 > Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
 >
 > This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
+
+## 2026-10-13 — Experimental CPU + Vulkan inference
+
+- Read the full `sync-ai-full-logs-gemma.txt` export before changing inference. The latest Gemma 3 4B Q4_K_M request took 262.2 seconds: 123.5 seconds prompt evaluation, 137.8 seconds generation, 26 tokens at 0.19 tokens/sec. The device snapshot showed about 823 MB system RAM available before generation.
+- Add an opt-in inference acceleration preference with CPU-only (default), CPU + Vulkan with 2 GPU layers, or CPU + Vulkan with 4 GPU layers. The native loader checks for a registered Vulkan device and otherwise remains CPU-only.
+- If a Vulkan-assisted model load fails, retry once with CPU-only so the existing path remains usable. Model diagnostics report requested/active GPU layer counts, detected Vulkan devices, and fallback status.
+- Make the default context memory-aware: devices reporting under 5 GiB physical RAM use a 2,048-token cap; larger devices retain the 4,096-token cap. This is intended to reduce KV-cache pressure, not a guarantee of faster inference.
+- Enable the llama.cpp Vulkan backend in CMake and install the shader compiler / SPIR-V headers in CI. Build compatibility and actual GPU speed remain unverified until GitHub Actions and Galaxy A16 device tests complete.
+- No merge or release is performed by this work. CPU-only remains the default; GPU offload is opt-in and experimental.
 
 ## 2026-10-13 — Workspace continuation and artifact editing
 
