@@ -18,11 +18,19 @@ android {
 
         externalNativeBuild {
             cmake {
-                arguments '-DCMAKE_BUILD_TYPE=Release',
-                        '-DGGML_NATIVE=OFF',
-                        '-DGGML_CPU_ALL_VARIANTS=ON',
-                        '-DGGML_OPENMP=OFF',
-                        '-DGGML_LLAMAFILE=OFF'
+                def cmakeArgs = [
+                    '-DCMAKE_BUILD_TYPE=Release',
+                    '-DGGML_NATIVE=OFF',
+                    '-DGGML_CPU_ALL_VARIANTS=ON',
+                    '-DGGML_OPENMP=OFF',
+                    '-DGGML_LLAMAFILE=OFF'
+            ]
+            // CI supplies the host path explicitly; local builds keep their normal package discovery.
+            def spirvHeadersDir = System.getenv('SPIRV_HEADERS_CMAKE_DIR')
+            if (spirvHeadersDir) {
+                cmakeArgs << "-DSPIRV-Headers_DIR=${spirvHeadersDir}"
+            }
+            arguments(*cmakeArgs)
             }
         }
     }
