@@ -13,6 +13,7 @@ jobs:
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      SPIRV_HEADERS_CMAKE_DIR: /usr/local/share/cmake/SPIRV-Headers
 
     steps:
       - name: Checkout
