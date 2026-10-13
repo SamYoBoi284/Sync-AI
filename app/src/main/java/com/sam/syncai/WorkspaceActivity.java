@@ -623,7 +623,7 @@ public final class WorkspaceActivity extends Activity {
         return "COMPLETED";
     }
 
-    private static int stateColor(WorkspaceStore.State state) {
+    private int stateColor(WorkspaceStore.State state) {
         return state == WorkspaceStore.State.COMPLETED ? ACCENT
                 : (state == WorkspaceStore.State.FAILED ? Color.rgb(226, 74, 98)
                 : Color.rgb(217, 140, 20));
