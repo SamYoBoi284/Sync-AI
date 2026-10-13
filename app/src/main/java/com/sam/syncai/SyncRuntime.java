@@ -19,7 +19,7 @@ public final class SyncRuntime {
         preferences = new AppPreferences(app);
         chatStore = new ChatStore(app);
         modelManager = new ModelManager(app);
-        backend = new GgufModelBackend();
+        backend = new GgufModelBackend(preferences);
         toolEngine = new ToolEngine(app);
         SyncEventLogger.record(app, "SyncRuntime", "RUNTIME_READY", "INFO",
                 "preferences/chat/model/backend/tool engine initialized");
