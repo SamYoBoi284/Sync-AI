@@ -166,3 +166,11 @@ Implemented tool routing for device-known requests before model generation, incl
 - Root cause: the CI-installed SPIRV-Headers package makes the CMake package discoverable, but its include path was not explicitly added to the Android `ggml-vulkan` target.
 - Follow-up fix commit `390cf4673b4eee04020b96201f71a237d182dd76` fetches the pinned Khronos SPIRV-Headers tag `vulkan-sdk-1.3.290.0` through CMake FetchContent and adds its `include` directory alongside Vulkan-Headers, scoped to `ggml-vulkan`.
 - CPU inference remains unchanged and Vulkan remains experimental/opt-in. Await the next CI result; do not claim the APK builds until Actions passes, and do not merge or release without Sam's approval.
+
+
+## 2026-10-13 — PR #19 Android Vulkan link fix
+
+- Actions run #737 (ID `38336543038`) progressed past both Vulkan and SPIR-V header compilation and generated all 391 native build steps, but linking `libggml-vulkan.so` failed with `undefined symbol: vkGetPhysicalDeviceFeatures2`.
+- Root cause: the Android NDK Vulkan loader library does not expose this Vulkan 1.1 function as a direct link-time symbol at the app's minimum native API level. The Vulkan backend must resolve it through Vulkan-Hpp's initialized dynamic dispatcher.
+- Added `app/src/main/cpp/patches/llama-vulkan-android-dispatch.patch`, which routes this call through `VULKAN_HPP_DEFAULT_DISPATCHER.vkGetPhysicalDeviceFeatures2(...)`, and configured the pinned llama.cpp FetchContent declaration to apply the patch during population.
+- Follow-up CMake commit: `c021d4bf268daa2fcb2f5d039e8bf0f0887515bd`. Await CI validation; do not claim success until the APK build passes. CPU-only default remains intact; PR #19 remains draft with no merge/release.
