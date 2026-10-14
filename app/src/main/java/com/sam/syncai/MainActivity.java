@@ -1549,8 +1549,9 @@ public final class MainActivity extends Activity {
         boolean operation = lower.matches("(?s).*\\b(read|open|inspect|summari[sz]e|analy[sz]e|review|explain|describe|edit|modify|rewrite|revise|patch|refactor|fix|correct|copy|duplicate|export|translate|extract|compare)\\b.*")
                 || lower.contains("what's in") || lower.contains("what is in")
                 || lower.contains("tell me about");
+        boolean existingFileOperation = lower.matches("(?s).*\\b(edit|modify|rewrite|revise|patch|refactor|fix|correct|copy|duplicate)\\w*\\b.*");
         boolean creatingNew = lower.matches("(?s).*\\b(create|make|build|generate|write)\\b.*")
-                && !lower.matches("(?s).*\\b(edit|modify|rewrite|revise|fix|correct|copy|duplicate)\\b.*");
+                && !existingFileOperation;
         return refersToLibrary && operation && !creatingNew;
     }
 
