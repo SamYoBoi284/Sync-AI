@@ -864,6 +864,8 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        if (handleLibraryCopyRequest(message, started)) return;
+
         if (coreOrb != null) coreOrb.setState(runtime.backend().isLoaded()
                 ? SyncCoreView.State.THINKING : SyncCoreView.State.IDLE);
         String fallback = casualFallback(message);
@@ -1393,6 +1395,81 @@ public final class MainActivity extends Activity {
         intent.removeExtra(FileLibraryActivity.EXTRA_PREFILL_PROMPT);
         SyncEventLogger.record(this, "FileLibraryActivity", "FILE_PROMPT_PREFILLED", "INFO",
                 "length=" + prompt.length());
+    }
+
+    private boolean handleLibraryCopyRequest(String message, long started) {
+        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        boolean copyIntent = lower.matches("(?s).*\\b(copy|duplicate)\\b.*")
+                && lower.matches("(?s).*\\b(workspace|workspace file)\\b.*")
+                && (lower.contains("file") || lower.contains("imported")
+                    || lower.matches("(?s).*\\bit\\b.*"));
+        if (!copyIntent) return false;
+
+        List<FileLibraryStore.LibraryFile> sources = findMentionedLibraryFiles(message, 1);
+        if (sources.isEmpty()) {
+            confirmedLibraryFileId = null;
+            Toast.makeText(this, "I couldn't identify which File Library file to copy. Mention its name or description.", Toast.LENGTH_LONG).show();
+            SyncEventLogger.record(this, "FileLibraryStore", "FILE_COPY_NO_SOURCE", "WARN",
+                    "messageLength=" + message.length());
+            setBusy(false);
+            return true;
+        }
+
+        FileLibraryStore.LibraryFile source = sources.get(0);
+        try {
+            if (!source.isTextReadable()) {
+                throw new IllegalArgumentException("This file format cannot yet be copied into the text-based Workspace. Export it from File Library instead.");
+            }
+            FileLibraryStore.TextContent read = fileLibraryStore.readText(source.id, 262144);
+            if (!read.readable) throw new IllegalArgumentException("Sync cannot read this file's format yet.");
+            if (read.truncated) throw new IllegalArgumentException("This file is too large for a safe text Workspace copy. The original was not changed.");
+            String language = workspaceLanguageForFilename(source.name);
+            WorkspaceStore.Artifact copied = workspaceStore.createArtifact(
+                    source.name, language, read.text, WorkspaceStore.State.COMPLETED, activeChat.id);
+            long elapsed = System.currentTimeMillis() - started;
+            String answer = "Copied \"" + source.name + "\" to Workspace as a separate artifact. The File Library original was left unchanged.";
+            DiagnosticRecord diag = new DiagnosticRecord(started, elapsed,
+                    "FILE LIBRARY COPY", "WorkspaceStore", elapsed,
+                    "Exact text copy; no model generation used.", "", "", "");
+            ChatMessage assistant = new ChatMessage(ChatMessage.Role.ASSISTANT,
+                    answer, System.currentTimeMillis(), diag.format());
+            runtime.chatStore().add(activeChat, assistant);
+            addMessageView(assistant, true);
+            confirmedLibraryFileId = null;
+            if (coreOrb != null) coreOrb.setState(SyncCoreView.State.SUCCESS);
+            setBusy(false);
+            Toast.makeText(this, "Copied " + copied.title + " to Workspace", Toast.LENGTH_SHORT).show();
+            return true;
+        } catch (Exception error) {
+            confirmedLibraryFileId = null;
+            SyncEventLogger.recordException(this, "FileLibraryStore", "FILE_COPY_TO_WORKSPACE_FAILED",
+                    error, "name=" + source.name);
+            String answer = "I couldn't save a Workspace copy of \"" + source.name + "\". The File Library original was left unchanged. " +
+                    (error.getMessage() == null ? "" : error.getMessage());
+            DiagnosticRecord diag = new DiagnosticRecord(started, System.currentTimeMillis() - started,
+                    "FILE LIBRARY COPY", "WorkspaceStore", 0, "", "",
+                    "workspace_copy", error.getMessage());
+            ChatMessage assistant = new ChatMessage(ChatMessage.Role.ASSISTANT,
+                    answer, System.currentTimeMillis(), diag.format());
+            runtime.chatStore().add(activeChat, assistant);
+            addMessageView(assistant, true);
+            if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
+            setBusy(false);
+            return true;
+        }
+    }
+
+    private String workspaceLanguageForFilename(String filename) {
+        String lower = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+        if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "markdown";
+        if (lower.endsWith(".json")) return "json";
+        if (lower.endsWith(".xml")) return "xml";
+        if (lower.endsWith(".java")) return "java";
+        if (lower.endsWith(".js")) return "javascript";
+        if (lower.endsWith(".css")) return "css";
+        if (lower.endsWith(".py")) return "python";
+        return "text";
     }
 
     private boolean maybeResolveFileLibraryReference(String message) {
