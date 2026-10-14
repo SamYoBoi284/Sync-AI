@@ -877,6 +877,9 @@ public final class MainActivity extends Activity {
                                 : "Thinking…"), true);
         streamingBubble.setTextColor(MUTED);
         activeGenerations++;
+        // The orb should spin throughout the actual response-generation window,
+        // including the time before the first token arrives.
+        if (coreOrb != null) coreOrb.setState(SyncCoreView.State.THINKING);
         updateComposerAction();
         SyncEventLogger.record(this, "GgufModelBackend", "GENERATION_START", "INFO",
                 "chatId=" + activeChat.id + " generationIndex=" + activeGenerations
