@@ -1227,7 +1227,7 @@ public final class MainActivity extends Activity {
     private String workspacePayloadForStorage(String filename, String response) {
         String raw = response == null ? "" : response;
         String fence = String.valueOf((char) 96) + String.valueOf((char) 96) + String.valueOf((char) 96);
-        if (raw.contains(fence)) return raw;
+        if (WorkspaceStore.hasExtractableBlock(raw)) return raw;
         String lower = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
         String language = lower.endsWith(".html") || lower.endsWith(".htm") ? "html"
                 : lower.endsWith(".java") ? "java"
