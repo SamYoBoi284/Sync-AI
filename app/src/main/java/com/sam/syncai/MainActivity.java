@@ -1199,6 +1199,10 @@ public final class MainActivity extends Activity {
                 + runtime.preferences().getPersonalityInstruction();
         if (fileEditRequest) {
             system += "\nEXISTING FILE EDIT MODE: The original filename is authoritative. Return the complete revised file, not a diff or partial snippet, and preserve all unrelated content. Use the exact existing filename in the Artifact line. If the full file content is unavailable, ask for a smaller file or specific section instead of generating a replacement. ";
+        } else if (fileEditIntent && mentionedFiles.size() == 1
+                && mentionedFiles.get(0).isTextReadable()
+                && mentionedFiles.get(0).sizeBytes > 5200L) {
+            system += "\nFILE EDIT SAFETY: The selected file is too large to fit completely in the current edit context. Do not generate or save a full-file replacement. Ask the user to specify a section or provide a smaller file. ";
         }
         if (artifactRequest) {
             system += "\nARTIFACT MODE: Output only one short line in the form Artifact: filename.ext, followed by one complete Markdown fenced code/document block. "
@@ -1274,6 +1278,13 @@ public final class MainActivity extends Activity {
 
     private boolean isArtifactRequest(String current) {
         if (isFileLibraryEditRequest(current)) return true;
+        if (isFileEditIntent(current)) {
+            List<FileLibraryStore.LibraryFile> referenced = findMentionedLibraryFiles(current, 1);
+            if (referenced.size() == 1 && referenced.get(0).isTextReadable()
+                    && referenced.get(0).sizeBytes > 5200L) {
+                return false;
+            }
+        }
         if (isExplicitArtifactRequest(current)) return true;
         String lower = current == null ? "" : current.toLowerCase(Locale.US);
         boolean followUp = lower.contains("fix it") || lower.contains("make it playable")
@@ -1590,7 +1601,7 @@ public final class MainActivity extends Activity {
         if (referenced.size() != 1) return false;
         FileLibraryStore.LibraryFile file = referenced.get(0);
         // Keep full-file edits bounded so the model is less likely to rewrite a truncated document.
-        return file.isTextReadable() && file.sizeBytes <= 3000L;
+        return file.isTextReadable() && file.sizeBytes <= 5200L;
     }
 
     private List<FileLibraryStore.LibraryFile> findMentionedLibraryFiles(String text, int maximum) {
