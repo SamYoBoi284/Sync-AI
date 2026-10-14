@@ -883,6 +883,7 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        final boolean fileLibraryEditArtifact = isFileLibraryEditRequest(message);
         final boolean routeArtifactToWorkspace = continuingWorkspaceArtifact || isArtifactRequest(message);
         final String artifactFilename = continuingWorkspaceArtifact
                 ? continuationArtifactTitle
@@ -1059,9 +1060,16 @@ public final class MainActivity extends Activity {
                         chatAnswer = "Sync generated \"" + artifactFilename
                                 + "\", but Workspace could not save it. Check available storage and try again; the chat reply is not a saved file.";
                     } else if (completeArtifactBlock) {
-                        chatAnswer = usedBuiltInRpsFallback
-                                ? "The local model's draft failed a quality check, so Sync used its built-in playable two-player Rock-Paper-Scissors template in Workspace."
-                                : "Created \"" + artifactFilename + "\" in Workspace.";
+                        if (fileLibraryEditArtifact) {
+                            String changeNotes = artifactNotesForChat(artifactContent);
+                            chatAnswer = "Saved an edited copy as \"" + artifactFilename
+                                    + "\" in Workspace. The File Library original was left unchanged."
+                                    + (changeNotes.isEmpty() ? "" : "\n\n" + changeNotes);
+                        } else {
+                            chatAnswer = usedBuiltInRpsFallback
+                                    ? "The local model's draft failed a quality check, so Sync used its built-in playable two-player Rock-Paper-Scissors template in Workspace."
+                                    : "Created \"" + artifactFilename + "\" in Workspace.";
+                        }
                     } else if (hasCompleteFence) {
                         chatAnswer = "The output for \"" + artifactFilename
                                 + "\" failed a basic completeness/behavior check and was not accepted as a completed artifact. Inspect the source before using it.";
@@ -1207,9 +1215,11 @@ public final class MainActivity extends Activity {
         if (artifactRequest) {
             system += "\nARTIFACT MODE: Output only one short line in the form Artifact: filename.ext, followed by one complete Markdown fenced code/document block. "
                     + (fileEditRequest
-                            ? "Use the exact existing File Library filename and original extension. "
+                            ? "Use the explicitly requested output filename and extension if the user provided one; otherwise use the original File Library filename. "
                             : "Use a descriptive filename based on the user's requested subject and the correct extension. ")
-                    + "Do not add an explanation before or after the artifact. "
+                    + (fileEditRequest
+                            ? "After the complete revised file block, include a concise 'Changes made' list if the user asks to see the changes. "
+                            : "Do not add an explanation before or after the artifact. ")
                     + "For interactive HTML, include complete HTML, CSS, and JavaScript as needed; implement all game/program rules, event handlers, visible result updates, and reset/replay behavior. "
                     + "Do not create static headings in place of behavior. For a two-player Rock-Paper-Scissors game, both players must be able to choose independently, the choices must be compared using the real rules, and the round result and score must update.";
         }
@@ -1258,6 +1268,17 @@ public final class MainActivity extends Activity {
             messages.add(new ChatMessage(m.role, m.text));
         }
         return messages;
+    }
+
+    private String artifactNotesForChat(String response) {
+        if (response == null || response.trim().isEmpty()) return "";
+        String fence = String.valueOf((char) 96) + String.valueOf((char) 96) + String.valueOf((char) 96);
+        String notes = java.util.regex.Pattern.compile(
+                java.util.regex.Pattern.quote(fence) + "(?s).*?" + java.util.regex.Pattern.quote(fence))
+                .matcher(response).replaceAll(" ");
+        notes = notes.replaceAll("(?im)^\\s*Artifact\\s*:\\s*[^\\r\\n]+", "").trim();
+        if (notes.length() > 1200) notes = notes.substring(0, 1197) + "...";
+        return notes;
     }
 
     private String workspacePayloadForStorage(String filename, String response) {
