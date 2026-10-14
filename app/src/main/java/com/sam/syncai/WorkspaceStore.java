@@ -189,6 +189,11 @@ public final class WorkspaceStore {
         }
     }
 
+    /** True when the response contains a fenced block that the Workspace parser can persist. */
+    public static boolean hasExtractableBlock(String response) {
+        return !extractBlocks(response == null ? "" : response).isEmpty();
+    }
+
     /** Basic structural checks; this is a guard against obvious truncation, not a full runtime test. */
     public static boolean passesBasicQualityChecks(String response) {
         List<ExtractedBlock> blocks = extractBlocks(response == null ? "" : response);
