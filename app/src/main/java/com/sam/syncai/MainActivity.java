@@ -1026,8 +1026,8 @@ public final class MainActivity extends Activity {
                         chatAnswer = "The output for \"" + artifactFilename
                                 + "\" failed a basic completeness/behavior check and was not accepted as a completed artifact. Inspect the source before using it.";
                     } else {
-                        chatAnswer = "Sync stopped before producing a complete code block for \"" + artifactFilename
-                                + "\". No complete artifact was saved; ask Sync to continue or try a smaller request.";
+                        chatAnswer = "Sync stopped before producing a complete artifact for \"" + artifactFilename
+                                + "\". An incomplete draft was saved to Workspace for inspection; continue it or try a smaller request.";
                     }
                 }
                 DiagnosticRecord diag = new DiagnosticRecord(
@@ -1046,8 +1046,11 @@ public final class MainActivity extends Activity {
                                     artifactContent, artifactState);
                         }
                     } else {
+                        String workspacePayload = routeArtifactToWorkspace
+                                ? workspacePayloadForStorage(artifactFilename, artifactContent)
+                                : artifactContent;
                         workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                                artifactContent, artifactState, artifactFilename);
+                                workspacePayload, artifactState, artifactFilename);
                     }
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
@@ -1077,7 +1080,10 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (routeArtifactToWorkspace) {
                         workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                                response.toString(), WorkspaceStore.State.FAILED, artifactFilename);
+                                routeArtifactToWorkspace
+                                        ? workspacePayloadForStorage(artifactFilename, response.toString())
+                                        : response.toString(),
+                                WorkspaceStore.State.FAILED, artifactFilename);
                     }
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
@@ -1210,6 +1216,22 @@ public final class MainActivity extends Activity {
             messages.add(new ChatMessage(m.role, m.text));
         }
         return messages;
+    }
+
+    private String workspacePayloadForStorage(String filename, String response) {
+        String raw = response == null ? "" : response;
+        String fence = String.valueOf((char) 96) + String.valueOf((char) 96) + String.valueOf((char) 96);
+        if (raw.contains(fence)) return raw;
+        String lower = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        String language = lower.endsWith(".html") || lower.endsWith(".htm") ? "html"
+                : lower.endsWith(".java") ? "java"
+                : lower.endsWith(".js") ? "javascript"
+                : lower.endsWith(".css") ? "css"
+                : lower.endsWith(".json") ? "json"
+                : lower.endsWith(".xml") ? "xml"
+                : lower.endsWith(".md") ? "markdown" : "text";
+        return "Artifact: " + (filename == null || filename.trim().isEmpty()
+                ? "sync-draft.txt" : filename) + "\n" + fence + language + "\n" + raw + "\n" + fence;
     }
 
     private boolean isArtifactRequest(String current) {
