@@ -178,13 +178,48 @@ public final class FileLibraryStore {
 
     private static int overlapCount(java.util.Set<String> left, java.util.Set<String> right) {
         int count = 0;
-        for (String token : left) if (right.contains(token)) count++;
+        for (String token : left) {
+            for (String candidate : right) {
+                if (tokensMatch(token, candidate)) {
+                    count++;
+                    break;
+                }
+            }
+        }
         return count;
     }
 
     private static boolean hasLongMatchingToken(java.util.Set<String> left, java.util.Set<String> right) {
-        for (String token : left) if (token.length() >= 5 && right.contains(token)) return true;
+        for (String token : left) {
+            if (token.length() < 4) continue;
+            for (String candidate : right) {
+                if (tokensMatch(token, candidate)) return true;
+            }
+        }
         return false;
+    }
+
+    /** Allows exact tokens and one-character typos such as "text" versus "test". */
+    private static boolean tokensMatch(String left, String right) {
+        if (left.equals(right)) return true;
+        if (Math.abs(left.length() - right.length()) > 1
+                || Math.min(left.length(), right.length()) < 4) return false;
+        int mismatches = 0;
+        int i = 0, j = 0;
+        while (i < left.length() && j < right.length()) {
+            if (left.charAt(i) == right.charAt(j)) {
+                i++;
+                j++;
+            } else {
+                mismatches++;
+                if (mismatches > 1) return false;
+                if (left.length() > right.length()) i++;
+                else if (right.length() > left.length()) j++;
+                else { i++; j++; }
+            }
+        }
+        if (i < left.length() || j < right.length()) mismatches++;
+        return mismatches <= 1;
     }
 
     private static java.util.Set<String> searchableTokens(String value) {
