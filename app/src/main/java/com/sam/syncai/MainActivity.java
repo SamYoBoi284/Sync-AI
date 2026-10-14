@@ -3187,7 +3187,10 @@ public final class MainActivity extends Activity {
         if (sendButton == null || input == null) return;
         boolean hasText = !input.getText().toString().trim().isEmpty();
         boolean generating = activeGenerations > 0;
-        sendButton.setText(hasText ? "SEND" : "STOP");
+        // Stop is only the empty-composer action while a response is actively generating.
+        // An idle, empty composer must still display Send.
+        boolean showStop = generating && !hasText;
+        sendButton.setText(showStop ? "STOP" : "SEND");
         sendButton.setEnabled(hasText ? !modelBusy : generating);
         if (hasText) {
             sendButton.setBackground(round(accent, dp(28)));
