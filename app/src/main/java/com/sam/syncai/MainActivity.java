@@ -1509,6 +1509,15 @@ public final class MainActivity extends Activity {
     private boolean maybeResolveFileLibraryReference(String message) {
         if (fileMatchDialogOpen || fileLibraryStore == null || !isLibraryOperationIntent(message)) return false;
         List<FileLibraryStore.LibraryFile> direct = fileLibraryStore.findMentioned(message, 5);
+        if (direct.isEmpty()) {
+            String lower = message.toLowerCase(Locale.ROOT);
+            boolean contextualReference = lower.matches("(?s).*\\b(it|that|this|same)\\b.*")
+                    && !lower.contains("imported") && !lower.contains("about ");
+            if (contextualReference) {
+                List<FileLibraryStore.LibraryFile> contextual = findMentionedLibraryFiles(message, 5);
+                if (!contextual.isEmpty()) direct = contextual;
+            }
+        }
         if (direct.size() == 1) return false;
         if (direct.size() > 1) {
             showLibraryFileChoices(message, direct, true);
