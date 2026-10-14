@@ -122,6 +122,7 @@ public final class WorkspaceStore {
         load();
         Artifact old = get(id);
         if (old == null) throw new IllegalArgumentException("That Workspace artifact no longer exists.");
+        ArrayList<Artifact> previous = new ArrayList<>(artifacts);
         String updatedContent = content == null ? "" : content;
         State state = requestedState == null ? State.FAILED : requestedState;
         String fenced = FENCE + old.language + "\n" + updatedContent + "\n" + FENCE;
@@ -129,7 +130,12 @@ public final class WorkspaceStore {
         Artifact updated = new Artifact(old.id, old.responseId, old.chatId, old.title,
                 old.language, updatedContent, state, old.createdAt, System.currentTimeMillis());
         replace(updated);
-        save();
+        if (!save()) {
+            artifacts.clear();
+            artifacts.addAll(previous);
+            save();
+            throw new IllegalStateException("Workspace could not persist the updated artifact.");
+        }
         return updated;
     }
 
@@ -139,18 +145,19 @@ public final class WorkspaceStore {
         return blocks.isEmpty() ? "" : blocks.get(0).content;
     }
 
-    public synchronized void updateResponse(String responseId, String chatId,
-                                            String response, State state) {
-        updateResponse(responseId, chatId, response, state, "");
+    public synchronized boolean updateResponse(String responseId, String chatId,
+                                               String response, State state) {
+        return updateResponse(responseId, chatId, response, state, "");
     }
 
-    public synchronized void updateResponse(String responseId, String chatId,
-                                            String response, State state,
-                                            String preferredTitle) {
-        if (responseId == null || responseId.trim().isEmpty() || response == null) return;
+    public synchronized boolean updateResponse(String responseId, String chatId,
+                                               String response, State state,
+                                               String preferredTitle) {
+        if (responseId == null || responseId.trim().isEmpty() || response == null) return false;
         List<ExtractedBlock> blocks = extractBlocks(response);
-        if (blocks.isEmpty()) return;
+        if (blocks.isEmpty()) return false;
 
+        ArrayList<Artifact> previous = new ArrayList<>(artifacts);
         long now = System.currentTimeMillis();
         for (int i = 0; i < blocks.size(); i++) {
             ExtractedBlock block = blocks.get(i);
@@ -184,7 +191,13 @@ public final class WorkspaceStore {
         }
 
         trimOldArtifacts();
-        save();
+        if (!save()) {
+            artifacts.clear();
+            artifacts.addAll(previous);
+            save();
+            return false;
+        }
+        return true;
     }
 
     private void replace(Artifact artifact) {
