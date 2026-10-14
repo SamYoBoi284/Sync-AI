@@ -278,7 +278,6 @@ static void native_generate_impl(
         jobject callback) {
 
     std::lock_guard<std::mutex> lock(g_mutex);
-    g_stop_requested.store(false, std::memory_order_release);
     const long long startedMs = static_cast<long long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
@@ -587,6 +586,12 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_sam_syncai_GgufNative_nativeRequestStop(JNIEnv *, jclass) {
     g_stop_requested.store(true, std::memory_order_release);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sam_syncai_GgufNative_nativeResetStopRequest(JNIEnv *, jclass) {
+    g_stop_requested.store(false, std::memory_order_release);
 }
 
 extern "C"

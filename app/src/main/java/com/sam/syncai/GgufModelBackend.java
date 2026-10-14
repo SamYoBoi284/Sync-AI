@@ -11,6 +11,8 @@ public final class GgufModelBackend implements LocalModelBackend {
     private volatile String lastGenerationDiagnostics = "";
     private volatile String runtimeDiagnostics = "No model loaded.";
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
+    private final Object generationLock = new Object();
+    private boolean generationRunning;
 
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
@@ -69,7 +71,14 @@ public final class GgufModelBackend implements LocalModelBackend {
         }
 
         executor.execute(() -> {
-            stopRequested.set(false);
+            synchronized (generationLock) {
+                if (stopRequested.getAndSet(false)) {
+                    callback.onCancelled();
+                    return;
+                }
+                GgufNative.nativeResetStopRequest();
+                generationRunning = true;
+            }
             try {
                 GgufNative.generate(messages, config, new GgufNative.Callback() {
                     @Override public void onToken(String token) { callback.onToken(token); }
@@ -77,11 +86,20 @@ public final class GgufModelBackend implements LocalModelBackend {
                         lastGenerationDiagnostics = diagnostics == null ? "" : diagnostics;
                         runtimeDiagnostics = diagnostics == null || diagnostics.isEmpty()
                                 ? runtimeDiagnostics : diagnostics;
-                        if (stopRequested.getAndSet(false)) callback.onCancelled();
+                        boolean cancelled;
+                        synchronized (generationLock) {
+                            cancelled = stopRequested.getAndSet(false);
+                            generationRunning = false;
+                        }
+                        if (cancelled) callback.onCancelled();
                         else callback.onComplete();
                     }
                     @Override public void onError(String message) {
                         runtimeDiagnostics = message == null ? "Inference error." : message;
+                        synchronized (generationLock) {
+                            stopRequested.set(false);
+                            generationRunning = false;
+                        }
                         callback.onError(new IllegalStateException(runtimeDiagnostics));
                     }
                 });
@@ -94,8 +112,11 @@ public final class GgufModelBackend implements LocalModelBackend {
 
     @Override
     public void stopGeneration() {
-        if (!stopRequested.compareAndSet(false, true)) return;
-        GgufNative.nativeRequestStop();
+        synchronized (generationLock) {
+            if (stopRequested.get()) return;
+            stopRequested.set(true);
+            if (generationRunning) GgufNative.nativeRequestStop();
+        }
     }
 
     public String lastGenerationDiagnostics() {
