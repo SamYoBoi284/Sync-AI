@@ -62,6 +62,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_IMPORT_VOSK_MODEL = 1206;
     private static final int REQ_WAKE_MIC_PERMISSION = 1207;
     private static final int REQ_ASSISTANT_ROLE = 1208;
+    private static final int REQ_IMPORT_CHATS = 1209;
 
     private String pendingChatExport;
     private String pendingLogExport;
@@ -584,6 +585,11 @@ public final class MainActivity extends Activity {
                 writeChatExport(uri, pendingChatExport);
             }
             pendingChatExport = null;
+            return;
+        }
+        if (requestCode == REQ_IMPORT_CHATS && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) importChats(uri);
             return;
         }
         if (requestCode == REQ_EXPORT_LOGS && resultCode == RESULT_OK && data != null) {
@@ -1597,7 +1603,8 @@ public final class MainActivity extends Activity {
                         showChatActions(chats.get(which - 1));
                     }
                 })
-                .setPositiveButton("EXPORT ALL", (d, w) -> exportAllChats())
+                .setPositiveButton("EXPORT BACKUP", (d, w) -> exportAllChats())
+                .setNeutralButton("IMPORT BACKUP", (d, w) -> openChatBackupPicker())
                 .setNegativeButton("CLOSE", null)
                 .show();
     }
@@ -1635,12 +1642,70 @@ public final class MainActivity extends Activity {
     }
 
     private void exportAllChats() {
-        pendingChatExport = formatAllChatsExport(runtime.chatStore().all());
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        try {
+            pendingChatExport = runtime.chatStore().exportBackupJson();
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, "sync-ai-chats-backup.json");
+            startActivityForResult(intent, REQ_EXPORT_CHAT);
+            SyncEventLogger.record(this, "MainActivity", "CHAT_BACKUP_EXPORT_REQUEST", "INFO",
+                    "chats=" + runtime.chatStore().all().size());
+        } catch (Exception error) {
+            SyncEventLogger.recordException(this, "MainActivity", "CHAT_BACKUP_EXPORT_ERROR",
+                    error, "");
+            showError("Chat backup export failed", error);
+        }
+    }
+
+    private void openChatBackupPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_TITLE, "sync-ai-chats.txt");
-        startActivityForResult(intent, REQ_EXPORT_CHAT);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES,
+                new String[]{"application/json", "text/json", "text/plain"});
+        startActivityForResult(intent, REQ_IMPORT_CHATS);
+    }
+
+    private void importChats(Uri uri) {
+        showProgress(true);
+        ioExecutor.execute(() -> {
+            try {
+                String json;
+                try (InputStream in = getContentResolver().openInputStream(uri)) {
+                    if (in == null) throw new java.io.IOException("Android could not open the selected backup.");
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    byte[] buffer = new byte[8192];
+                    int total = 0;
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        total += read;
+                        if (total > 20 * 1024 * 1024) {
+                            throw new java.io.IOException("Chat backup exceeds the 20 MB safety limit.");
+                        }
+                        out.write(buffer, 0, read);
+                    }
+                    json = new String(out.toByteArray(), StandardCharsets.UTF_8);
+                }
+                int imported = runtime.chatStore().importBackupJson(json);
+                runOnUiThread(() -> {
+                    showProgress(false);
+                    renderChat();
+                    showToast(imported == 0
+                            ? "No new chats imported. Matching chat IDs were already present."
+                            : "Imported " + imported + (imported == 1 ? " chat." : " chats."));
+                    SyncEventLogger.record(this, "MainActivity", "CHAT_BACKUP_IMPORT_SUCCESS",
+                            "INFO", "imported=" + imported + " uri=" + uri);
+                });
+            } catch (Exception error) {
+                SyncEventLogger.recordException(this, "MainActivity", "CHAT_BACKUP_IMPORT_ERROR",
+                        error, "uri=" + uri);
+                runOnUiThread(() -> {
+                    showProgress(false);
+                    showError("Chat backup import failed", error);
+                });
+            }
+        });
     }
 
     private void exportAllDiagnostics() {
