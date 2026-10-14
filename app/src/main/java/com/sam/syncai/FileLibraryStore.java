@@ -137,6 +137,72 @@ public final class FileLibraryStore {
         return matches;
     }
 
+    /**
+     * Finds likely filename matches for natural-language references such as
+     * "the file I imported about bullet points". Results are candidates only:
+     * callers must confirm a fuzzy match before reading or changing the file.
+     */
+    public synchronized List<LibraryFile> findFuzzyMatches(String query, int maximum) {
+        load();
+        ArrayList<LibraryFile> matches = new ArrayList<>();
+        if (query == null || query.trim().isEmpty() || maximum <= 0) return matches;
+        java.util.Set<String> queryTokens = searchableTokens(query);
+        if (queryTokens.isEmpty()) return matches;
+
+        for (LibraryFile file : files) {
+            java.util.Set<String> nameTokens = searchableTokens(stem(file.name));
+            int overlap = 0;
+            for (String token : queryTokens) if (nameTokens.contains(token)) overlap++;
+            boolean oneStrongTerm = overlap == 1 && queryTokens.size() == 1;
+            if (overlap >= 2 || (overlap == 1 && !oneStrongTerm
+                    && hasLongMatchingToken(queryTokens, nameTokens))) {
+                matches.add(file);
+            } else if (oneStrongTerm && hasLongMatchingToken(queryTokens, nameTokens)) {
+                matches.add(file);
+            }
+        }
+        Collections.sort(matches, (a, b) -> {
+            java.util.Set<String> aTokens = searchableTokens(stem(a.name));
+            java.util.Set<String> bTokens = searchableTokens(stem(b.name));
+            int aOverlap = overlapCount(queryTokens, aTokens);
+            int bOverlap = overlapCount(queryTokens, bTokens);
+            if (aOverlap != bOverlap) return Integer.compare(bOverlap, aOverlap);
+            double aCoverage = (double) aOverlap / Math.max(1, aTokens.size());
+            double bCoverage = (double) bOverlap / Math.max(1, bTokens.size());
+            int coverage = Double.compare(bCoverage, aCoverage);
+            return coverage != 0 ? coverage : Long.compare(b.updatedAt, a.updatedAt);
+        });
+        if (matches.size() > maximum) return new ArrayList<>(matches.subList(0, maximum));
+        return matches;
+    }
+
+    private static int overlapCount(java.util.Set<String> left, java.util.Set<String> right) {
+        int count = 0;
+        for (String token : left) if (right.contains(token)) count++;
+        return count;
+    }
+
+    private static boolean hasLongMatchingToken(java.util.Set<String> left, java.util.Set<String> right) {
+        for (String token : left) if (token.length() >= 5 && right.contains(token)) return true;
+        return false;
+    }
+
+    private static java.util.Set<String> searchableTokens(String value) {
+        java.util.HashSet<String> result = new java.util.HashSet<>();
+        if (value == null) return result;
+        String[] words = value.toLowerCase(Locale.ROOT).replaceAll("\\.[a-z0-9]{1,8}$", "")
+                .split("[^\\p{L}\\p{N}]+");
+        String stop = "a an the i me my we our you your it this that these those file files document "
+                + "documents imported import library from in on about for of to and or with please can could "
+                + "would should read open show tell summarize summary inspect analyze analyse look find get "
+                + "use work edit modify copy duplicate make create save into onto workspace sync";
+        java.util.Set<String> ignored = new java.util.HashSet<>(java.util.Arrays.asList(stop.split("\\s+")));
+        for (String word : words) {
+            if (word.length() >= 3 && !ignored.contains(word)) result.add(word);
+        }
+        return result;
+    }
+
     /** Copies the selected URI into app-private storage; no ongoing URI permission is needed. */
     public synchronized LibraryFile importUri(Uri uri) throws Exception {
         load();
