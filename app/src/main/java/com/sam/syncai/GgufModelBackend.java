@@ -105,6 +105,10 @@ public final class GgufModelBackend implements LocalModelBackend {
                 });
             } catch (Throwable t) {
                 runtimeDiagnostics = t.getMessage() == null ? t.toString() : t.getMessage();
+                synchronized (generationLock) {
+                    stopRequested.set(false);
+                    generationRunning = false;
+                }
                 callback.onError(new IllegalStateException(runtimeDiagnostics, t));
             }
         });
