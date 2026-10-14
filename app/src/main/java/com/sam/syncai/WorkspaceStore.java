@@ -79,6 +79,33 @@ public final class WorkspaceStore {
         return null;
     }
 
+    /** Creates an independent Workspace copy of a readable File Library document. */
+    public synchronized Artifact createArtifact(String title, String language, String content,
+                                                State state, String chatId) {
+        if (title == null || title.trim().isEmpty()) {
+            throw new IllegalArgumentException("A filename is required for the Workspace copy.");
+        }
+        if (content == null) throw new IllegalArgumentException("The source file has no readable content.");
+        ArrayList<Artifact> previous = new ArrayList<>(artifacts);
+        long now = System.currentTimeMillis();
+        String id = UUID.randomUUID().toString();
+        Artifact artifact = new Artifact(id, "file-library-copy-" + id,
+                chatId == null ? "" : chatId, title.trim(),
+                language == null || language.trim().isEmpty() ? "text" : language.trim(),
+                content, state == null ? State.COMPLETED : state, now, now);
+        artifacts.add(artifact);
+        trimOldArtifacts();
+        if (!save()) {
+            artifacts.clear();
+            artifacts.addAll(previous);
+            save();
+            throw new IllegalStateException("Workspace could not persist the copied file. The File Library original was left unchanged.");
+        }
+        SyncEventLogger.record(context, "WorkspaceStore", "FILE_LIBRARY_COPY_SAVED", "INFO",
+                "title=" + artifact.title + " chars=" + artifact.content.length());
+        return artifact;
+    }
+
     public synchronized void delete(String id) {
         if (id == null) return;
         for (int i = artifacts.size() - 1; i >= 0; i--) {
@@ -314,7 +341,7 @@ public final class WorkspaceStore {
         return clean;
     }
 
-    private synchronized void save() {
+    private synchronized boolean save() {
         try {
             JSONArray array = new JSONArray();
             for (Artifact item : artifacts) {
@@ -338,7 +365,9 @@ public final class WorkspaceStore {
             SyncEventLogger.recordException(context, "WorkspaceStore", "WORKSPACE_SAVE_FAILED",
                     error, "path=" + file.getAbsolutePath() + " artifacts=" + artifacts.size());
             // Persistence failures must not interrupt inference, but must be visible in exported logs.
+            return false;
         }
+        return true;
     }
 
     private synchronized void load() {
