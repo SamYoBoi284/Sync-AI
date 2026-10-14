@@ -240,28 +240,11 @@ public final class MainActivity extends Activity {
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         contentRoot.addView(header);
 
-        LinearLayout statusCard = card();
-        LinearLayout statusInner = new LinearLayout(this);
-        statusInner.setOrientation(LinearLayout.VERTICAL);
-        statusInner.setPadding(dp(14), dp(10), dp(14), dp(10));
+        // Keep the chat canvas clear. Model controls live in the Settings drawer;
+        // these lightweight references remain for existing load/status and busy-state logic.
         modelText = text("NO MODEL", 13, TEXT, true);
         statusText = text("LOCAL RUNTIME • IMPORT A GGUF MODEL", 11, MUTED, false);
-        statusInner.addView(modelText);
-        statusInner.addView(statusText, new LinearLayout.LayoutParams(-1, dp(24)));
-        statusCard.addView(statusInner);
-        contentRoot.addView(statusCard, new LinearLayout.LayoutParams(-1, dp(72)));
-
-        LinearLayout controls = new LinearLayout(this);
-        controls.setPadding(0, dp(8), 0, dp(7));
         importButton = actionButton("IMPORT MODEL");
-        importButton.setOnClickListener(v -> openModelPicker());
-        controls.addView(importButton, new LinearLayout.LayoutParams(0, dp(44), 1));
-        Button runtimeButton = actionButton("RUNTIME");
-        runtimeButton.setOnClickListener(v -> showRuntimeInfo());
-        LinearLayout.LayoutParams runtimeLp = new LinearLayout.LayoutParams(0, dp(44), 1);
-        runtimeLp.leftMargin = dp(7);
-        controls.addView(runtimeButton, runtimeLp);
-        contentRoot.addView(controls);
 
         progress = new ProgressBar(this);
         progress.setIndeterminate(true);
@@ -412,10 +395,8 @@ public final class MainActivity extends Activity {
         if (Motion.reduced(this)) return;
         float dy = dp(12);
         Motion.enter(contentRoot.getChildAt(0), 0, dy);
-        Motion.enter(contentRoot.getChildAt(1), 50, dy);
-        Motion.enter(contentRoot.getChildAt(2), 100, dy);
-        Motion.enter(chatScroll, 150, 0);
-        Motion.enter(composerCard, 200, 0);
+        Motion.enter(chatScroll, 100, 0);
+        Motion.enter(composerCard, 150, 0);
     }
 
     private void installEdgeGestureExclusion() {
@@ -767,6 +748,7 @@ public final class MainActivity extends Activity {
         showProgress(true);
         modelText.setText("LOADING • " + model.name);
         statusText.setText("GGUF • INITIALIZING LOCAL CPU RUNTIME…");
+        if (sideDashboard != null) sideDashboard.setModelStatus("LOADING • " + model.name);
         SyncEventLogger.record(this, "ModelManager", "MODEL_LOAD_START", "INFO",
                 "model=" + model.name + " id=" + model.id);
 
@@ -3151,16 +3133,21 @@ public final class MainActivity extends Activity {
 
     private void refreshStatus() {
         ModelInfo loaded = runtime.modelManager().getLoadedModel();
+        String summary;
         if (loaded != null && runtime.backend().isLoaded()) {
+            summary = "LOADED • " + loaded.name;
             Motion.swapText(modelText, loaded.name);
             Motion.swapText(statusText, "READY • GGUF • LOCAL CPU INFERENCE");
         } else if (loaded != null) {
+            summary = "SELECTED • " + loaded.name;
             modelText.setText(loaded.name);
             Motion.swapText(statusText, "SELECTED • READY TO LOAD");
         } else {
+            summary = "NO MODEL LOADED";
             Motion.swapText(modelText, "NO MODEL");
             Motion.swapText(statusText, "LOCAL RUNTIME • TOOLS AVAILABLE WITHOUT MODEL");
         }
+        if (sideDashboard != null) sideDashboard.setModelStatus(summary);
     }
 
     private void showProgress(boolean show) {
