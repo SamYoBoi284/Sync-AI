@@ -11,7 +11,7 @@ public interface LocalModelBackend {
     interface GenerateCallback {
         void onToken(String token);
         void onComplete();
-        void onCancelled();
+        default void onCancelled() { onComplete(); }
         void onError(Exception error);
     }
 
