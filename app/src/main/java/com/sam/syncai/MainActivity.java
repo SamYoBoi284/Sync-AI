@@ -1020,11 +1020,34 @@ public final class MainActivity extends Activity {
                 final String artifactContent = artifactDraft;
                 WorkspaceStore.State artifactState = routeArtifactToWorkspace && !completeArtifactBlock
                         ? WorkspaceStore.State.FAILED : WorkspaceStore.State.COMPLETED;
+                boolean workspacePersisted = true;
+                if (routeArtifactToWorkspace) {
+                    try {
+                        if (continuingWorkspaceArtifact) {
+                            if (continuationWasAddedFinal) {
+                                workspaceStore.updateArtifactContent(continuationArtifactId,
+                                        artifactContent, artifactState);
+                            }
+                        } else {
+                            String workspacePayload = workspacePayloadForStorage(artifactFilename, artifactContent);
+                            workspacePersisted = workspaceStore.updateResponse(workspaceResponseId,
+                                    workspaceChatId, workspacePayload, artifactState, artifactFilename);
+                        }
+                    } catch (Exception persistenceError) {
+                        workspacePersisted = false;
+                        SyncEventLogger.recordException(MainActivity.this, "WorkspaceStore",
+                                "WORKSPACE_ARTIFACT_PERSIST_FAILED", persistenceError,
+                                "filename=" + artifactFilename + " continuation=" + continuingWorkspaceArtifact);
+                    }
+                }
                 String chatAnswer = artifactContent;
                 if (continuingWorkspaceArtifact) {
                     if (!continuationWasAddedFinal) {
                         chatAnswer = "Sync didn't return a continuation code block for \"" + continuationArtifactTitle
                                 + "\". The original Workspace artifact was left unchanged; try Continue again or edit the source.";
+                    } else if (!workspacePersisted) {
+                        chatAnswer = "Sync generated a continuation for \"" + continuationArtifactTitle
+                                + "\", but Workspace could not save it. The original artifact was restored; check available storage and try again.";
                     } else if (completeArtifactBlock) {
                         chatAnswer = "Finished continuing \"" + continuationArtifactTitle + "\" in Workspace.";
                     } else {
@@ -1032,7 +1055,10 @@ public final class MainActivity extends Activity {
                                 + "\", but it still appears incomplete. You can continue it again or edit the source.";
                     }
                 } else if (routeArtifactToWorkspace) {
-                    if (completeArtifactBlock) {
+                    if (!workspacePersisted) {
+                        chatAnswer = "Sync generated \"" + artifactFilename
+                                + "\", but Workspace could not save it. Check available storage and try again; the chat reply is not a saved file.";
+                    } else if (completeArtifactBlock) {
                         chatAnswer = usedBuiltInRpsFallback
                                 ? "The local model's draft failed a quality check, so Sync used its built-in playable two-player Rock-Paper-Scissors template in Workspace."
                                 : "Created \"" + artifactFilename + "\" in Workspace.";
@@ -1054,18 +1080,6 @@ public final class MainActivity extends Activity {
                         System.currentTimeMillis(), diag.format());
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
-                    if (continuingWorkspaceArtifact) {
-                        if (continuationWasAddedFinal) {
-                            workspaceStore.updateArtifactContent(continuationArtifactId,
-                                    artifactContent, artifactState);
-                        }
-                    } else {
-                        String workspacePayload = routeArtifactToWorkspace
-                                ? workspacePayloadForStorage(artifactFilename, artifactContent)
-                                : artifactContent;
-                        workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                                workspacePayload, artifactState, artifactFilename);
-                    }
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
@@ -1082,8 +1096,24 @@ public final class MainActivity extends Activity {
                         "chatId=" + workspaceChatId + " totalMs=" + total
                                 + " responseChars=" + response.length());
                 String partial = response.toString().trim();
+                boolean partialSaved = true;
+                if (routeArtifactToWorkspace) {
+                    try {
+                        partialSaved = workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
+                                workspacePayloadForStorage(artifactFilename, response.toString()),
+                                WorkspaceStore.State.FAILED, artifactFilename);
+                    } catch (Exception persistenceError) {
+                        partialSaved = false;
+                        SyncEventLogger.recordException(MainActivity.this, "WorkspaceStore",
+                                "WORKSPACE_PARTIAL_SAVE_FAILED", persistenceError,
+                                "filename=" + artifactFilename);
+                    }
+                }
+                final boolean partialSavedFinal = partialSaved;
                 String stoppedText = routeArtifactToWorkspace
-                        ? "Generation stopped. The artifact is incomplete; check Workspace before continuing."
+                        ? (partialSavedFinal
+                                ? "Generation stopped. The artifact is incomplete; check Workspace before continuing."
+                                : "Generation stopped, but the partial artifact could not be saved to Workspace.")
                         : (partial.isEmpty() ? "Generation stopped." : partial + "\n\n[Generation stopped]");
                 DiagnosticRecord diag = new DiagnosticRecord(
                         started, total, "LOCAL LLM", "", 0,
@@ -1092,13 +1122,6 @@ public final class MainActivity extends Activity {
                         stoppedText, System.currentTimeMillis(), diag.format());
                 runtime.chatStore().add(activeChat, assistant);
                 runOnUiThread(() -> {
-                    if (routeArtifactToWorkspace) {
-                        workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
-                                routeArtifactToWorkspace
-                                        ? workspacePayloadForStorage(artifactFilename, response.toString())
-                                        : response.toString(),
-                                WorkspaceStore.State.FAILED, artifactFilename);
-                    }
                     replaceStreamingBubble(streamingBubble, assistant);
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
