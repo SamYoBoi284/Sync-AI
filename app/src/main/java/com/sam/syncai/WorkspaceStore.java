@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 
 /** Persists generated code/document artifacts independently from chat history. */
 public final class WorkspaceStore {
+    private final Context context;
     public enum State { IN_PROGRESS, COMPLETED, FAILED }
 
     public static final class Artifact {
@@ -55,7 +56,8 @@ public final class WorkspaceStore {
     private final List<Artifact> artifacts = new ArrayList<>();
 
     public WorkspaceStore(Context context) {
-        File directory = new File(context.getApplicationContext().getFilesDir(), "workspace");
+        this.context = context.getApplicationContext();
+        File directory = new File(this.context.getFilesDir(), "workspace");
         if (!directory.exists()) directory.mkdirs();
         file = new File(directory, "artifacts.json");
         load();
@@ -327,8 +329,10 @@ public final class WorkspaceStore {
                 output.write(array.toString(2).getBytes(StandardCharsets.UTF_8));
                 output.getFD().sync();
             }
-        } catch (Exception ignored) {
-            // Workspace persistence must never interrupt chat or inference.
+        } catch (Exception error) {
+            SyncEventLogger.recordException(context, "WorkspaceStore", "WORKSPACE_SAVE_FAILED",
+                    error, "path=" + file.getAbsolutePath() + " artifacts=" + artifacts.size());
+            // Persistence failures must not interrupt inference, but must be visible in exported logs.
         }
     }
 

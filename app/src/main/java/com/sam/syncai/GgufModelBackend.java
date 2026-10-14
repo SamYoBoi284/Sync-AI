@@ -3,12 +3,14 @@ package com.sam.syncai;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class GgufModelBackend implements LocalModelBackend {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile ModelInfo loaded;
     private volatile String lastGenerationDiagnostics = "";
     private volatile String runtimeDiagnostics = "No model loaded.";
+    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
 
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
@@ -67,6 +69,7 @@ public final class GgufModelBackend implements LocalModelBackend {
         }
 
         executor.execute(() -> {
+            stopRequested.set(false);
             try {
                 GgufNative.generate(messages, config, new GgufNative.Callback() {
                     @Override public void onToken(String token) { callback.onToken(token); }
@@ -74,7 +77,8 @@ public final class GgufModelBackend implements LocalModelBackend {
                         lastGenerationDiagnostics = diagnostics == null ? "" : diagnostics;
                         runtimeDiagnostics = diagnostics == null || diagnostics.isEmpty()
                                 ? runtimeDiagnostics : diagnostics;
-                        callback.onComplete();
+                        if (stopRequested.getAndSet(false)) callback.onCancelled();
+                        else callback.onComplete();
                     }
                     @Override public void onError(String message) {
                         runtimeDiagnostics = message == null ? "Inference error." : message;
@@ -86,6 +90,12 @@ public final class GgufModelBackend implements LocalModelBackend {
                 callback.onError(new IllegalStateException(runtimeDiagnostics, t));
             }
         });
+    }
+
+    @Override
+    public void stopGeneration() {
+        if (!stopRequested.compareAndSet(false, true)) return;
+        GgufNative.nativeRequestStop();
     }
 
     public String lastGenerationDiagnostics() {

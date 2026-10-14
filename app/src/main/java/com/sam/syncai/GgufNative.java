@@ -19,6 +19,7 @@ public final class GgufNative {
     public static native void nativeUnload();
     public static native String nativeInfo();
     public static native String nativeDiagnostics();
+    public static native void nativeRequestStop();
 
     public static void generate(
             List<ChatMessage> messages,

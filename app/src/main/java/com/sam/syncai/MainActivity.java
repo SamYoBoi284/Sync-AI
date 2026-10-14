@@ -45,6 +45,7 @@ import android.widget.Toast;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -109,6 +110,7 @@ public final class MainActivity extends Activity {
     private View composerCard;
     private int activeGenerations;
     private boolean modelBusy;
+    private final ArrayDeque<String> queuedMessages = new ArrayDeque<>();
     private LinearLayout contentRootView;
     private int statusInset;
     private static final float EDGE_ZONE_FRACTION = 0.5f;
@@ -314,11 +316,29 @@ public final class MainActivity extends Activity {
         voiceLp.leftMargin = dp(7);
         composer.addView(composerVoice, voiceLp);
 
-        sendButton = actionButton("SEND");
-        sendButton.setOnClickListener(v -> sendMessage());
+        sendButton = actionButton("STOP");
+        sendButton.setOnClickListener(v -> {
+            if (input.getText().toString().trim().isEmpty()) {
+                if (activeGenerations > 0) {
+                    SyncEventLogger.record(MainActivity.this, "GgufModelBackend",
+                            "GENERATION_STOP_REQUESTED", "INFO", "activeGenerations=" + activeGenerations);
+                    runtime.backend().stopGeneration();
+                }
+            } else {
+                sendMessage();
+            }
+        });
         LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(dp(76), dp(56));
         sendLp.leftMargin = dp(7);
         composer.addView(sendButton, sendLp);
+        input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                updateComposerAction();
+            }
+            @Override public void afterTextChanged(android.text.Editable s) {}
+        });
+        updateComposerAction();
 
         composerCard.addView(composer);
         contentRoot.addView(composerCard, new LinearLayout.LayoutParams(-1, dp(82)));
@@ -517,10 +537,7 @@ public final class MainActivity extends Activity {
     }
 
     private void applyAccent() {
-        if (sendButton != null) {
-            sendButton.setBackground(round(accent, dp(28)));
-            sendButton.setTextColor(AppTheme.onAccent(accent));
-        }
+        if (sendButton != null) updateComposerAction();
         if (importButton != null) importButton.setTextColor(TEXT);
     }
 
@@ -775,6 +792,15 @@ public final class MainActivity extends Activity {
     private void sendMessage() {
         String message = input.getText().toString().trim();
         if (message.isEmpty()) return;
+        if (activeGenerations > 0) {
+            queuedMessages.addLast(message);
+            input.setText("");
+            SyncEventLogger.record(this, "MainActivity", "MESSAGE_QUEUED", "INFO",
+                    "queueSize=" + queuedMessages.size() + " length=" + message.length());
+            Toast.makeText(this, "Message queued (" + queuedMessages.size() + ")", Toast.LENGTH_SHORT).show();
+            updateComposerAction();
+            return;
+        }
         final boolean hasPendingWorkspaceContinuation = pendingWorkspaceContinuationId != null
                 && !pendingWorkspaceContinuationId.trim().isEmpty();
         final boolean continuingWorkspaceArtifact = hasPendingWorkspaceContinuation
@@ -855,6 +881,7 @@ public final class MainActivity extends Activity {
                                 : "Thinking…"), true);
         streamingBubble.setTextColor(MUTED);
         activeGenerations++;
+        updateComposerAction();
         SyncEventLogger.record(this, "GgufModelBackend", "GENERATION_START", "INFO",
                 "chatId=" + activeChat.id + " generationIndex=" + activeGenerations
                         + " model=" + currentModelName()
@@ -1026,7 +1053,38 @@ public final class MainActivity extends Activity {
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
                     activeGenerations = Math.max(0, activeGenerations - 1);
                     Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
-                    Motion.setEnabledAnimated(sendButton, !modelBusy);
+                    updateComposerAction();
+                    drainQueuedMessages();
+                });
+            }
+
+            @Override public void onCancelled() {
+                long total = System.currentTimeMillis() - started;
+                SyncEventLogger.record(MainActivity.this, "GgufModelBackend",
+                        "GENERATION_CANCELLED", "INFO",
+                        "chatId=" + workspaceChatId + " totalMs=" + total
+                                + " responseChars=" + response.length());
+                String partial = response.toString().trim();
+                String stoppedText = routeArtifactToWorkspace
+                        ? "Generation stopped. The artifact is incomplete; check Workspace before continuing."
+                        : (partial.isEmpty() ? "Generation stopped." : partial + "\n\n[Generation stopped]");
+                DiagnosticRecord diag = new DiagnosticRecord(
+                        started, total, "LOCAL LLM", "", 0,
+                        currentModelName(), "Generation cancelled by user.", "", "");
+                ChatMessage assistant = new ChatMessage(ChatMessage.Role.ASSISTANT,
+                        stoppedText, System.currentTimeMillis(), diag.format());
+                runtime.chatStore().add(activeChat, assistant);
+                runOnUiThread(() -> {
+                    if (routeArtifactToWorkspace) {
+                        workspaceStore.updateResponse(workspaceResponseId, workspaceChatId,
+                                response.toString(), WorkspaceStore.State.FAILED, artifactFilename);
+                    }
+                    replaceStreamingBubble(streamingBubble, assistant);
+                    if (coreOrb != null) coreOrb.setState(SyncCoreView.State.READY);
+                    activeGenerations = Math.max(0, activeGenerations - 1);
+                    Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
+                    updateComposerAction();
+                    drainQueuedMessages();
                 });
             }
 
@@ -1056,7 +1114,8 @@ public final class MainActivity extends Activity {
                     if (coreOrb != null) coreOrb.setState(SyncCoreView.State.ERROR);
                     activeGenerations = Math.max(0, activeGenerations - 1);
                     Motion.setEnabledAnimated(importButton, !modelBusy && activeGenerations == 0);
-                    Motion.setEnabledAnimated(sendButton, !modelBusy);
+                    updateComposerAction();
+                    drainQueuedMessages();
                 });
             }
         });
@@ -2785,8 +2844,35 @@ public final class MainActivity extends Activity {
 
     private void setBusy(boolean busy) {
         modelBusy = busy;
-        Motion.setEnabledAnimated(sendButton, !busy);
+        updateComposerAction();
         Motion.setEnabledAnimated(importButton, !busy && activeGenerations == 0);
+    }
+
+    private void updateComposerAction() {
+        if (sendButton == null || input == null) return;
+        boolean hasText = !input.getText().toString().trim().isEmpty();
+        boolean generating = activeGenerations > 0;
+        sendButton.setText(hasText ? "SEND" : "STOP");
+        sendButton.setEnabled(hasText ? !modelBusy : generating);
+        if (hasText) {
+            sendButton.setBackground(round(accent, dp(28)));
+            sendButton.setTextColor(AppTheme.onAccent(accent));
+        } else if (generating) {
+            sendButton.setBackground(round(ERROR, dp(28)));
+            sendButton.setTextColor(Color.WHITE);
+        } else {
+            sendButton.setBackground(round(palette.button, dp(28)));
+            sendButton.setTextColor(MUTED);
+        }
+    }
+
+    private void drainQueuedMessages() {
+        if (activeGenerations > 0 || queuedMessages.isEmpty() || input == null) return;
+        String next = queuedMessages.removeFirst();
+        SyncEventLogger.record(this, "MainActivity", "MESSAGE_DEQUEUED", "INFO",
+                "remaining=" + queuedMessages.size() + " length=" + next.length());
+        input.setText(next);
+        sendMessage();
     }
 
     private void scrollToBottom() {
