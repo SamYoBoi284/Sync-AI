@@ -1624,7 +1624,7 @@ public final class MainActivity extends Activity {
     private String extractLastFilename(String prompt) {
         if (prompt == null || prompt.trim().isEmpty()) return "";
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
-                "(?i)[A-Za-z0-9][A-Za-z0-9 _().-]*\\.(?:txt|md|markdown|csv|tsv|json|xml|html?|css|m?js|java|kt|py|sh|log|yaml|yml|toml|sql)(?![A-Za-z0-9])")
+                "(?i)[A-Za-z0-9][A-Za-z0-9 _()._-]*\\.(?:txt|md|markdown|csv|tsv|json|xml|html?|css|m?js|java|kt|py|sh|log|yaml|yml|toml|sql)(?![A-Za-z0-9_])")
                 .matcher(prompt);
         String last = "";
         while (matcher.find()) last = matcher.group().trim();
