@@ -1322,7 +1322,10 @@ public final class MainActivity extends Activity {
     private String inferArtifactFilename(String prompt) {
         if (isFileLibraryEditRequest(prompt)) {
             List<FileLibraryStore.LibraryFile> referenced = findMentionedLibraryFiles(prompt, 1);
-            if (!referenced.isEmpty()) return referenced.get(0).name;
+            if (!referenced.isEmpty()) {
+                String requestedName = extractLastFilename(prompt);
+                return requestedName.isEmpty() ? referenced.get(0).name : requestedName;
+            }
         }
         String lower = prompt == null ? "" : prompt.toLowerCase(Locale.US);
         String extension = ".txt";
@@ -1597,9 +1600,19 @@ public final class MainActivity extends Activity {
         sendMessage();
     }
 
+    private String extractLastFilename(String prompt) {
+        if (prompt == null || prompt.trim().isEmpty()) return "";
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+                "(?i)[A-Za-z0-9][A-Za-z0-9 _().-]*\\.(?:txt|md|markdown|csv|tsv|json|xml|html?|css|m?js|java|kt|py|sh|log|yaml|yml|toml|sql)(?![A-Za-z0-9])")
+                .matcher(prompt);
+        String last = "";
+        while (matcher.find()) last = matcher.group().trim();
+        return last.replaceAll("[.]+$", "");
+    }
+
     private boolean isFileEditIntent(String text) {
         String lower = text == null ? "" : text.toLowerCase(Locale.US);
-        boolean editVerb = lower.matches("(?s).*\\b(edit|modify|update|rewrite|revise|patch|refactor|fix|correct|replace|append|insert|add)\\b.*");
+        boolean editVerb = lower.matches("(?s).*\\b(edit|modify|update|rewrite|revise|patch|refactor|fix|correct|replace|append|insert|add)\\w*\\b.*");
         return editVerb || lower.contains("remove from")
                 || lower.contains("change to") || lower.contains("change in");
     }
