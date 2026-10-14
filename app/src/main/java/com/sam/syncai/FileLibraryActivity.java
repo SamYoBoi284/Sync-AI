@@ -303,7 +303,7 @@ public final class FileLibraryActivity extends Activity {
     private void askSync(FileLibraryStore.LibraryFile file) {
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        intent.putExtra(EXTRA_PREFILL_PROMPT, "Please help me with the file \"" + file.name + "\" from my File Library.");
+        intent.putExtra(EXTRA_PREFILL_PROMPT, "Read and summarize the contents of the imported File Library file \"" + file.name + "\". If I have not asked for another action, ask me what I'd like to do with it next.");
         startActivity(intent);
         finish();
     }
