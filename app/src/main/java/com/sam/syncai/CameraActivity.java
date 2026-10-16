@@ -241,6 +241,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
     }
     private TextView label(String value,int size){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(Color.WHITE);return t;}
     private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}
+    @Override protected void onResume(){super.onResume();if(preview!=null&&preview.isAvailable()&&!recording)openCamera();}
     @Override protected void onPause(){if(recording)stopVideo();closeCamera();super.onPause();}
     @Override protected void onDestroy(){if(recording)stopVideo();closeCamera();super.onDestroy();}
 }
