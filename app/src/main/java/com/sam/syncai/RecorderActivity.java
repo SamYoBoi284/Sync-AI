@@ -121,6 +121,7 @@ public final class RecorderActivity extends Activity {
         scroll.addView(recordingsList);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+        AppTheme.applyStatusBarInset(root);
 
         IntentFilter filter = new IntentFilter(SyncRecorderService.ACTION_STATE);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(recordingReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
