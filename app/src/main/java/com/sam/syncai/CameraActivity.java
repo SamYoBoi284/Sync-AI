@@ -21,6 +21,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
@@ -67,7 +69,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
         TextView title = label("SYNC CAMERA", 17);
         title.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
-        flip = new Button(this); flip.setAllCaps(false); flip.setText("Flip");
+        flip = new Button(this); flip.setText("Flip"); styleButton(flip, false);
         flip.setOnClickListener(v -> switchCamera());
         header.addView(flip, new LinearLayout.LayoutParams(dp(76), dp(44)));
         root.addView(header);
@@ -84,7 +86,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
         controls.setGravity(Gravity.CENTER);
         controls.setPadding(dp(12), dp(10), dp(12), dp(16));
         controls.setBackgroundColor(0xFF101014);
-        mode = new Button(this); mode.setAllCaps(false); mode.setText(videoMode ? "Video" : "Photo");
+        mode = new Button(this); mode.setText(videoMode ? "Video" : "Photo"); styleButton(mode, false);
         mode.setOnClickListener(v -> {
             if (recording) return;
             videoMode = !videoMode;
@@ -93,7 +95,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
             status.setText(videoMode ? "Video mode" : "Photo mode");
         });
         controls.addView(mode, new LinearLayout.LayoutParams(0, dp(52), 1));
-        capture = new Button(this); capture.setAllCaps(false); capture.setText(videoMode ? "● Record" : "● Capture");
+        capture = new Button(this); capture.setText(videoMode ? "● Record" : "● Capture"); styleButton(capture, true);
         capture.setOnClickListener(v -> capture());
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(58), 2);
         cp.leftMargin = dp(8); controls.addView(capture, cp);
@@ -264,6 +266,21 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
         if(grants.length==0||grants[0]!=PackageManager.PERMISSION_GRANTED){status.setText("Permission denied.");return;}
         if(code==REQ_CAMERA)openCamera(); else if(code==REQ_AUDIO&&!recording)startVideo();
     }
+    private void styleButton(Button button, boolean primary) {
+        AppTheme palette = AppTheme.from(this);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextColor(primary ? AppTheme.onAccent(palette.primary) : palette.text);
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(primary ? palette.primary : palette.surface2);
+        background.setCornerRadius(dp(16));
+        if (!primary) background.setStroke(dp(1), palette.border);
+        button.setBackground(background);
+        button.setPadding(dp(12), 0, dp(12), 0);
+        Motion.pressable(button);
+    }
+
     private TextView label(String value,int size){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(Color.WHITE);return t;}
     private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}
     @Override protected void onResume(){super.onResume();if(preview!=null&&preview.isAvailable()&&!recording)openCamera();}
