@@ -197,9 +197,6 @@ public final class DefaultAppsActivity extends Activity {
                 addResolvedPackages(pm, insertEvent, packageNames);
                 Intent setAlarm = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM);
                 addResolvedPackages(pm, setAlarm, packageNames);
-                Intent createNote = new Intent(Intent.ACTION_SEND);
-                createNote.setType("text/plain");
-                addResolvedPackages(pm, createNote, packageNames);
             }
         } catch (Exception error) {
             SyncEventLogger.recordException(this, "DefaultAppsActivity", "CATEGORY_DISCOVERY_FAILED",
