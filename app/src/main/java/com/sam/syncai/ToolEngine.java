@@ -263,18 +263,15 @@ public final class ToolEngine {
         }
 
         if (asksToCaptureVideo(command)) {
-            return launchCameraCapture(android.provider.MediaStore.ACTION_VIDEO_CAPTURE,
-                    requestedCameraFacing(command), "video");
+            return launchSyncCamera("video", requestedCameraFacing(command));
         }
 
         if (asksToCapturePhoto(command)) {
-            return launchCameraCapture(android.provider.MediaStore.ACTION_IMAGE_CAPTURE,
-                    requestedCameraFacing(command), "photo");
+            return launchSyncCamera("photo", requestedCameraFacing(command));
         }
 
         if (asksToOpenCamera(command)) {
-            return launchCameraCapture(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA,
-                    requestedCameraFacing(command), "camera");
+            return launchSyncCamera("photo", requestedCameraFacing(command));
         }
 
         // Built-in Sync Recorder commands are deterministic and shared by chat and Voice Mode.
@@ -1246,6 +1243,26 @@ public final class ToolEngine {
         } catch (Exception error) {
             return new Result(true, false, "I couldn't inspect the available cameras: "
                     + error.getClass().getSimpleName() + ".", "camera_inventory", 0);
+        }
+    }
+
+    private Result launchSyncCamera(String mode, Integer facing) {
+        Intent intent = new Intent(context, CameraActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra(CameraActivity.EXTRA_MODE, mode);
+        if (facing != null) {
+            intent.putExtra(CameraActivity.EXTRA_FACING,
+                    facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT ? "front" : "back");
+        }
+        try {
+            context.startActivity(intent);
+            return result("sync_camera", "Opened Sync Camera in " + mode
+                    + " mode. Review the preview and tap " + ("video".equals(mode) ? "Record" : "Capture")
+                    + " when you're ready.");
+        } catch (Exception error) {
+            return new Result(true, false, "I couldn't open Sync Camera: "
+                    + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()),
+                    "sync_camera", 0);
         }
     }
 
