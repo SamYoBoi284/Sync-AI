@@ -178,7 +178,7 @@ public final class ProductivityActivity extends Activity {
     }
 
     private void setDone(String id, boolean done) {
-        updateItem(TASKS, id, done, false);
+        updateItem(TASKS, id, done);
     }
     private void deleteItem(boolean task, String id) {
         try {
@@ -194,7 +194,7 @@ public final class ProductivityActivity extends Activity {
             SyncEventLogger.recordException(this, "ProductivityActivity", "DELETE_ITEM_FAILED", error, id);
         }
     }
-    private void updateItem(String key, String id, boolean done, boolean unused) {
+    private void updateItem(String key, String id, boolean done) {
         try {
             JSONArray old = readArray(key);
             for (int i = 0; i < old.length(); i++) {
