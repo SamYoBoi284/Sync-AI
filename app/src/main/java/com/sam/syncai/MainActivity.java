@@ -2962,7 +2962,9 @@ public final class MainActivity extends Activity {
         int recognitionIndex = 0;
         for (int i = 0; i < languageTags.length; i++) if (languageTags[i].equals(runtime.preferences().getRecognitionLanguageTag())) recognitionIndex = i;
         recognitionLanguage.setSelection(recognitionIndex);
-        content.addView(sectionButton("RECOGNITION LANGUAGE", "Choose a requested STT language"));
+        TextView recognitionLabel = text("RECOGNITION LANGUAGE", 11, TEXT, true);
+        recognitionLabel.setPadding(0, dp(6), 0, dp(3));
+        content.addView(recognitionLabel);
         content.addView(recognitionLanguage);
         Spinner ttsLanguage = new Spinner(this);
         ArrayAdapter<String> ttsAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, languageLabels);
@@ -2971,7 +2973,9 @@ public final class MainActivity extends Activity {
         int ttsIndex = 0;
         for (int i = 0; i < languageTags.length; i++) if (languageTags[i].equals(runtime.preferences().getTtsLanguageTag())) ttsIndex = i;
         ttsLanguage.setSelection(ttsIndex);
-        content.addView(sectionButton("VOICE OUTPUT LANGUAGE", "Uses an installed TTS language when available"));
+        TextView ttsLabel = text("VOICE OUTPUT LANGUAGE", 11, TEXT, true);
+        ttsLabel.setPadding(0, dp(8), 0, dp(3));
+        content.addView(ttsLabel);
         content.addView(ttsLanguage);
         Button saveSpeechLanguages = sectionButton("SAVE SPEECH LANGUAGES", "Apply selected language preferences");
         saveSpeechLanguages.setOnClickListener(v -> {
