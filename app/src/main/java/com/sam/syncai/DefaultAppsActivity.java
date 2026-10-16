@@ -32,11 +32,16 @@ public final class DefaultAppsActivity extends Activity {
     private static final class AppChoice {
         final String label;
         final String packageName;
+        final String displayLabel;
         AppChoice(String label, String packageName) {
+            this(label, packageName, label);
+        }
+        AppChoice(String label, String packageName, String displayLabel) {
             this.label = label;
             this.packageName = packageName;
+            this.displayLabel = displayLabel;
         }
-        @Override public String toString() { return label; }
+        @Override public String toString() { return displayLabel; }
     }
 
     private static final class Picker {
@@ -139,7 +144,7 @@ public final class DefaultAppsActivity extends Activity {
         for (AppChoice app : matches) matchedPackages.add(app.packageName);
         for (AppChoice app : launchableApps) {
             if (!matchedPackages.contains(app.packageName)) {
-                choices.add(new AppChoice("Manual override • " + app.label, app.packageName));
+                choices.add(new AppChoice(app.label, app.packageName, "Manual override • " + app.label));
             }
         }
         Spinner spinner = new Spinner(this);
