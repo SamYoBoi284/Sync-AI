@@ -512,8 +512,10 @@ public final class ToolEngine {
             if (seconds <= 0) throw new IllegalArgumentException("Reminder delay must be positive.");
             String reminderText = reminderIn.group(3) == null ? "Your reminder is due." : reminderIn.group(3).trim();
             ReminderScheduler.schedule(context, seconds * 1000L, "Sync AI reminder", "Reminder: " + reminderText);
+            boolean savedAsTask = saveReminderAsTask(reminderText);
             return result("reminder", "Reminder scheduled in " + formatDuration(seconds) + ": " + reminderText
-                    + ". I'll notify you even if Sync AI is closed.");
+                    + (savedAsTask ? ". I also added it to Tasks & Notes." : ".")
+                    + " I'll notify you even if Sync AI is closed.");
         }
 
         Matcher reminderAt = REMINDER_AT.matcher(command);
@@ -536,9 +538,10 @@ public final class ToolEngine {
             if(!tomorrow&&cal.getTimeInMillis()<=System.currentTimeMillis())cal.add(Calendar.DAY_OF_YEAR,1);
             long delay=Math.max(1000L,cal.getTimeInMillis()-System.currentTimeMillis());
             ReminderScheduler.schedule(context,delay,"Sync AI reminder","Reminder: "+reminderText);
+            boolean savedAsTask = saveReminderAsTask(reminderText);
             return result("reminder","Reminder scheduled for "
                     +DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(cal.getTime())
-                    +": "+reminderText+".");
+                    +": "+reminderText+(savedAsTask ? ". I also added it to Tasks & Notes." : "."));
         }
 
         Matcher timerClockTime = TIMER_CLOCK_TIME.matcher(command);
@@ -1136,6 +1139,33 @@ public final class ToolEngine {
         } catch (Exception error) {
             return new Result(true, false, "I couldn't send the media command: "
                     + error.getClass().getSimpleName() + ".", "media_control", 0);
+        }
+    }
+
+    /**
+     * Keep chat/voice reminders visible in the local Tasks & Notes list.
+     * The reminder scheduler remains the source of notification timing.
+     */
+    private boolean saveReminderAsTask(String text) {
+        if (text == null || text.trim().isEmpty() || "Your reminder is due.".equalsIgnoreCase(text.trim())) {
+            return false;
+        }
+        try {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                    "sync_productivity", Context.MODE_PRIVATE);
+            org.json.JSONArray tasks = new org.json.JSONArray(prefs.getString("tasks_json", "[]"));
+            org.json.JSONObject task = new org.json.JSONObject();
+            task.put("id", java.util.UUID.randomUUID().toString());
+            task.put("text", text.trim());
+            task.put("done", false);
+            task.put("created", System.currentTimeMillis());
+            task.put("source", "reminder-command");
+            tasks.put(task);
+            return prefs.edit().putString("tasks_json", tasks.toString()).commit();
+        } catch (Exception error) {
+            SyncEventLogger.recordException(context, "ToolEngine", "REMINDER_TASK_SAVE_FAILED",
+                    error, "textLength=" + text.length());
+            return false;
         }
     }
 
