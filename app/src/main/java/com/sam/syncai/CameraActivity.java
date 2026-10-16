@@ -173,7 +173,8 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC); recorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
             recorder.setVideoEncodingBitRate(4_000_000); recorder.setVideoFrameRate(30);
-            Camera.Parameters params=camera.getParameters(); Camera.Size size=params.getPreviewSize();
+            Camera.Parameters params=camera.getParameters();
+            Camera.Size size=chooseVideoSize(params);
             if (size != null) recorder.setVideoSize(size.width,size.height);
             if (Build.VERSION.SDK_INT >= 29) {
                 outputDescriptor=getContentResolver().openFileDescriptor(outputUri,"w");
@@ -208,6 +209,25 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
         if(outputDescriptor!=null){try{outputDescriptor.close();}catch(Exception ignored){} outputDescriptor=null;}
         if(!saved) deleteOutput();
     }
+    private Camera.Size chooseVideoSize(Camera.Parameters params) {
+        List<Camera.Size> supported = params.getSupportedVideoSizes();
+        if (supported == null || supported.isEmpty()) return params.getPreviewSize();
+        Camera.Size best = null;
+        long targetPixels = 1280L * 720L;
+        for (Camera.Size size : supported) {
+            long pixels = (long) size.width * size.height;
+            if (pixels <= targetPixels && (best == null
+                    || pixels > (long) best.width * best.height)) best = size;
+        }
+        if (best != null) return best;
+        // If every advertised size exceeds 720p, prefer the smallest supported mode
+        // rather than risking a high-resolution encoder configuration failure.
+        for (Camera.Size size : supported) {
+            if (best == null || (long) size.width * size.height < (long) best.width * best.height) best = size;
+        }
+        return best;
+    }
+
     private Uri createOutput(boolean video,String name) {
         if(Build.VERSION.SDK_INT>=29){
             ContentValues v=new ContentValues(); v.put(MediaStore.MediaColumns.DISPLAY_NAME,name);
