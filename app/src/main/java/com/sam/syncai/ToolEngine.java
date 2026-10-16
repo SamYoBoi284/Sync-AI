@@ -246,6 +246,10 @@ public final class ToolEngine {
             return result("system_date", "Today is " + format.format(now) + ".");
         }
 
+        if (isMediaTransportCommand(command)) {
+            return dispatchMediaTransport(command);
+        }
+
         // Camera routing is deterministic: inventory/status questions never launch an app,
         // while capture requests open Android's camera in the requested mode.
         if (asksAboutCameraInventory(command)) {
@@ -941,6 +945,42 @@ public final class ToolEngine {
         flashlightCameraId = target;
         cm.setTorchMode(target, on);
         flashlightOn = on;
+    }
+
+    private static boolean isMediaTransportCommand(String command) {
+        return command.matches(".*\\\\b(?:pause|resume|unpause|stop|next|skip|previous|prev)\\\\b.*\\\\b(?:music|song|track|playback)\\\\b.*")
+                || command.matches(".*\\\\b(?:play|pause|resume|stop)\\\\b.*\\\\b(?:the )?music\\\\b.*")
+                || command.matches(".*\\\\b(?:next song|next track|skip this song|skip this track|previous song|previous track|last song)\\\\b.*");
+    }
+
+    private Result dispatchMediaTransport(String command) {
+        String action;
+        int keyCode;
+        if (command.matches(".*\\\\b(?:pause|stop)\\\\b.*")) {
+            action = "pause"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PAUSE;
+        } else if (command.matches(".*\\\\b(?:resume|unpause|play)\\\\b.*")) {
+            action = "resume"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PLAY;
+        } else if (command.matches(".*\\\\b(?:previous|prev|last)\\\\b.*")) {
+            action = "previous track"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+        } else {
+            action = "next track"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_NEXT;
+        }
+        AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audio == null) {
+            return new Result(true, false, "Android's audio service isn't available.", "media_control", 0);
+        }
+        try {
+            long now = android.os.SystemClock.uptimeMillis();
+            audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now,
+                    android.view.KeyEvent.ACTION_DOWN, keyCode, 0));
+            audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now,
+                    android.view.KeyEvent.ACTION_UP, keyCode, 0));
+            return result("media_control", "Sent the system media command to the active player (" + action
+                    + "). The player decides whether it supports or accepts the command.");
+        } catch (Exception error) {
+            return new Result(true, false, "I couldn't send the media command: "
+                    + error.getClass().getSimpleName() + ".", "media_control", 0);
+        }
     }
 
     private static boolean asksAboutCameraInventory(String command) {
