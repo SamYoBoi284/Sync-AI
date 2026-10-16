@@ -19,8 +19,8 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 5. **Speech and language settings** — IMPLEMENTED IN SOURCE. Added separate recognition/output language preferences (system default, English, Arabic, Russian, Spanish, French, German); Voice Mode requests the selected recognition locale, while TTS checks support and falls back to the device default. Actual engine support remains device/provider-dependent.
 6. **Broader app integration and routing** — FIRST AUDIT PASS IMPLEMENTED. App launching now considers launchable packages and asks when two fuzzy matches are too close. Remaining integration coverage still needs a broader audit; existing explicit camera/recorder/music handoffs remain best-effort where Android does not report acceptance.
 7. **Productivity audit/completion** — reminders, tasks, notes, calendar/schedule; reuse existing features instead of duplicating them.
-8. **Workspace/file context** — contextual retrieval, summaries, and safe editing of imported files.
-9. **Developer-safe workflows** — work on copies, show diffs/review, never modify the original file in place.
+8. **Workspace/file context** — AUDITED; existing implementation retained. File Library supports filename/contextual reference resolution, ambiguity confirmation, bounded text excerpts, summaries via prefilled chat prompts, Workspace artifacts, and separate Workspace copies. PDFs/images/office formats still need format-specific extraction before model analysis.
+9. **Developer-safe workflows** — NEXT. Enforce copy-first editing, show review/diffs where feasible, and never modify the original file in place.
 10. **Memory/personalization and proactive assistance** — audit current behavior and add useful, permission-respecting proactive notifications.
 11. **Implementation review and verification prep** — source-level audit, build/CI where available, and a feature-by-feature device test checklist. Device testing starts only after implementation items are complete.
 
@@ -34,6 +34,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - The default-app picker now puts category-matched apps first (music/audio handlers, document handlers, camera handlers, recorder handlers) and retains other launchable apps as explicit manual overrides.
 - App-launch routing now ignores non-launchable packages and asks the user when two fuzzy matches are nearly tied, rather than opening an ambiguous guess.
 - Added local-only Tasks & Notes storage with task completion, deletion, notes, and a calendar-app handoff. Existing deterministic chat reminders, alarms, and timers remain the timed-notification path; the new screen does not claim calendar events were created.
+- Audited Workspace/File Library: contextual file matching and ambiguity confirmation, bounded text injection, summary prompts, and separate Workspace artifacts already exist. Non-text PDF/image/office extraction remains unsupported.
 - Voice Mode settings now expose separate speech-recognition and voice-output language choices. TTS checks whether the selected locale is supported and falls back to the system default; STT language support depends on Android’s active recognition provider.
 - Settings > Default apps lets users choose preferred music, file manager, camera, and audio recorder apps from installed launchable apps. Default selection is UI-only, not a chat command.
 - Added a dedicated Sync Recorder screen as a separate sidebar item immediately below Chat history (not inside Chat history and not under Settings). Recording requires an explicit tap and microphone permission; the foreground notification is intended only for an active recording and includes Stop. Audio is listed and playable in the recorder screen.
