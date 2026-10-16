@@ -951,82 +951,61 @@ public final class ToolEngine {
     }
 
     /**
-     * Lets the user choose a preferred music player without assuming that every
-     * installed player supports the same controls. The preference is stored by
-     * package name, so app-label changes do not invalidate it.
+     * Opens an app chosen in Sync AI's Settings > Default apps screen.
+     * App selection itself is intentionally UI-only; natural language can launch,
+     * but cannot silently rewrite a user's defaults.
      */
     private Result handlePreferredMusicApp(String command) {
-        java.util.regex.Matcher set = Pattern.compile(
-                "(?i)^(?:set|choose|use|make)\\s+(?:my\\s+)?(?:default\\s+)?(?:music|media|audio)\\s+(?:app|player)\\s+(?:to|as)\\s+(.+?)\\s*[.!?]*$")
-                .matcher(command);
-        if (set.find()) {
-            String wanted = cleanAppTarget(set.group(1));
-            if (wanted.isEmpty()) return new Result(true, false,
-                    "Tell me the name of the music app to use.", "music_provider", 0);
-            PackageManager pm = context.getPackageManager();
-            List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
-            List<ApplicationInfo> matches = new ArrayList<>();
-            for (ApplicationInfo app : apps) {
-                CharSequence label = pm.getApplicationLabel(app);
-                if (label == null) continue;
-                String labelText = label.toString();
-                if (labelText.equalsIgnoreCase(wanted)
-                        || labelText.toLowerCase(Locale.US).contains(wanted.toLowerCase(Locale.US))) {
-                    Intent launch = pm.getLaunchIntentForPackage(app.packageName);
-                    if (launch != null) matches.add(app);
-                }
-            }
-            if (matches.isEmpty()) return new Result(true, false,
-                    "I couldn't find an installed launchable app matching \"" + wanted + "\".",
-                    "music_provider", 0);
-            if (matches.size() > 1) {
-                StringBuilder choices = new StringBuilder();
-                for (int i = 0; i < Math.min(matches.size(), 4); i++) {
-                    if (choices.length() > 0) choices.append(", ");
-                    choices.append(pm.getApplicationLabel(matches.get(i)));
-                }
-                return new Result(true, false,
-                        "I found multiple matching apps (" + choices + "). Say the exact app name.",
-                        "music_provider", 0);
-            }
-            ApplicationInfo selected = matches.get(0);
-            String label = pm.getApplicationLabel(selected).toString();
-            context.getSharedPreferences("sync_media_preferences", Context.MODE_PRIVATE)
-                    .edit().putString("preferred_music_package", selected.packageName)
-                    .putString("preferred_music_label", label).apply();
-            return result("music_provider", "Saved " + label
-                    + " as your preferred music app. Music commands still depend on the player supporting them.");
+        String normalized = command == null ? "" : command.trim();
+        String key;
+        String labelKey;
+        String category;
+        if (normalized.matches("(?i)^(?:open|launch|start|show)\\s+(?:my\\s+)?(?:default\\s+)?(?:music|media|audio)\\s+(?:app|player)$")
+                || normalized.matches("(?i)^(?:open|launch|start)\\s+my\\s+music$")) {
+            key = "preferred_music_package";
+            labelKey = "preferred_music_label";
+            category = "music app";
+        } else if (normalized.matches("(?i)^(?:open|launch|start|show)\\s+(?:my\\s+)?(?:default\\s+)?(?:file\\s+manager|files|file\\s+browser)$")) {
+            key = "preferred_file_manager_package";
+            labelKey = "preferred_file_manager_label";
+            category = "file manager";
+        } else if (normalized.matches("(?i)^(?:open|launch|start|show)\\s+(?:my\\s+)?(?:default\\s+)?camera\\s+app$")) {
+            key = "preferred_camera_package";
+            labelKey = "preferred_camera_label";
+            category = "camera app";
+        } else if (normalized.matches("(?i)^(?:open|launch|start|show)\\s+(?:my\\s+)?(?:default\\s+)?(?:audio\\s+)?recorder\\s+app$")) {
+            key = "preferred_recorder_package";
+            labelKey = "preferred_recorder_label";
+            category = "recorder app";
+        } else {
+            return Result.none();
         }
 
-        if (command.matches("(?i)^(?:open|launch|start|show)\\s+(?:my\\s+)?(?:default\\s+)?(?:music|media|audio)\\s+(?:app|player)$")
-                || command.matches("(?i)^(?:open|launch|start)\\s+my\\s+music$")) {
-            android.content.SharedPreferences prefs = context.getSharedPreferences(
-                    "sync_media_preferences", Context.MODE_PRIVATE);
-            String packageName = prefs.getString("preferred_music_package", null);
-            String label = prefs.getString("preferred_music_label", "music app");
-            if (packageName == null || packageName.trim().isEmpty()) {
-                return new Result(true, false,
-                        "No preferred music app is saved yet. Say, for example, ‘set my default music app to Lark Player’.",
-                        "music_provider", 0);
-            }
-            try {
-                Intent launch = context.getPackageManager().getLaunchIntentForPackage(packageName);
-                if (launch == null) {
-                    prefs.edit().remove("preferred_music_package").remove("preferred_music_label").apply();
-                    return new Result(true, false,
-                            "Your saved music app is no longer launchable. Choose an installed music app again.",
-                            "music_provider", 0);
-                }
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(launch);
-                return result("music_provider", "Opening your preferred music app, " + label + ".");
-            } catch (Exception error) {
-                return new Result(true, false,
-                        "I couldn't open " + label + ": " + error.getClass().getSimpleName() + ".",
-                        "music_provider", 0);
-            }
+        android.content.SharedPreferences prefs = context.getSharedPreferences(
+                "sync_media_preferences", Context.MODE_PRIVATE);
+        String packageName = prefs.getString(key, null);
+        String label = prefs.getString(labelKey, category);
+        if (packageName == null || packageName.trim().isEmpty()) {
+            return new Result(true, false,
+                    "No preferred " + category + " is selected. Choose one in Sync AI Settings > Default apps.",
+                    "preferred_app", 0);
         }
-        return Result.none();
+        try {
+            Intent launch = context.getPackageManager().getLaunchIntentForPackage(packageName);
+            if (launch == null) {
+                prefs.edit().remove(key).remove(labelKey).apply();
+                return new Result(true, false,
+                        "Your saved " + category + " is no longer launchable. Choose an installed app again in Settings > Default apps.",
+                        "preferred_app", 0);
+            }
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(launch);
+            return result("preferred_app", "Opening your preferred " + category + ", " + label + ".");
+        } catch (Exception error) {
+            return new Result(true, false,
+                    "I couldn't open " + label + ": " + error.getClass().getSimpleName() + ".",
+                    "preferred_app", 0);
+        }
     }
 
     private static boolean isMediaTransportCommand(String command) {
