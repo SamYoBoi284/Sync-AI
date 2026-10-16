@@ -358,7 +358,6 @@ public final class FileLibraryStore {
         }
         byte[] bytes = (text == null ? "" : text).getBytes(StandardCharsets.UTF_8);
 
-        String base = name;
         int dot = name.lastIndexOf('.');
         String prefix = dot > 0 ? name.substring(0, dot) : name;
         String suffix = dot > 0 ? name.substring(dot) : ".txt";
@@ -404,15 +403,6 @@ public final class FileLibraryStore {
                 ".gitignore", ".makefile"};
         for (String extension : extensions) if (lower.endsWith(extension)) return true;
         return false;
-    }
-
-    private synchronized void replaceMetadata(LibraryFile old, LibraryFile updated) {
-        for (int i = 0; i < files.size(); i++) {
-            if (old.id.equals(files.get(i).id)) {
-                files.set(i, updated);
-                return;
-            }
-        }
     }
 
     private String displayName(ContentResolver resolver, Uri uri) {
