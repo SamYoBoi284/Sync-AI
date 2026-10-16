@@ -55,7 +55,7 @@ public final class ProductivityActivity extends Activity {
         titleLp.leftMargin = dp(8);
         header.addView(title, titleLp);
         Button calendar = new Button(this);
-        calendar.setAllCaps(false);
+        styleButton(calendar, false);
         calendar.setText("Calendar");
         calendar.setOnClickListener(v -> openCalendar());
         header.addView(calendar, new LinearLayout.LayoutParams(-2, dp(42)));
@@ -75,7 +75,7 @@ public final class ProductivityActivity extends Activity {
         taskInput.setPadding(dp(12), dp(8), dp(12), dp(8));
         body.addView(taskInput, new LinearLayout.LayoutParams(-1, dp(50)));
         Button addTask = new Button(this);
-        addTask.setAllCaps(false);
+        styleButton(addTask, true);
         addTask.setText("Add task");
         addTask.setOnClickListener(v -> addItem(true));
         body.addView(addTask, new LinearLayout.LayoutParams(-1, dp(44)));
@@ -95,7 +95,7 @@ public final class ProductivityActivity extends Activity {
         noteInput.setPadding(dp(12), dp(10), dp(12), dp(10));
         body.addView(noteInput, new LinearLayout.LayoutParams(-1, dp(100)));
         Button addNote = new Button(this);
-        addNote.setAllCaps(false);
+        styleButton(addNote, true);
         addNote.setText("Save note");
         addNote.setOnClickListener(v -> addItem(false));
         body.addView(addNote, new LinearLayout.LayoutParams(-1, dp(44)));
@@ -176,13 +176,13 @@ public final class ProductivityActivity extends Activity {
             row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
             if (task && !done) {
                 Button remind = new Button(this);
-                remind.setAllCaps(false);
+                styleButton(remind, false);
                 remind.setText("Remind");
                 remind.setOnClickListener(v -> chooseReminder(value));
                 row.addView(remind, new LinearLayout.LayoutParams(dp(72), dp(42)));
             }
             Button delete = new Button(this);
-            delete.setAllCaps(false);
+            styleButton(delete, false);
             delete.setText("×");
             delete.setOnClickListener(v -> deleteItem(task, id));
             row.addView(delete, new LinearLayout.LayoutParams(dp(44), dp(42)));
@@ -294,6 +294,19 @@ public final class ProductivityActivity extends Activity {
         t.setTypeface(Typeface.DEFAULT, bold ? Typeface.BOLD : Typeface.NORMAL);
         return t;
     }
+    private void styleButton(Button button, boolean primary) {
+        AppTheme palette = AppTheme.from(this);
+        button.setAllCaps(false);
+        button.setTextSize(12);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextColor(primary ? AppTheme.onAccent(palette.primary) : palette.text);
+        GradientDrawable background = round(primary ? palette.primary : palette.surface2, dp(14));
+        if (!primary) background.setStroke(dp(1), palette.border);
+        button.setBackground(background);
+        button.setPadding(dp(12), 0, dp(12), 0);
+        Motion.pressable(button);
+    }
+
     private GradientDrawable round(int color, int radius) {
         GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius); return d;
     }
