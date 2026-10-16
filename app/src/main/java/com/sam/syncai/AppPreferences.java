@@ -11,10 +11,16 @@ public final class AppPreferences {
     private static final String KEY_ACTIVE_CHAT = "active_chat";
     private static final String KEY_WAKE_WORD = "wake_word_enabled";
     private static final String KEY_THEME = "appearance_theme";
+    private static final String KEY_THEME_MODE = "appearance_mode";
     private static final String KEY_MOTION = "motion_intensity";
     private static final String KEY_PERSONALITY = "assistant_personality";
     private static final String KEY_SPEECH_RATE = "speech_rate";
+    private static final String KEY_SPEECH_PITCH = "speech_pitch";
     private static final String KEY_SPEECH_VOICE = "speech_voice";
+    private static final String KEY_AUTO_CHECK_UPDATES = "auto_check_updates";
+    private static final String KEY_AUTO_CHECK_INTERVAL_HOURS = "auto_check_interval_hours";
+    private static final String KEY_AUTO_DOWNLOAD_UPDATES = "auto_download_updates";
+    private static final String KEY_UPDATE_NETWORK = "update_network";
 
     public static final int[] ACCENTS = {
             0xFF9A60FF, 0xFF4B8BFF, 0xFF50D7FF, 0xFF35C987,
@@ -24,6 +30,9 @@ public final class AppPreferences {
     public static final String[] ACCENT_NAMES = {
             "Purple", "Blue", "Cyan", "Green", "Lime", "Orange", "Red", "Pink"
     };
+
+    public static final String[] THEME_MODE_IDS = {"system", "dark", "light"};
+    public static final String[] THEME_MODE_NAMES = {"System", "Dark", "Light"};
 
     public static final String[] MOTION_INTENSITIES = {"Minimal", "Balanced", "Immersive"};
     public static final String[] PERSONALITY_IDS = {
@@ -79,6 +88,19 @@ public final class AppPreferences {
 
     public void setWakeWordEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_WAKE_WORD, enabled).apply();
+    }
+
+    /** "system", "dark" or "light". Defaults to dark so existing installs look unchanged. */
+    public String getThemeMode() {
+        String value = prefs.getString(KEY_THEME_MODE, "dark");
+        for (String id : THEME_MODE_IDS) if (id.equals(value)) return value;
+        return "dark";
+    }
+
+    public void setThemeMode(String mode) {
+        String safe = "dark";
+        for (String id : THEME_MODE_IDS) if (id.equals(mode)) safe = mode;
+        prefs.edit().putString(KEY_THEME_MODE, safe).apply();
     }
 
     public String getTheme() {
@@ -152,6 +174,14 @@ public final class AppPreferences {
         prefs.edit().putFloat(KEY_SPEECH_RATE, Math.max(0.75f, Math.min(1.25f, rate))).apply();
     }
 
+    public float getSpeechPitch() {
+        return Math.max(0.75f, Math.min(1.35f, prefs.getFloat(KEY_SPEECH_PITCH, 1.0f)));
+    }
+
+    public void setSpeechPitch(float pitch) {
+        prefs.edit().putFloat(KEY_SPEECH_PITCH, Math.max(0.75f, Math.min(1.35f, pitch))).apply();
+    }
+
     /** Empty means let Android's selected TTS engine choose its default voice. */
     public String getSpeechVoiceName() {
         return prefs.getString(KEY_SPEECH_VOICE, "");
@@ -159,5 +189,52 @@ public final class AppPreferences {
 
     public void setSpeechVoiceName(String voiceName) {
         prefs.edit().putString(KEY_SPEECH_VOICE, voiceName == null ? "" : voiceName.trim()).apply();
+    }
+
+    /** Check for releases when Sync AI is opened. */
+    public boolean isAutoCheckUpdatesEnabled() {
+        return prefs.getBoolean(KEY_AUTO_CHECK_UPDATES, true);
+    }
+
+    public void setAutoCheckUpdatesEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_AUTO_CHECK_UPDATES, enabled).apply();
+    }
+
+    /** Supported intervals are 3, 6, 9, 12 hours, 1 day, and 1 week. */
+    public int getAutoCheckIntervalHours() {
+        int hours = prefs.getInt(KEY_AUTO_CHECK_INTERVAL_HOURS, 12);
+        return isSupportedAutoCheckInterval(hours) ? hours : 12;
+    }
+
+    public void setAutoCheckIntervalHours(int hours) {
+        prefs.edit().putInt(KEY_AUTO_CHECK_INTERVAL_HOURS,
+                isSupportedAutoCheckInterval(hours) ? hours : 12).apply();
+    }
+
+    private boolean isSupportedAutoCheckInterval(int hours) {
+        return hours == 3 || hours == 6 || hours == 9 || hours == 12
+                || hours == 24 || hours == 168;
+    }
+
+    /** Automatic downloads are opt-in; manual checks always ask before downloading. */
+    public boolean isAutoDownloadUpdatesEnabled() {
+        return prefs.getBoolean(KEY_AUTO_DOWNLOAD_UPDATES, false);
+    }
+
+    public void setAutoDownloadUpdatesEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_UPDATES, enabled).apply();
+    }
+
+    /** Accepted values: WIFI, MOBILE, BOTH. */
+    public String getUpdateNetworkPolicy() {
+        String value = prefs.getString(KEY_UPDATE_NETWORK, "WIFI");
+        if ("MOBILE".equals(value) || "BOTH".equals(value)) return value;
+        return "WIFI";
+    }
+
+    public void setUpdateNetworkPolicy(String policy) {
+        String value = "WIFI";
+        if ("MOBILE".equals(policy) || "BOTH".equals(policy)) value = policy;
+        prefs.edit().putString(KEY_UPDATE_NETWORK, value).apply();
     }
 }

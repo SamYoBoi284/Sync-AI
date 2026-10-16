@@ -1,0 +1,150 @@
+# Sync AI — Changelog & Development Handoff
+
+> Last updated: 2026-10-13
+> Repository: `SamYoBoi284/Sync-AI`
+> Current work branch: `feat/file-library-context-generation-1024`
+> Current draft PR: [#18 — Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18)
+> Stable release baseline: `v0.3.0`, branch `fix/generation-timer-alarm-export`
+>
+> This file is a project handoff/change log. Treat source code, CI status, and GitHub history as authoritative if any status below becomes stale.
+
+## 2026-10-13 — Workspace continuation and artifact editing
+
+- Add an in-place **EDIT SOURCE** flow for every Workspace artifact. Users can edit the artifact text and save it back to the same Workspace item; obvious incompleteness remains flagged instead of being marked complete.
+- Add **CONTINUE WITH SYNC** for failed/incomplete Workspace artifacts. The continuation prompt includes the current partial source, asks the local model for only the missing fragment, appends it to the existing artifact rather than creating a duplicate, and reruns basic completeness checks. If Sync fails to return a fenced continuation, the original is left unchanged. The user can repeat continuation if the file still appears incomplete.
+- Reload Workspace storage before applying edits/continuations so a stale activity instance does not overwrite a newer artifact revision.
+- Existing generated artifacts, File Library flows, Memory import, chat history, and other features remain intact. Physical-device testing is still required.
+
+## 2026-10-13 — File Library, referenced-file context, and 1024-token artifacts
+
+- Fix the drawer's Files route: it now opens a dedicated File Library instead of sending the selected file through the memory-import request handler. The separate Personalization → Import Memory File flow remains intact.
+- Add persistent app-private File Library storage with multi-select document import, SHA-256 duplicate detection, metadata, preview for readable text, export, delete, and a “Ask Sync” shortcut. Imported copies do not depend on the original SAF URI staying available. Individual files are limited to 32 MiB.
+- When a message mentions a library filename (or unambiguously follows up on a recently mentioned file), attach the contents of up to two matching files to local-model context. Supported text/code formats include TXT, Markdown, CSV/TSV, JSON, XML, HTML, CSS, JavaScript, Java/Kotlin, Python, YAML, SQL, logs, and similar source/text files. PDF, office, image, and other binary formats can be stored/exported but are not yet content-extracted for the local model.
+- For small text-library files (up to 3,000 bytes), an unambiguous single-file edit request routes to Workspace and preserves the original filename. The original is never overwritten automatically: Workspace offers explicit replace or save-as-copy choices in File Library. Multi-file mentions can be used for analysis; full-file rewrites are handled one source file at a time.
+- Raise artifact generation from 768 to 1,024 tokens, matching the existing native generation ceiling. Ordinary chat remains at 512 tokens. Validate latency and memory on the 4 GB Galaxy A16 before assuming 1,024-token artifact requests are safe for every prompt.
+- Build/phone regression verification pending for this change. No release tag or release assets are changed.
+
+## 2026-10-12 — Update consent, check intervals, voice tuning, artifact guards
+
+- Manual update checks now always show release details and a DOWNLOAD / LATER choice; they no longer start downloads without confirmation. Automatic downloading remains configurable and defaults to off for new installs. Existing saved preferences are preserved.
+- Add a persistent update-check interval selector: every 3, 6, 9, or 12 hours, every day, or every week. Checks are evaluated when Sync AI opens/resumes; this is not a background polling service.
+- Add adjustable TTS pitch alongside existing speech-rate and installed Android TTS voice selection. This tunes an installed voice; it does not clone or synthesize a new voice.
+- Strengthen Workspace HTML checks so static Rock-Paper-Scissors mockups without real controls, event handlers, live UI updates, and appropriate player labels are rejected as incomplete. For an explicit two-player Rock-Paper-Scissors request whose local-model draft fails those checks, use a bundled, self-contained playable HTML fallback and tell the user transparently. This remains a targeted fallback and heuristic, not a full browser execution test.
+- Third-party dictation integration is not included here; a provider such as Wispr Flow needs a supported SDK or system-level speech-recognition integration and should be evaluated separately before adding dependencies.
+
+## 2026-10-12 — Artifact quality, generation limits, and safe-area follow-up
+
+- The exported v0.4.0 logs show long responses repeatedly reaching the exact 256-token cap. Raise normal generation to 512 tokens and artifact generation to 768 tokens, with a native hard ceiling of 1024.
+- Increase native context from 2048 to 4096 tokens while keeping the CPU micro-batch at 256. Validate memory, latency, and stability on the Galaxy A16 before considering a larger context.
+- Route explicit artifact requests and clear artifact follow-ups into Workspace: show progress in chat rather than duplicating source, derive a filename from the user's request, and keep the complete source in the artifact store.
+- Strengthen artifact instructions to require real runnable behavior, implemented handlers, visible state/results, no placeholders/unused variables, and a self-check. Use lower sampling temperature for artifacts.
+- If an artifact request ends without a complete fenced block or fails basic structural/behavior checks (including the known static Rock-Paper-Scissors failure pattern), mark the Workspace draft failed/incomplete rather than reporting it as successfully created. This is a lightweight guard, not a full runtime test of arbitrary code.
+- Keep the selected Workspace source view updating in place while generation streams; do not repeatedly reload a running HTML preview. Refresh the preview when generation completes.
+- Apply Android system-bar/display-cutout insets to Workspace and the Appearance studio so headers/content stay inside the safe area on edge-to-edge Android versions.
+- PR #16 was merged into `fix/generation-timer-alarm-export` on 2026-10-12. The current base branch includes the generation/Workspace changes, but physical-device regression tests for the 4096-token context and artifact generation are still pending. No release tag or release assets were changed.
+
+## 2026-10-11 — Sync Canvas / Workspace repair (in progress)
+
+### Clarification from Sam
+- Workspace is intended to be **Sync's Canvas/artifact viewer**, similar to ChatGPT Canvas or Claude Artifacts.
+- It is a place for Sync to produce and show its generated work in progress or completed, not a user drawing/editor surface and not an Android file picker.
+- The recent “Call Mama” / contact-call command behavior was mentioned only as an example of a previously broken feature that was fixed. **It was not the suspected cause of Workspace breaking.** Do not modify calling behavior as part of this fix.
+
+### Root cause found on the stable v0.3.0 baseline
+- The Workspace sidebar entry was wired to the Android file-picker action.
+- The Canvas action itself opened Settings.
+- The actual artifact-viewing Canvas behavior was missing from the stable branch.
+- Therefore this was a Workspace navigation miswire plus missing functionality, not a regression caused by the call-command fix.
+
+### Implementation committed to a separate branch
+Branch: `fix/sync-workspace-canvas`
+
+Draft PR: [#14 — Fix Sync Canvas Workspace and capture generated artifacts](https://github.com/SamYoBoi284/Sync-AI/pull/14)
+
+Changes included in the PR:
+- Route the Workspace sidebar entry to a dedicated Sync Canvas artifact viewer.
+- Add persistent local storage for generated artifacts.
+- Capture fenced code and document deliverables from local model responses.
+- Stream draft artifacts into Workspace during generation and mark them completed or incomplete afterward.
+- Provide an artifact read/preview surface.
+- Preview locally generated HTML inside Sync, with a separate source view.
+- Add artifact actions: copy, save to a user-chosen location, and remove from Workspace.
+- Keep the existing file/memory picker and SAF import/export flows separate and intact.
+- Adjust generation instructions so Sync is prompted to produce recognizable, complete artifact blocks for code, webpages, scripts, and documents.
+
+### Safety / scope
+- Work is based on `fix/generation-timer-alarm-export`, the working v0.3.0 baseline.
+- Do not change the baseline branch while fixing Canvas.
+- Do not remove or replace existing SAF, file import/export, model import, voice, wake-word, call, alarm, or updater functionality.
+- Follow the project rule: **NEVER DELETE SOMETHING THAT ALREADY WORKS unless it directly contradicts a new requirement or is specifically being fixed.**
+- PR #14 was subsequently merged into `fix/generation-timer-alarm-export` on 2026-10-12. No new version tag/release was created by that merge.
+- The latest known CI attempt was GitHub Actions run **#672**, building a debug APK. At the time of this handoff, its final result and on-device verification were not confirmed. Check the live run before relying on this status.
+
+### Outstanding physical-device verification
+PR #14 and the generation/Workspace follow-up in PR #16 have merged into the development baseline, but the remaining tests below still need real-device confirmation on Sam's Galaxy A16:
+1. Workspace opens Canvas, not Android's file picker or Settings.
+2. Generated code/document artifacts appear in Workspace, stream safely, and finish as completed or incomplete.
+3. Reopening Workspace retains artifacts; HTML preview/source view and copy/save/remove actions work.
+4. Existing SAF import/export, model import, voice/wake-word, calling, alarms, and other core behavior remain intact.
+5. Validate 4096-token context memory/latency and artifact generation; verify the new two-player RPS fallback when the local model returns a static mockup.
+6. After PR #17 CI succeeds, test manual update consent, interval persistence, auto-download preference, and voice pitch on-device.
+7. Do not publish a tag/release until the user explicitly approves and the regression tests are satisfactory.
+
+## 2026-10-11 — Updater/release baseline confirmed
+
+- PR #13, “Add Android auto-updater and fix native build,” was merged into `fix/generation-timer-alarm-export` (merge SHA `b236ccb8344627a88261b6d0fedc27ebc41307f7`).
+- Release/tag `v0.3.0` built and installed successfully.
+- Sam confirmed that Settings → Assistant Settings shows the new buttons, including Update.
+- The release workflow `.github/workflows/release.yml` on `fix/generation-timer-alarm-export` is correctly indented and triggers on tags matching `v*.*.*`. Do not re-edit it for the already-fixed YAML indentation issue.
+- A prior failed workflow run (#6) used an older commit with the indentation issue; the working pipeline was subsequently verified by a successful build (run #670) and installation.
+- Android signing secrets are configured in GitHub Actions. Never request or expose their values.
+- Historical goal was to fix Canvas and exercise the updater from installed v0.3.0. Current work is tracked by PR #17 on `feat/update-controls-voice-artifact-guards`; the PR remains a draft and no release/tag has been created.
+
+## Existing project architecture and completed capabilities
+
+### Core
+- Offline-first Android local assistant; **local model = brain, deterministic Android tools = hands**.
+- Java + C++ JNI + llama.cpp; CPU-first, arm64-v8a.
+- GGUF models are imported to app-private storage and are not committed to GitHub.
+- User-facing app name is **Sync AI**, not “Sync//AI”.
+- Device used for testing: Samsung Galaxy A16 4G (SM-A165M), Android 16 / One UI 8.5, 4 GB RAM, 128 GB storage, Helio G99; not rooted.
+
+### Deterministic tool core
+Implemented tool routing for device-known requests before model generation, including:
+- date/time and timezone; battery/charging; Wi-Fi/network; Bluetooth; volume/brightness; RAM/storage/device info; flashlight; app launch; contact lookup and dialer handoff; calculator; timers/alarms; compound commands; contextual follow-ups.
+- Keep the contact-call behavior intact: the former “Call Mama” issue where the command opened the dialer with the number prefilled instead of calling directly was a separate previously discussed bug/fix. It is not part of the Workspace issue.
+- Conversational fallback order: deterministic Android tool → recent contextual tool resolution → bounded local-model conversation → small offline fallback when no model is loaded.
+
+### Chat, inference, and diagnostics
+- Persistent chats stored app-privately in `chats.json`; supports multiple chats, New Chat, reopening, titles, rename/delete, active-chat restoration, and bounded recent history for inference.
+- Chat/composer fixes include queued follow-ups, keyboard behavior, and assistant-message persistence.
+- Inference diagnostics capture route, request time, prompt tokens, context size, CPU threads, prompt evaluation and generation times, token count/rate, model details, and failure stage/message.
+- A prior About/Diagnostics ANR was traced to a JNI mutex deadlock caused by querying native diagnostics during a completion callback while the native mutex was held; completion now passes already-computed diagnostics instead of re-entering native diagnostics.
+- Native inference context is already configured at 4096 tokens on the documented branch; do not blindly repeat old context-size changes.
+- Persistent flight recorder `SyncEventLogger.java` records lifecycle, voice, tool, model, exception, and related diagnostic events. Settings → About & Diagnostics includes Export Logs, which gathers app/device metadata, model/runtime info, chats and diagnostics, recorder timeline, and best-effort logcat.
+- Chat export includes per-assistant-message diagnostics.
+
+### Voice and wake word
+- Voice interaction/session services, SpeechRecognizer, Android TextToSpeech, repeat listening, exit controls, voice-mode chat persistence, transcript/response UI, and transparent/nearly-transparent voice overlay are implemented.
+- Opt-in Vosk wake-word service uses local `vosk-model-small-en-us-0.15` with strict `["hey sync"]` grammar. It is disabled by default, controlled in Settings → Voice & Wake Word, and has an ongoing notification with Stop.
+- Vosk ZIP import validates model structure and extracts to app-private storage. The Vosk model is not bundled in the APK or committed as a Git binary.
+- Wake listener is intended to release/pause its microphone before SpeechRecognizer/voice mode takes over and resume afterward, avoiding microphone contention.
+- Default assistant / Samsung side-button invocation from Home, other apps, and lock screen has been an unstable path and needs physical-device verification. Do not claim it is fully verified without fresh tests.
+
+### Settings and UI
+- Settings includes Personalization, About & Diagnostics, Voice Mode, and Local Models.
+- Personalization includes editable local memory and persisted accent selection (Purple, Blue, Cyan, Green, Lime, Orange, Red, Pink).
+- About includes app/version information, “Created By Sam”, Arabic credit “صنعه حسام”, runtime/ABI information, diagnostics, and Android assistant settings shortcut.
+- Previous visual revamp was layered onto the existing tool core, voice, and history architecture; do not replace the architecture unnecessarily.
+
+## General development rules for the next chat
+
+1. Start from the exact current PR/branch state; check GitHub and CI rather than assuming this document's status is still current.
+2. Work on `fix/sync-workspace-canvas` for Canvas changes. Stable v0.3.0 branch is `fix/generation-timer-alarm-export`.
+3. Preserve already-working features. Make minimal, targeted fixes and explain the actual root cause before broad changes.
+4. Keep PR #14 draft until CI and device verification are satisfactory.
+5. Never publish or tag a release without Sam's explicit go-ahead.
+6. Keep GGUF/Vosk model binaries out of the repo unless Sam explicitly changes that decision.
+7. Do not ask for GitHub signing-secret values; they are already configured.
+8. Prioritize real build logs and on-device evidence over assumptions.
+

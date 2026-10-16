@@ -31,8 +31,6 @@ public final class AppearanceActivity extends Activity {
 
     private void render() {
         palette = AppTheme.from(this);
-        getWindow().setStatusBarColor(palette.background);
-        getWindow().setNavigationBarColor(palette.background);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(palette.background);
@@ -63,6 +61,35 @@ public final class AppearanceActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         addHero(content);
+        addSection(content, "MODE", "Light, dark, or follow your phone. Applies to every identity below.");
+        LinearLayout modeRow = new LinearLayout(this);
+        modeRow.setPadding(0, dp(4), 0, dp(12));
+        String currentMode = preferences.getThemeMode();
+        for (int i = 0; i < AppPreferences.THEME_MODE_IDS.length; i++) {
+            final String modeId = AppPreferences.THEME_MODE_IDS[i];
+            boolean on = modeId.equals(currentMode);
+            Button modeButton = new Button(this);
+            modeButton.setText(AppPreferences.THEME_MODE_NAMES[i]);
+            modeButton.setAllCaps(false);
+            modeButton.setTextSize(12);
+            modeButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            modeButton.setTextColor(on ? AppTheme.onAccent(palette.primary) : palette.text);
+            GradientDrawable modeBg = round(on ? palette.primary : palette.surface2, dp(14));
+            if (!on) modeBg.setStroke(dp(1), palette.border);
+            modeButton.setBackground(modeBg);
+            Motion.pressable(modeButton);
+            modeButton.setOnClickListener(v -> {
+                if (modeId.equals(preferences.getThemeMode())) return;
+                preferences.setThemeMode(modeId);
+                SyncEventLogger.record(this, "Appearance", "THEME_MODE_CHANGED", "INFO", "mode=" + modeId);
+                render();
+            });
+            LinearLayout.LayoutParams modeLp = new LinearLayout.LayoutParams(0, dp(44), 1);
+            if (i > 0) modeLp.leftMargin = dp(8);
+            modeRow.addView(modeButton, modeLp);
+        }
+        content.addView(modeRow, new LinearLayout.LayoutParams(-1, -2));
+
         addSection(content, "IDENTITY THEMES",
                 "Choose a visual identity. Tools, chats, and model settings remain unchanged.");
         for (int i=0;i<AppTheme.IDS.length;i+=2) {
@@ -155,7 +182,7 @@ public final class AppearanceActivity extends Activity {
         content.addView(preview,new LinearLayout.LayoutParams(-1,-2));
 
         Button done=new Button(this);
-        done.setText("DONE"); done.setTextColor(Color.WHITE); done.setTextSize(12);
+        done.setText("DONE"); done.setTextColor(AppTheme.onAccent(palette.primary)); done.setTextSize(12);
         done.setTypeface(Typeface.DEFAULT,Typeface.BOLD); done.setAllCaps(false);
         done.setBackground(round(palette.primary,dp(15)));
         Motion.pressable(done); done.setOnClickListener(v->finish());
@@ -163,6 +190,20 @@ public final class AppearanceActivity extends Activity {
         doneLp.topMargin=dp(8);
         root.addView(done,doneLp);
         setContentView(root);
+        AppTheme.applySystemBars(this, palette);
+        final int baseLeft = dp(18);
+        final int baseTop = dp(10);
+        final int baseRight = dp(18);
+        final int baseBottom = dp(12);
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            androidx.core.graphics.Insets safeInsets = windowInsets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                            | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            view.setPadding(baseLeft + safeInsets.left, baseTop + safeInsets.top,
+                    baseRight + safeInsets.right, baseBottom + safeInsets.bottom);
+            return windowInsets;
+        });
+        androidx.core.view.ViewCompat.requestApplyInsets(root);
     }
 
     private void addHero(LinearLayout content) {

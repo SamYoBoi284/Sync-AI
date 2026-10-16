@@ -1,10 +1,15 @@
 #include <jni.h>
 #include <android/log.h>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <exception>
+#include <new>
 #include <mutex>
+#include <unistd.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -13,25 +18,135 @@
 #include "ggml-backend.h"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "SyncAI", __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "SyncAI", __VA_ARGS__)
+
+static std::string process_memory_snapshot() {
+    std::ifstream status("/proc/self/status");
+    std::string line, result;
+    while (std::getline(status, line)) {
+        if (line.rfind("VmRSS:", 0) == 0 || line.rfind("VmSize:", 0) == 0
+                || line.rfind("VmHWM:", 0) == 0) {
+            if (!result.empty()) result += " ";
+            result += line;
+        }
+    }
+    return result.empty() ? "process memory unavailable" : result;
+}
 
 static std::mutex g_mutex;
+static std::atomic<bool> g_stop_requested(false);
 static llama_model *g_model = nullptr;
 static std::string g_last_diagnostics = "No inference request recorded yet.";
 static std::string g_last_load_error = "";
 
+static void append_utf8(std::string &out, uint32_t cp) {
+    if (cp <= 0x7F) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else if (cp <= 0xFFFF) {
+        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    }
+}
+
 static std::string jstring_to_string(JNIEnv *env, jstring value) {
     if (!value) return {};
-    const char *chars = env->GetStringUTFChars(value, nullptr);
-    std::string result = chars ? chars : "";
-    if (chars) env->ReleaseStringUTFChars(value, chars);
+    const jsize length = env->GetStringLength(value);
+    const jchar *chars = env->GetStringChars(value, nullptr);
+    if (!chars) return {};
+    std::string result;
+    result.reserve(static_cast<size_t>(length) * 3);
+    for (jsize i = 0; i < length; ++i) {
+        uint32_t cp = chars[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < length
+                && chars[i + 1] >= 0xDC00 && chars[i + 1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (chars[++i] - 0xDC00);
+        } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+            cp = 0xFFFD;
+        }
+        append_utf8(result, cp);
+    }
+    env->ReleaseStringChars(value, chars);
     return result;
 }
 
-static void emit(JNIEnv *env, jobject callback, jmethodID tokenMethod, const std::string &text) {
-    if (text.empty()) return;
-    jstring value = env->NewStringUTF(text.c_str());
+static jstring utf8_to_jstring(JNIEnv *env, const std::string &value) {
+    std::vector<jchar> utf16;
+    utf16.reserve(value.size());
+    size_t i = 0;
+    while (i < value.size()) {
+        const unsigned char first = static_cast<unsigned char>(value[i]);
+        uint32_t cp = 0xFFFD;
+        size_t count = 1;
+        if (first <= 0x7F) {
+            cp = first;
+        } else if ((first & 0xE0) == 0xC0 && i + 1 < value.size()) {
+            const unsigned char b1 = static_cast<unsigned char>(value[i + 1]);
+            if ((b1 & 0xC0) == 0x80) {
+                cp = ((first & 0x1F) << 6) | (b1 & 0x3F);
+                count = cp >= 0x80 ? 2 : 1;
+                if (count == 1) cp = 0xFFFD;
+            }
+        } else if ((first & 0xF0) == 0xE0 && i + 2 < value.size()) {
+            const unsigned char b1 = static_cast<unsigned char>(value[i + 1]);
+            const unsigned char b2 = static_cast<unsigned char>(value[i + 2]);
+            if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80) {
+                uint32_t candidate = ((first & 0x0F) << 12)
+                        | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
+                if (candidate >= 0x800 && !(candidate >= 0xD800 && candidate <= 0xDFFF)) {
+                    cp = candidate;
+                    count = 3;
+                }
+            }
+        } else if ((first & 0xF8) == 0xF0 && i + 3 < value.size()) {
+            const unsigned char b1 = static_cast<unsigned char>(value[i + 1]);
+            const unsigned char b2 = static_cast<unsigned char>(value[i + 2]);
+            const unsigned char b3 = static_cast<unsigned char>(value[i + 3]);
+            if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80
+                    && (b3 & 0xC0) == 0x80) {
+                uint32_t candidate = ((first & 0x07) << 18)
+                        | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
+                if (candidate >= 0x10000 && candidate <= 0x10FFFF) {
+                    cp = candidate;
+                    count = 4;
+                }
+            }
+        }
+        i += count;
+        if (cp <= 0xFFFF) {
+            utf16.push_back(static_cast<jchar>(cp));
+        } else {
+            cp -= 0x10000;
+            utf16.push_back(static_cast<jchar>(0xD800 + (cp >> 10)));
+            utf16.push_back(static_cast<jchar>(0xDC00 + (cp & 0x3FF)));
+        }
+    }
+    return env->NewString(utf16.empty() ? nullptr : utf16.data(),
+                          static_cast<jsize>(utf16.size()));
+}
+
+static bool emit(JNIEnv *env, jobject callback, jmethodID tokenMethod, const std::string &text) {
+    if (text.empty()) return true;
+    jstring value = utf8_to_jstring(env, text);
+    if (!value) {
+        LOGE("JNI token conversion failed");
+        return false;
+    }
     env->CallVoidMethod(callback, tokenMethod, value);
     env->DeleteLocalRef(value);
+    if (env->ExceptionCheck()) {
+        LOGE("JNI token callback raised an exception; aborting generation safely");
+        return false;
+    }
+    return true;
 }
 
 static std::string model_info_text_locked() {
@@ -153,9 +268,7 @@ Java_com_sam_syncai_GgufNative_nativeDiagnostics(JNIEnv *env, jclass) {
     return env->NewStringUTF(result.c_str());
 }
 
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_sam_syncai_GgufNative_nativeGenerate(
+static void native_generate_impl(
         JNIEnv *env, jclass,
         jobjectArray roles,
         jobjectArray texts,
@@ -168,6 +281,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const long long startedMs = static_cast<long long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
+    LOGI("GENERATION_NATIVE_START pid=%d %s", getpid(), process_memory_snapshot().c_str());
 
     jclass callbackClass = env->GetObjectClass(callback);
     jmethodID tokenMethod = env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V");
@@ -204,20 +318,29 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
 
     llama_context_params ctxParams = llama_context_default_params();
     const int32_t trainedCtx = llama_model_n_ctx_train(g_model);
-    // Keep a modest cap for mobile RAM while allowing models trained for larger
-    // contexts to retain more conversation than the old hard 2048-token ceiling.
+    // A 4096-token context gives artifact requests more room while remaining
+    // a measured step for 4 GB devices. Keep the physical micro-batch bounded.
     const uint32_t contextSize = static_cast<uint32_t>(
             std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx)));
     ctxParams.n_ctx = contextSize;
-    ctxParams.n_batch = 256;
+    // The prompt is prefilled as one logical batch and can exceed 256 tokens.
+    // Keep n_batch large enough for the bounded context while retaining a small
+    // physical micro-batch to limit temporary memory on 4 GB devices.
+    ctxParams.n_batch = contextSize;
     ctxParams.n_ubatch = 256;
+    LOGI("GENERATION_CONTEXT context=%u trained=%d maxTokens=%d %s",
+         contextSize, trainedCtx, static_cast<int>(maxTokens), process_memory_snapshot().c_str());
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     const int threads = std::max(2, std::min(6, cpuCount - 1));
     ctxParams.n_threads = threads;
     ctxParams.n_threads_batch = threads;
 
+    LOGI("GENERATION_CONTEXT_CREATE_BEGIN context=%u promptMessages=%zu %s",
+         contextSize, roleStrings.size(), process_memory_snapshot().c_str());
     llama_context *ctx = llama_init_from_model(g_model, ctxParams);
     if (!ctx) {
+        LOGE("GENERATION_CONTEXT_CREATE_FAILED context=%u %s",
+             contextSize, process_memory_snapshot().c_str());
         const std::string message = "Could not create the inference context.";
         set_error_diagnostics(startedMs, "context", message);
         jstring value = env->NewStringUTF(message.c_str());
@@ -252,8 +375,9 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         return size;
     };
 
-    const int requestedGeneration = std::max(1, std::min(256, static_cast<int>(maxTokens)));
-    const int reservedGeneration = std::min(requestedGeneration, 256);
+    // Allow longer answers, but retain a hard ceiling to bound CPU time and memory.
+    const int requestedGeneration = std::max(1, std::min(1024, static_cast<int>(maxTokens)));
+    const int reservedGeneration = requestedGeneration;
     const int promptBudget = std::max(
             1, static_cast<int>(contextSize) - reservedGeneration - 4);
 
@@ -297,6 +421,9 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
                 vocab, formatted.data(), formattedSize,
                 nullptr, 0, true, true);
     }
+
+    LOGI("GENERATION_PROMPT_READY promptTokens=%d context=%u %s",
+         promptCount, contextSize, process_memory_snapshot().c_str());
 
     if (promptCount <= 0 || promptCount + reservedGeneration >= static_cast<int>(contextSize)) {
         llama_free(ctx);
@@ -353,18 +480,28 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const long long generationStartMs = static_cast<long long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
+    LOGI("GENERATION_DECODE_BEGIN promptMs=%lld %s", promptMs, process_memory_snapshot().c_str());
 
     std::string pendingUtf8;
     const int generationLimit = std::max(
             1,
             std::min(
-                    256,
+                    1024,
                     std::min(
                             static_cast<int>(maxTokens),
                             static_cast<int>(contextSize) - promptCount - 1)));
     int generated = 0;
+    bool stoppedByUser = false;
 
     for (; generated < generationLimit; ++generated) {
+        if (g_stop_requested.load(std::memory_order_acquire)) {
+            stoppedByUser = true;
+            break;
+        }
+        if (generated > 0 && generated % 32 == 0) {
+            LOGI("GENERATION_PROGRESS generated=%d/%d %s",
+                 generated, generationLimit, process_memory_snapshot().c_str());
+        }
         llama_token token = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, token)) break;
 
@@ -387,7 +524,12 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
             }
             if (emitLen == 0 && pendingUtf8.size() < 4) continue;
             if (emitLen == 0) emitLen = pendingUtf8.size();
-            emit(env, callback, tokenMethod, pendingUtf8.substr(0, emitLen));
+            if (!emit(env, callback, tokenMethod, pendingUtf8.substr(0, emitLen))) {
+                llama_sampler_free(sampler);
+                llama_free(ctx);
+                set_error_diagnostics(startedMs, "jni-callback", "Token callback failed; see Android logcat.");
+                return;
+            }
             pendingUtf8.erase(0, emitLen);
         }
 
@@ -404,7 +546,12 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         }
     }
 
-    if (!pendingUtf8.empty()) emit(env, callback, tokenMethod, pendingUtf8);
+    if (!pendingUtf8.empty() && !emit(env, callback, tokenMethod, pendingUtf8)) {
+        llama_sampler_free(sampler);
+        llama_free(ctx);
+        set_error_diagnostics(startedMs, "jni-callback", "Final token callback failed; see Android logcat.");
+        return;
+    }
     llama_sampler_free(sampler);
     llama_free(ctx);
 
@@ -421,14 +568,91 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
 
     char diagnostics[1024];
     snprintf(diagnostics, sizeof(diagnostics),
-             "Prompt tokens: %d\nContext: %u\nThreads: %d\n"
+             "%sPrompt tokens: %d\nContext: %u\nThreads: %d\n"
              "Prompt eval: %lld ms\nGeneration: %lld ms\n"
              "Generated tokens: %d\nTokens/sec: %.2f\nTotal inference: %lld ms",
+             stoppedByUser ? "Generation stopped by user.\n" : "",
              promptCount, contextSize, threads, promptMs, generationMs,
              generated, tokensPerSecond, totalMs);
     g_last_diagnostics = diagnostics;
+    LOGI("GENERATION_NATIVE_COMPLETE generated=%d totalMs=%lld %s",
+         generated, totalMs, process_memory_snapshot().c_str());
 
     jstring diagnosticsValue = env->NewStringUTF(g_last_diagnostics.c_str());
     env->CallVoidMethod(callback, completeMethod, diagnosticsValue);
     env->DeleteLocalRef(diagnosticsValue);
 }
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sam_syncai_GgufNative_nativeRequestStop(JNIEnv *, jclass) {
+    g_stop_requested.store(true, std::memory_order_release);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sam_syncai_GgufNative_nativeResetStopRequest(JNIEnv *, jclass) {
+    g_stop_requested.store(false, std::memory_order_release);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sam_syncai_GgufNative_nativeGenerate(
+        JNIEnv *env, jclass clazz,
+        jobjectArray roles,
+        jobjectArray texts,
+        jint maxTokens,
+        jfloat temperature,
+        jfloat topP,
+        jobject callback) {
+    try {
+        native_generate_impl(env, clazz, roles, texts, maxTokens, temperature, topP, callback);
+    } catch (const std::bad_alloc &) {
+        LOGE("GENERATION_CPP_ALLOCATION_FAILURE %s", process_memory_snapshot().c_str());
+        if (!env->ExceptionCheck() && callback) {
+            jclass callbackClass = env->GetObjectClass(callback);
+            jmethodID errorMethod = callbackClass
+                    ? env->GetMethodID(callbackClass, "onError", "(Ljava/lang/String;)V") : nullptr;
+            if (errorMethod) {
+                jstring message = env->NewStringUTF(
+                        "Native inference ran out of memory while preparing or generating the response.");
+                if (message) {
+                    env->CallVoidMethod(callback, errorMethod, message);
+                    env->DeleteLocalRef(message);
+                }
+            }
+            if (callbackClass) env->DeleteLocalRef(callbackClass);
+        }
+    } catch (const std::exception &error) {
+        LOGE("GENERATION_CPP_EXCEPTION message=%s %s",
+             error.what(), process_memory_snapshot().c_str());
+        if (!env->ExceptionCheck() && callback) {
+            jclass callbackClass = env->GetObjectClass(callback);
+            jmethodID errorMethod = callbackClass
+                    ? env->GetMethodID(callbackClass, "onError", "(Ljava/lang/String;)V") : nullptr;
+            if (errorMethod) {
+                jstring message = env->NewStringUTF("Native inference failed safely. Export logs for details.");
+                if (message) {
+                    env->CallVoidMethod(callback, errorMethod, message);
+                    env->DeleteLocalRef(message);
+                }
+            }
+            if (callbackClass) env->DeleteLocalRef(callbackClass);
+        }
+    } catch (...) {
+        LOGE("GENERATION_CPP_UNKNOWN_EXCEPTION %s", process_memory_snapshot().c_str());
+        if (!env->ExceptionCheck() && callback) {
+            jclass callbackClass = env->GetObjectClass(callback);
+            jmethodID errorMethod = callbackClass
+                    ? env->GetMethodID(callbackClass, "onError", "(Ljava/lang/String;)V") : nullptr;
+            if (errorMethod) {
+                jstring message = env->NewStringUTF("Native inference failed unexpectedly. Export logs for details.");
+                if (message) {
+                    env->CallVoidMethod(callback, errorMethod, message);
+                    env->DeleteLocalRef(message);
+                }
+            }
+            if (callbackClass) env->DeleteLocalRef(callbackClass);
+        }
+    }
+}
+

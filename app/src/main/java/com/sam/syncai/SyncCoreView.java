@@ -18,8 +18,10 @@ public final class SyncCoreView extends View {
     private AppTheme theme;
     private State state = State.READY;
     private float rotation;
+    private float pulsePhase;
     private boolean reducedMotion;
     private ValueAnimator animator;
+    private ValueAnimator pulseAnimator;
     private final Runnable resetTransientState = () -> {
         if (state == State.SUCCESS || state == State.ERROR) setState(State.READY);
     };
@@ -59,13 +61,25 @@ public final class SyncCoreView extends View {
 
     public void refreshMotionSettings() {
         reducedMotion = Motion.reduced(getContext());
-        if (reducedMotion) stopAnimator();
-        else if (isAttachedToWindow()) startAnimator();
+        if (reducedMotion) {
+            stopAnimator();
+            stopPulseAnimator();
+        } else if (isAttachedToWindow()) {
+            updateMotionForState();
+        }
         invalidate();
     }
 
     @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); refreshMotionSettings(); }
     @Override protected void onDetachedFromWindow() { stopAnimator(); super.onDetachedFromWindow(); }
+
+    private void updateMotionForState() {
+        // Only actual model generation spins the orbit. In every other state,
+        // keep the rings fixed and gently pulse the core.
+        if (state == State.THINKING) startAnimator();
+        else stopAnimator();
+        startPulseAnimator();
+    }
 
     private void startAnimator() {
         if (animator != null || reducedMotion) return;
@@ -75,6 +89,21 @@ public final class SyncCoreView extends View {
         animator.setInterpolator(new LinearInterpolator());
         animator.addUpdateListener(a -> { rotation=(float)a.getAnimatedValue(); invalidate(); });
         animator.start();
+    }
+
+    private void startPulseAnimator() {
+        if (pulseAnimator != null || reducedMotion) return;
+        pulseAnimator = ValueAnimator.ofFloat(0f, 360f);
+        pulseAnimator.setDuration(1800L);
+        pulseAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        pulseAnimator.setInterpolator(new LinearInterpolator());
+        pulseAnimator.addUpdateListener(a -> { pulsePhase=(float)a.getAnimatedValue(); invalidate(); });
+        pulseAnimator.start();
+    }
+
+    private void stopPulseAnimator() {
+        if (pulseAnimator != null) { pulseAnimator.cancel(); pulseAnimator=null; }
+        pulsePhase=0f;
     }
 
     private long duration() {
@@ -99,7 +128,7 @@ public final class SyncCoreView extends View {
         float d=Math.min(getWidth(),getHeight());
         if(d<=0f)return;
         float x=getWidth()/2f,y=getHeight()/2f,r=d*.31f;
-        float pulse=reducedMotion?1f:1f+.035f*(float)Math.sin(Math.toRadians(rotation*2f));
+        float pulse=reducedMotion?1f:1f+.045f*(float)Math.sin(Math.toRadians(pulsePhase));
         int primary=stateColor(), secondary=state==State.ERROR?0xFFFF718D:state==State.SUCCESS?0xFF34D399:theme.secondary;
 
         paint.setStyle(Paint.Style.FILL);

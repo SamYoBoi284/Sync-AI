@@ -45,6 +45,7 @@ public final class SideDashboard extends FrameLayout {
     private FrameLayout pages;
     private LinearLayout mainContent;
     private LinearLayout settingsContent;
+    private TextView modelStatusLabel;
     private View scrim;
     private boolean open;
     private boolean dragging;
@@ -77,7 +78,7 @@ public final class SideDashboard extends FrameLayout {
         setBackgroundColor(Color.TRANSPARENT);
 
         scrim = new View(activity);
-        scrim.setBackgroundColor(Color.argb(150, 0, 0, 0));
+        scrim.setBackgroundColor(Color.argb(palette.isLight ? 96 : 140, 0, 0, 0));
         scrim.setAlpha(0f);
         scrim.setOnClickListener(v -> close());
         addView(scrim, new FrameLayout.LayoutParams(-1, -1));
@@ -88,7 +89,7 @@ public final class SideDashboard extends FrameLayout {
         GradientDrawable panelSurface = round(palette.surface, dp(24));
         panelSurface.setStroke(dp(1), palette.border);
         panel.setBackground(panelSurface);
-        panel.setElevation(dp(16));
+        panel.setElevation(dp(12));
 
         FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(dp(320), -1, Gravity.START);
         pp.setMargins(0, dp(8), 0, dp(8));
@@ -106,6 +107,14 @@ public final class SideDashboard extends FrameLayout {
         applyProgress(0f);
     }
 
+    /** Updates the loaded-model summary shown only inside Settings. */
+    public void setModelStatus(String status) {
+        if (modelStatusLabel != null) {
+            modelStatusLabel.setText(status == null || status.trim().isEmpty()
+                    ? "NO MODEL LOADED" : status);
+        }
+    }
+
     /** Push the drawer below the system status bar (+ a little breathing room). */
     public void setTopInset(int px) {
         topInset = px;
@@ -119,9 +128,11 @@ public final class SideDashboard extends FrameLayout {
         mainContent.setOrientation(LinearLayout.VERTICAL);
 
         TextView brand = label("SYNC AI", 24, palette.text, true);
+        brand.setLetterSpacing(0.1f);
         mainContent.addView(brand, new LinearLayout.LayoutParams(-1, dp(46)));
 
         TextView subtitle = label("LOCAL AGENT", 10, palette.secondary, true);
+        subtitle.setLetterSpacing(0.2f);
         mainContent.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(28)));
 
         section(mainContent, "CHATS");
@@ -130,7 +141,7 @@ public final class SideDashboard extends FrameLayout {
 
         section(mainContent, "WORKSPACE");
         item(mainContent, "◉  Voice mode", v -> actions.assistant(), true);
-        item(mainContent, "✎  Workspace", v -> actions.files(), true);
+        item(mainContent, "✎  Workspace", v -> actions.canvas(), true);
         item(mainContent, "◈  Appearance", v -> actions.appearance(), true);
 
         section(mainContent, "SETTINGS");
@@ -170,8 +181,15 @@ public final class SideDashboard extends FrameLayout {
         item(settingsContent, "◈  Appearance / themes", v -> actions.appearance(), true);
         item(settingsContent, "✦  Personality & voice", v -> actions.personality(), true);
 
+        section(settingsContent, "MODEL");
+        modelStatusLabel = label("NO MODEL LOADED", 12, palette.text, true);
+        modelStatusLabel.setPadding(dp(12), dp(9), dp(8), dp(9));
+        modelStatusLabel.setBackground(round(palette.surface2, dp(12)));
+        settingsContent.addView(modelStatusLabel,
+                new LinearLayout.LayoutParams(-1, -2));
+
         section(settingsContent, "WORKSPACE");
-        item(settingsContent, "📎  Files / memory", v -> actions.files(), true);
+        item(settingsContent, "▤  File Library", v -> actions.files(), true);
         item(settingsContent, "▣  Local models", v -> actions.models(), true);
         item(settingsContent, "↓  Import model", v -> actions.importModel(), true);
         item(settingsContent, "▤  Runtime", v -> actions.runtime(), true);
@@ -261,24 +279,58 @@ public final class SideDashboard extends FrameLayout {
 
     private void section(LinearLayout target, String title) {
         TextView t = label(title, 9, palette.muted, true);
-        t.setPadding(0, dp(16), 0, dp(6));
-        target.addView(t, new LinearLayout.LayoutParams(-1, dp(28)));
+        t.setLetterSpacing(0.16f);
+        // Keep the heading's text line inside its measured height. A fixed 28dp
+        // box combined with 22dp of vertical padding clipped the glyphs on phones.
+        t.setPadding(0, dp(12), 0, dp(4));
+        target.addView(t, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private int iconFor(String glyph) {
+        switch (glyph) {
+            case "＋": return R.drawable.ic_plus;
+            case "☷": return R.drawable.ic_history;
+            case "◉": return R.drawable.ic_voice;
+            case "✎": return R.drawable.ic_edit;
+            case "◈": case "🎨": return R.drawable.ic_palette;
+            case "⚙": case "◍": return R.drawable.ic_sliders;
+            case "✦": return R.drawable.ic_sparkle;
+            case "▤": return R.drawable.ic_files;
+            case "▣": return R.drawable.ic_cpu;
+            case "↓": return R.drawable.ic_download;
+            case "ⓘ": return R.drawable.ic_info;
+            default: return 0;
+        }
     }
 
     private void item(LinearLayout target, String title, View.OnClickListener listener, boolean closeAfter) {
-        TextView t = label(title, 14, palette.text, false);
+        int iconRes = 0;
+        String shown = title;
+        int gap = title.indexOf("  ");
+        if (gap > 0) {
+            int res = iconFor(title.substring(0, gap));
+            if (res != 0) { iconRes = res; shown = title.substring(gap + 2); }
+        }
+        TextView t = label(shown, 14.5f, palette.text, false);
         t.setGravity(Gravity.CENTER_VERTICAL);
         t.setPadding(dp(12), 0, dp(8), 0);
-        t.setBackground(round(palette.surface2, dp(13)));
+        if (iconRes != 0) {
+            t.setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0);
+            t.setCompoundDrawablePadding(dp(14));
+            t.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(palette.muted));
+        }
+        int rippleColor = Color.argb(palette.isLight ? 36 : 52, Color.red(palette.primary),
+                Color.green(palette.primary), Color.blue(palette.primary));
+        t.setBackground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(rippleColor), null, round(Color.WHITE, dp(14))));
         t.setOnClickListener(v -> {
             listener.onClick(v);
             if (closeAfter) close();
         });
         Motion.pressable(t);
-        target.addView(t, new LinearLayout.LayoutParams(-1, dp(46)));
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams)t.getLayoutParams();
-        lp.bottomMargin = dp(5);
-        t.setLayoutParams(lp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(48));
+        lp.bottomMargin = dp(2);
+        target.addView(t, lp);
     }
 
     private void staggerChildren(LinearLayout group, long baseDelay) {

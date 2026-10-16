@@ -1,0 +1,416 @@
+package com.sam.syncai;
+
+import android.content.Context;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/** Persists generated code/document artifacts independently from chat history. */
+public final class WorkspaceStore {
+    private final Context context;
+    public enum State { IN_PROGRESS, COMPLETED, FAILED }
+
+    public static final class Artifact {
+        public final String id;
+        public final String responseId;
+        public final String chatId;
+        public final String title;
+        public final String language;
+        public final String content;
+        public final State state;
+        public final long createdAt;
+        public final long updatedAt;
+
+        Artifact(String id, String responseId, String chatId, String title,
+                 String language, String content, State state, long createdAt, long updatedAt) {
+            this.id = id;
+            this.responseId = responseId;
+            this.chatId = chatId;
+            this.title = title;
+            this.language = language;
+            this.content = content;
+            this.state = state;
+            this.createdAt = createdAt;
+            this.updatedAt = updatedAt;
+        }
+    }
+
+    private static final String FENCE = new String(new char[]{96, 96, 96});
+    private static final Pattern OPEN_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "([^\\r\\n]*)\\r?\\n");
+    private static final Pattern CLOSE_FENCE = Pattern.compile("(?m)^[ ]*" + FENCE + "[ ]*(?:\\r?\\n|$)");
+    private static final int MAX_ARTIFACTS = 100;
+
+    private final File file;
+    private final List<Artifact> artifacts = new ArrayList<>();
+
+    public WorkspaceStore(Context context) {
+        this.context = context.getApplicationContext();
+        File directory = new File(this.context.getFilesDir(), "workspace");
+        if (!directory.exists()) directory.mkdirs();
+        file = new File(directory, "artifacts.json");
+        load();
+    }
+
+    public synchronized void reload() {
+        load();
+    }
+
+    public synchronized List<Artifact> all() {
+        ArrayList<Artifact> result = new ArrayList<>(artifacts);
+        Collections.sort(result, (left, right) -> Long.compare(right.updatedAt, left.updatedAt));
+        return result;
+    }
+
+    public synchronized Artifact get(String id) {
+        if (id == null) return null;
+        for (Artifact artifact : artifacts) if (id.equals(artifact.id)) return artifact;
+        return null;
+    }
+
+    /** Creates an independent Workspace copy of a readable File Library document. */
+    public synchronized Artifact createArtifact(String title, String language, String content,
+                                                State state, String chatId) {
+        if (title == null || title.trim().isEmpty()) {
+            throw new IllegalArgumentException("A filename is required for the Workspace copy.");
+        }
+        if (content == null) throw new IllegalArgumentException("The source file has no readable content.");
+        ArrayList<Artifact> previous = new ArrayList<>(artifacts);
+        long now = System.currentTimeMillis();
+        String id = UUID.randomUUID().toString();
+        Artifact artifact = new Artifact(id, "file-library-copy-" + id,
+                chatId == null ? "" : chatId, title.trim(),
+                language == null || language.trim().isEmpty() ? "text" : language.trim(),
+                content, state == null ? State.COMPLETED : state, now, now);
+        artifacts.add(artifact);
+        trimOldArtifacts();
+        if (!save()) {
+            artifacts.clear();
+            artifacts.addAll(previous);
+            save();
+            throw new IllegalStateException("Workspace could not persist the copied file. The File Library original was left unchanged.");
+        }
+        SyncEventLogger.record(context, "WorkspaceStore", "FILE_LIBRARY_COPY_SAVED", "INFO",
+                "title=" + artifact.title + " chars=" + artifact.content.length());
+        return artifact;
+    }
+
+    public synchronized void delete(String id) {
+        if (id == null) return;
+        for (int i = artifacts.size() - 1; i >= 0; i--) {
+            if (id.equals(artifacts.get(i).id)) {
+                artifacts.remove(i);
+                save();
+                return;
+            }
+        }
+    }
+
+    /** Saves a user's edit or a generated continuation without creating a second artifact. */
+    public synchronized Artifact updateArtifactContent(String id, String content, State requestedState) {
+        load();
+        Artifact old = get(id);
+        if (old == null) throw new IllegalArgumentException("That Workspace artifact no longer exists.");
+        ArrayList<Artifact> previous = new ArrayList<>(artifacts);
+        String updatedContent = content == null ? "" : content;
+        State state = requestedState == null ? State.FAILED : requestedState;
+        String fenced = FENCE + old.language + "\n" + updatedContent + "\n" + FENCE;
+        if (state == State.COMPLETED && !passesBasicQualityChecks(fenced)) state = State.FAILED;
+        Artifact updated = new Artifact(old.id, old.responseId, old.chatId, old.title,
+                old.language, updatedContent, state, old.createdAt, System.currentTimeMillis());
+        replace(updated);
+        if (!save()) {
+            artifacts.clear();
+            artifacts.addAll(previous);
+            save();
+            throw new IllegalStateException("Workspace could not persist the updated artifact.");
+        }
+        return updated;
+    }
+
+    /** Returns the first fenced block body, including an unfinished block's available text. */
+    public static String extractFirstBlockContent(String response) {
+        List<ExtractedBlock> blocks = extractBlocks(response == null ? "" : response);
+        return blocks.isEmpty() ? "" : blocks.get(0).content;
+    }
+
+    public synchronized boolean updateResponse(String responseId, String chatId,
+                                               String response, State state) {
+        return updateResponse(responseId, chatId, response, state, "");
+    }
+
+    public synchronized boolean updateResponse(String responseId, String chatId,
+                                               String response, State state,
+                                               String preferredTitle) {
+        if (responseId == null || responseId.trim().isEmpty() || response == null) return false;
+        List<ExtractedBlock> blocks = extractBlocks(response);
+        if (blocks.isEmpty()) return false;
+
+        ArrayList<Artifact> previous = new ArrayList<>(artifacts);
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < blocks.size(); i++) {
+            ExtractedBlock block = blocks.get(i);
+            String id = responseId + "-" + i;
+            Artifact old = get(id);
+            String title = preferredTitle == null || preferredTitle.trim().isEmpty()
+                    ? titleFor(response, block.start, block.language, i + 1)
+                    : preferredTitle.trim();
+            State storedState = state;
+            if (state == State.COMPLETED && !passesBasicQualityChecks(block)) {
+                storedState = State.FAILED;
+            }
+            Artifact next = new Artifact(id, responseId, chatId == null ? "" : chatId,
+                    title, block.language.isEmpty() ? "text" : block.language,
+                    block.content, storedState, old == null ? now : old.createdAt, now);
+            replace(next);
+        }
+
+        if (state != State.IN_PROGRESS) {
+            for (int i = artifacts.size() - 1; i >= 0; i--) {
+                Artifact item = artifacts.get(i);
+                if (responseId.equals(item.responseId)) {
+                    try {
+                        int index = Integer.parseInt(item.id.substring(responseId.length() + 1));
+                        if (index >= blocks.size()) artifacts.remove(i);
+                    } catch (Exception ignored) {
+                        artifacts.remove(i);
+                    }
+                }
+            }
+        }
+
+        trimOldArtifacts();
+        if (!save()) {
+            artifacts.clear();
+            artifacts.addAll(previous);
+            save();
+            return false;
+        }
+        return true;
+    }
+
+    private void replace(Artifact artifact) {
+        for (int i = 0; i < artifacts.size(); i++) {
+            if (artifact.id.equals(artifacts.get(i).id)) {
+                artifacts.set(i, artifact);
+                return;
+            }
+        }
+        artifacts.add(artifact);
+    }
+
+    private void trimOldArtifacts() {
+        if (artifacts.size() <= MAX_ARTIFACTS) return;
+        Collections.sort(artifacts, Comparator.comparingLong(item -> item.updatedAt));
+        while (artifacts.size() > MAX_ARTIFACTS) artifacts.remove(0);
+    }
+
+    private static final class ExtractedBlock {
+        final int start;
+        final String language;
+        final String content;
+        final boolean closed;
+        ExtractedBlock(int start, String language, String content, boolean closed) {
+            this.start = start;
+            this.language = language;
+            this.content = content;
+            this.closed = closed;
+        }
+    }
+
+    /** True when the response contains a fenced block that the Workspace parser can persist. */
+    public static boolean hasExtractableBlock(String response) {
+        return !extractBlocks(response == null ? "" : response).isEmpty();
+    }
+
+    /** Basic structural checks; this is a guard against obvious truncation, not a full runtime test. */
+    public static boolean passesBasicQualityChecks(String response) {
+        List<ExtractedBlock> blocks = extractBlocks(response == null ? "" : response);
+        if (blocks.isEmpty()) return false;
+        for (ExtractedBlock block : blocks) {
+            if (!passesBasicQualityChecks(block)) return false;
+        }
+        return true;
+    }
+
+    private static boolean passesBasicQualityChecks(ExtractedBlock block) {
+        String content = block.content == null ? "" : block.content.trim();
+        if (!block.closed || content.isEmpty()) return false;
+        String lower = content.toLowerCase(Locale.ROOT);
+        String language = block.language == null ? "" : block.language.toLowerCase(Locale.ROOT);
+        boolean sourceCode = !("text".equals(language) || "txt".equals(language)
+                || "markdown".equals(language) || "md".equals(language) || "document".equals(language));
+        if (sourceCode && (lower.contains("your code here") || lower.contains("implement me")
+                || lower.contains("todo: implement") || lower.contains("replace this with code"))) return false;
+
+        if ("html".equalsIgnoreCase(block.language) || "htm".equalsIgnoreCase(block.language)) {
+            if (!lower.contains("<html") || !lower.contains("</html>")) return false;
+            if (lower.contains("<script") != lower.contains("</script>")) return false;
+            // Catch static Rock-Paper-Scissors mockups even when the model omits a handler entirely.
+            boolean mentionsRps = lower.contains("rock") && lower.contains("paper")
+                    && lower.contains("scissors");
+            boolean looksLikeRpsGame = mentionsRps && (lower.contains("score")
+                    || lower.contains("round") || lower.contains("player") || lower.contains("game"));
+            if (looksLikeRpsGame) {
+                boolean hasRealControls = lower.contains("<button") || lower.contains("<input");
+                boolean hasScript = lower.contains("<script") && lower.contains("</script>");
+                boolean hasEventHandler = lower.contains("addeventlistener") || lower.contains("onclick")
+                        || lower.contains("onchange");
+                boolean updatesUi = lower.contains("textcontent") || lower.contains("innertext")
+                        || lower.contains("innerhtml") || lower.contains("insertadjacenthtml");
+                boolean playerOne = lower.contains("player 1") || lower.contains("player one")
+                        || lower.contains("player1") || lower.contains("player-one")
+                        || lower.contains("player a");
+                boolean playerTwo = lower.contains("player 2") || lower.contains("player two")
+                        || lower.contains("player2") || lower.contains("player-two")
+                        || lower.contains("player b");
+                boolean playerVsComputer = lower.contains("computer")
+                        && (lower.contains("human") || lower.contains("you"));
+                if (!hasRealControls || !hasScript || !hasEventHandler || !updatesUi
+                        || (!playerVsComputer && (!playerOne || !playerTwo))) return false;
+            }
+            // Keep the earlier targeted guard for variants using an explicit playRound handler.
+            if (lower.contains("function playround") || lower.contains("playround(")) {
+                boolean hasChoices = lower.contains("<button") || lower.contains("<input");
+                boolean hasRules = lower.contains("if") || lower.contains("switch");
+                boolean updatesUi = lower.contains("textcontent") || lower.contains("innertext")
+                        || lower.contains("innerhtml") || lower.contains("insertadjacenthtml");
+                String quote = String.valueOf((char) 34);
+                boolean brokenSeparateRadioNames = lower.contains("name=" + quote + "rock" + quote)
+                        && lower.contains("name=" + quote + "paper" + quote)
+                        && lower.contains("name=" + quote + "scissors" + quote);
+                if (!hasChoices || !hasRules || !updatesUi || brokenSeparateRadioNames
+                        || !lower.contains("rock") || !lower.contains("paper")
+                        || !lower.contains("scissors")) return false;
+            }
+        }
+        return true;
+    }
+
+    private static List<ExtractedBlock> extractBlocks(String text) {
+        List<ExtractedBlock> result = new ArrayList<>();
+        Matcher open = OPEN_FENCE.matcher(text);
+        int searchFrom = 0;
+        while (searchFrom < text.length() && open.find(searchFrom)) {
+            int contentStart = open.end();
+            Matcher close = CLOSE_FENCE.matcher(text);
+            int closeStart = -1;
+            int closeEnd = -1;
+            if (close.find(contentStart)) {
+                closeStart = close.start();
+                closeEnd = close.end();
+            }
+            String content = text.substring(contentStart, closeStart >= 0 ? closeStart : text.length());
+            String language = open.group(1) == null ? "" : open.group(1).trim();
+            if (language.contains(" ")) language = language.substring(0, language.indexOf(' '));
+            result.add(new ExtractedBlock(open.start(), language, content, closeEnd >= 0));
+            if (closeEnd >= 0) searchFrom = closeEnd;
+            else break;
+        }
+        return result;
+    }
+
+    private static String titleFor(String response, int fenceStart, String language, int index) {
+        int prefixStart = Math.max(0, fenceStart - 280);
+        String[] lines = response.substring(prefixStart, fenceStart).split("\\r?\\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            if (line.startsWith("#")) {
+                while (line.startsWith("#")) line = line.substring(1).trim();
+                line = cleanTitle(line);
+                if (!line.isEmpty()) return line;
+            }
+            if (line.toLowerCase(Locale.ROOT).startsWith("artifact:")) {
+                line = cleanTitle(line.substring("artifact:".length()));
+                if (!line.isEmpty()) return line;
+            }
+            if (line.startsWith("**") && line.endsWith("**") && line.length() > 4) {
+                line = cleanTitle(line.substring(2, line.length() - 2));
+                if (!line.isEmpty()) return line;
+            }
+            break;
+        }
+        String name = language == null ? "" : language.trim();
+        if (name.isEmpty()) name = "text";
+        return name.toUpperCase(Locale.ROOT) + " artifact " + index;
+    }
+
+    private static String cleanTitle(String title) {
+        String clean = title == null ? "" : title.replace("*", "").replace("_", "").trim();
+        clean = clean.replaceAll("\\s+", " ");
+        if (clean.length() > 64) clean = clean.substring(0, 61) + "…";
+        return clean;
+    }
+
+    private synchronized boolean save() {
+        try {
+            JSONArray array = new JSONArray();
+            for (Artifact item : artifacts) {
+                JSONObject object = new JSONObject();
+                object.put("id", item.id);
+                object.put("responseId", item.responseId);
+                object.put("chatId", item.chatId);
+                object.put("title", item.title);
+                object.put("language", item.language);
+                object.put("content", item.content);
+                object.put("state", item.state.name());
+                object.put("createdAt", item.createdAt);
+                object.put("updatedAt", item.updatedAt);
+                array.put(object);
+            }
+            try (FileOutputStream output = new FileOutputStream(file)) {
+                output.write(array.toString(2).getBytes(StandardCharsets.UTF_8));
+                output.getFD().sync();
+            }
+        } catch (Exception error) {
+            SyncEventLogger.recordException(context, "WorkspaceStore", "WORKSPACE_SAVE_FAILED",
+                    error, "path=" + file.getAbsolutePath() + " artifacts=" + artifacts.size());
+            // Persistence failures must not interrupt inference, but must be visible in exported logs.
+            return false;
+        }
+        return true;
+    }
+
+    private synchronized void load() {
+        artifacts.clear();
+        if (!file.exists()) return;
+        try (FileInputStream input = new FileInputStream(file)) {
+            byte[] data = new byte[(int) file.length()];
+            int count = input.read(data);
+            if (count <= 0) return;
+            JSONArray array = new JSONArray(new String(data, StandardCharsets.UTF_8));
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject object = array.optJSONObject(i);
+                if (object == null) continue;
+                State state;
+                try {
+                    state = State.valueOf(object.optString("state", "COMPLETED"));
+                } catch (Exception ignored) {
+                    state = State.COMPLETED;
+                }
+                artifacts.add(new Artifact(
+                        object.optString("id", UUID.randomUUID().toString()),
+                        object.optString("responseId", ""), object.optString("chatId", ""),
+                        object.optString("title", "Sync artifact"), object.optString("language", "text"),
+                        object.optString("content", ""), state,
+                        object.optLong("createdAt", System.currentTimeMillis()),
+                        object.optLong("updatedAt", System.currentTimeMillis())));
+            }
+        } catch (Exception ignored) {
+            artifacts.clear();
+        }
+        trimOldArtifacts();
+    }
+}

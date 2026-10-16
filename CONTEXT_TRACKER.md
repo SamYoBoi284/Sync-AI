@@ -1,11 +1,50 @@
 # Sync AI — Context Tracker
 
 > Living handoff/context document for the Sync AI project.
-> Updated: 2026-10-09
-> Latest verified source branch: `sync-ai-context-visual-813e999-v2`
+> Updated: 2026-10-13
+> Current feature branch: `feat/file-library-context-generation-1024` (build and phone verification pending)
+> Stable development base: `fix/generation-timer-alarm-export`
 > This tracker records implemented work and known verification status. Source code / CI remains authoritative.
 
-## Project
+## 2026-10-13 — Premium UI redesign + light/dark mode (build and phone verification pending)
+
+Branch: `feat/file-library-context-generation-1024`. Visual/styling pass only; inference, model loading, storage, chat history, file handling, voice logic and every sidebar destination are unchanged. **Not compiled or device-tested when written** (only a syntax parse); run CI and test on the Galaxy A16.
+
+**Light / dark mode**
+- New pref `appearance_mode` (`system` | `dark` | `light`) in `AppPreferences` (`getThemeMode` / `setThemeMode`, `THEME_MODE_IDS/NAMES`). Default is **dark** so existing installs look unchanged.
+- Toggle lives in **Settings → Personalization → Theme** (`MainActivity.showPersonalization`) and in **Appearance → MODE**. Main chat recreates itself when the mode changes (`appliedMode` check in `onResume`, plus `recreate()` from the Personalization toggle).
+- `AppTheme` now has `isLight`, a light variant of all six identities (`light()`; the old palettes are `dark()`), and helpers: `isLightMode`, `mix`, `contrast`, `onAccent` (readable text on accent fills), `applySystemBars` (bar colors + light-icon flags + window background). In light mode the accent is auto-darkened for contrast. Identity and accent stay independent preferences.
+- `FileLibraryActivity` / `WorkspaceActivity` no longer use hardcoded dark constants; they read `AppTheme` in `onCreate`. `VoiceModeActivity`, `SyncVoiceSession`, `SyncDialog`, `AppearanceActivity` no longer hardcode white text on accent fills.
+- `VoiceModeActivity` is a translucent assistant overlay: it intentionally does **not** call `applySystemBars`.
+- Launch frame: new `res/values/themes.xml` (`Theme.SyncAI`) + `colors.xml` give a dark launch background; manifest uses it for the app and the 3 non-translucent activities. Known limit: a user who forces Light while the system is dark may still see a brief dark frame before `onCreate`, because the launch window cannot read preferences.
+
+**Visual changes**
+- Chat: Sync AI replies are bubble-less with looser line spacing; user messages are an accent-tinted pill with a small tail; composer is a floating pill with a filled Send button; cards 16dp; action buttons 11.5sp/14dp radius; letter-spaced title/labels.
+- Sidebar (`SideDashboard.item()` / `iconFor()`): flat 48dp rows with accent ripple and 11 new vector icons (`res/drawable/ic_*.xml`, 24dp, tinted in code) replacing unicode glyphs. Item strings in the same `"glyph  Label"` format still work; unknown glyphs fall back to text.
+
+**Edge swipe to open sidebar** (existing feature in `MainActivity.handleEdgeSwipe`, left edge)
+- Reported not working on the phone. Likely cause: Android's Back gesture takes swipes outside the single ≤200dp system-gesture exclusion band. Changes: start zone widened 40→64dp (`EDGE_ZONE_DP`), exclusion band moved to 45% height and 48dp wide, ignored while text is selected or when a second finger lands.
+- New log events in Command/diagnostics log: `EDGE_SWIPE_BEGIN` (gesture committed) and `EDGE_SWIPE_CANCELLED` (system/parent took it). If neither appears after a swipe, the system Back gesture is eating it: switch to 3-button nav to confirm, or start the swipe lower on the screen inside the exclusion band.
+- RTL: the drawer is still anchored/animated for LTR only (`translationX` sign, raw-X zone). Not mirrored.
+
+**Verify on device:** both modes in all 6 identities; Personalization + Appearance toggles; accent Lime/Cyan on light backgrounds; File Library and Workspace in light mode; dialogs; sidebar icons render; swipe from x≈20–60dp near mid-screen; Voice overlay still looks right; no status-bar icon contrast problems.
+
+## 2026-10-13 — Current File Library work (in progress)
+
+Branch: `feat/file-library-context-generation-1024`
+
+- PR #18: [Fix file import routing and add persistent File Library](https://github.com/SamYoBoi284/Sync-AI/pull/18) (draft; build and phone verification pending).
+- Drawer → Settings → File Library now uses its own activity/import flow; it must not reuse the Memory import result code. The existing Personalization → Import Memory File action remains separate.
+- `FileLibraryStore` keeps user-imported file copies and metadata inside app-private storage, detects exact-content duplicates by SHA-256, permits import/export/delete, and previews supported text files.
+- `MainActivity.buildModelContext` attaches only specifically mentioned (or clearly referenced in an immediate follow-up) library files, up to two items and a bounded text excerpt. It treats file contents as user data, not instructions, and tells the model not to claim a truncated excerpt is a full file.
+- Unambiguous small single-file text edits (up to 3,000 bytes) route to Workspace with the original filename; saving back requires an explicit Replace or Save as Copy action. Multiple file mentions are available for analysis, but full-file replacement is one source file at a time. Original files are not silently overwritten.
+- Artifact generation is now configured for 1,024 tokens; normal chat remains at 512. The native hard ceiling is already 1,024. 4 GB device memory/latency needs physical testing.
+- Workspace artifacts now have an **EDIT SOURCE** action that saves changes in place. Basic completeness checks can keep an edited source marked failed if it still appears incomplete.
+- Failed/incomplete artifacts expose **CONTINUE WITH SYNC**. It passes the partial source to the model, expects only the continuation fragment in a fenced block, appends that fragment to the same artifact, and rechecks completeness. If the model gives no usable fenced fragment, the existing artifact is preserved unchanged. Repeated continuation is available if it still appears incomplete.
+- Workspace updates reload persisted artifacts before modifying them to avoid stale activity instances overwriting edits.
+- Binary files (PDF/office/images/etc.) can be stored and exported but their content is not extracted for local-model context in this initial iteration.
+- Do not publish a release. Run CI, inspect source diffs/build failures, and test File Library/import, text-file context/edit/save paths, old Memory import, Workspace, updater, voice/wake-word, model import, and SAF export flows on the Galaxy A16.
+
 
 - Repository: `SamYoBoi284/Sync-AI`
 - Android offline-first local AI assistant.
@@ -13,6 +52,8 @@
 - Android Java + C++ JNI + llama.cpp, CPU-first, arm64-v8a.
 - GGUF model files remain on-device and are not committed to GitHub.
 - App name is **Sync AI**; the old `Sync//AI` naming is no longer the desired user-facing name.
+
+## Project
 
 ## Deterministic Sync Tool Core — implemented
 

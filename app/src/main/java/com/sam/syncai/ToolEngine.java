@@ -62,7 +62,11 @@ public final class ToolEngine {
     }
 
     private static final Pattern TIMER =
-            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|of))?|(?:start|begin)\\s+(?:a\\s+)?timer(?:\\s+for)?|countdown(?:\\s+for)?)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|of))?|(?:start|begin)\\s+(?:a\\s+)?timer(?:\\s+for)?|countdown(?:\\s+for)?)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+(?:and|,)\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?))?\\b");
+    private static final Pattern TIMER_CLOCK_TIME =
+            Pattern.compile("(?i)\\b(?:(?:set\\s+)?(?:a\\s+)?timer(?:\\s+(?:for|to|until))?|countdown(?:\\s+(?:for|to|until))?)\\s+(\\d{1,2})(?::?(\\d{2}))\\s*(a\\.?m\\.?|p\\.?m\\.?)?(?![a-z])");
+    private static final Pattern ALARM_LABEL =
+            Pattern.compile("(?i)\\b(?:named|called|label(?:ed|led)?(?:\\s+as)?|with\\s+(?:the\\s+)?label(?:\\s+as)?)\\s+(.+?)\\s*$");
     private static final Pattern REMINDER_IN =
             Pattern.compile("(?i)\\bremind\\s+me\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\\s+to\\s+(.+))?");
     private static final Pattern REMINDER_AT =
@@ -72,9 +76,9 @@ public final class ToolEngine {
     private static final Pattern BRIGHTNESS_PERCENT =
             Pattern.compile("(?i)\\b(?:set|change|turn)\\s+(?:the\\s+)?(?:screen\\s+)?brightness\\s+(?:to\\s+)?(\\d{1,3})\\s*%?\\b");
     private static final Pattern ALARM =
-            Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
+            Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,4})(?::(\\d{2}))?(?!\\d)\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
-            Pattern.compile("(?i)^(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+)$");
+            Pattern.compile("(?i)^(?:(?:hey|bro|also|okay|alright|please)\\s+)*(?:(?:can|could|would|will)\\s+(?:you|u)\\s+)?(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+?)\\s*[.!?,;]*$");
     private static final Pattern CALL =
             Pattern.compile("(?i)^(?:please\\s+)?(?:call|phone|ring)\\s+(.+)$");
 
@@ -83,6 +87,7 @@ public final class ToolEngine {
     private String lastTool = "";
     private String lastApp = "";
     private String lastContact = "";
+    private String originalCommand = "";
     private volatile boolean flashlightOn;
     private String flashlightCameraId;
 
@@ -122,6 +127,7 @@ public final class ToolEngine {
 
     public synchronized Result handle(String raw) {
         if (raw == null) return Result.none();
+        originalCommand = raw.trim();
         String command = normalize(raw);
         if (command.isEmpty()) return Result.none();
 
@@ -134,6 +140,10 @@ public final class ToolEngine {
             }
 
             Result result = handleSingle(command);
+            if (!result.handled) {
+                String embedded = extractEmbeddedCommand(command);
+                if (!embedded.isEmpty()) result = handleSingle(embedded);
+            }
             if (result.handled && result.success) remember(command, result.toolName);
             return withDuration(result, started);
         } catch (Exception e) {
@@ -167,16 +177,14 @@ public final class ToolEngine {
         if (parts.length < 2) return Result.none();
 
         List<Result> results = new ArrayList<>();
-        boolean allHandled = true;
         for (String part : parts) {
-            Result r = handleSingle(part.trim());
-            if (!r.handled) {
-                allHandled = false;
-                break;
-            }
-            results.add(r);
+            String candidate = stripConversationalLead(part.trim());
+            if (candidate.isEmpty()) continue;
+            Result r = handleSingle(candidate);
+            if (r.handled) results.add(r);
         }
-        if (!allHandled || results.size() < 2) return Result.none();
+        if (results.isEmpty()) return Result.none();
+        if (results.size() == 1) return results.get(0);
 
         StringBuilder response = new StringBuilder();
         StringBuilder tools = new StringBuilder();
@@ -191,6 +199,25 @@ public final class ToolEngine {
             tools.append(r.toolName);
         }
         return new Result(true, ok, response.toString(), tools.toString(), 0, permission);
+    }
+
+    private String stripConversationalLead(String command) {
+        String candidate = command == null ? "" : command.trim();
+        candidate = candidate.replaceFirst(
+                "(?i)^(?:(?:hey|bro|also|okay|alright|well|so|by the way|btw|please)\\b[\\s,:-]*)+",
+                "");
+        candidate = candidate.replaceFirst("(?i)^(?:can|could|would|will)\\s+(?:you|u)\\s+", "");
+        candidate = candidate.replaceFirst("(?i)^please\\s+", "");
+        return candidate.trim();
+    }
+
+    private String extractEmbeddedCommand(String command) {
+        if (command == null) return "";
+        Matcher request = Pattern.compile(
+                "(?i)\\b(?:(?:can|could|would|will)\\s+(?:you|u)|i need you to|please)\\s+(?:please\\s+)?(?=(?:open|launch|start|run|go to|call|phone|ring)\\b)(.+)$")
+                .matcher(command);
+        if (!request.find()) return "";
+        return request.group(1).trim();
     }
 
     private Result handleSingle(String command) throws Exception {
@@ -426,10 +453,24 @@ public final class ToolEngine {
                     +": "+reminderText+".");
         }
 
+        Matcher timerClockTime = TIMER_CLOCK_TIME.matcher(command);
+        if (timerClockTime.find()) {
+            return new Result(true, false,
+                    "That looks like a clock time, not a timer duration. Say “set an alarm for "
+                            + timerClockTime.group(1) + ":" + timerClockTime.group(2)
+                            + (timerClockTime.group(3) == null ? "" : " " + timerClockTime.group(3).replace(".", "").toUpperCase(Locale.US))
+                            + "” for a specific time, or give me a duration like “10 minutes”.",
+                    "timer-clarification", 0);
+        }
+
         Matcher timer = TIMER.matcher(command);
         if (timer.find()) {
             double amount = Double.parseDouble(timer.group(1));
             long seconds = durationSeconds(amount, timer.group(2).toLowerCase(Locale.US));
+            if (timer.group(3) != null) {
+                seconds += durationSeconds(Double.parseDouble(timer.group(3)),
+                        timer.group(4).toLowerCase(Locale.US));
+            }
             if (seconds <= 0) throw new IllegalArgumentException("Timer duration must be positive.");
             if (seconds > 86400L) return new Result(true,false,
                     "Android's Clock timer supports up to 24 hours. Use a reminder for a longer delay.","timer",0);
@@ -447,10 +488,30 @@ public final class ToolEngine {
             }
         }
 
-        Matcher alarm=ALARM.matcher(command);
+        String labelSource = normalize(originalCommand).equals(command)
+                ? originalCommand : command;
+        Matcher labelMatcher = ALARM_LABEL.matcher(labelSource);
+        String alarmLabel = labelMatcher.find() ? labelMatcher.group(1).trim() : "Sync AI alarm";
+        alarmLabel = alarmLabel.replaceAll("[.!?]+$", "").trim();
+        String alarmCommand = ALARM_LABEL.matcher(command).replaceAll("").trim();
+        Matcher alarm=ALARM.matcher(alarmCommand);
         if(alarm.find()) {
-            int hour=Integer.parseInt(alarm.group(1));
-            int minute=alarm.group(2)==null?0:Integer.parseInt(alarm.group(2));
+            String hourDigits = alarm.group(1);
+            String minuteDigits = alarm.group(2);
+            int hour;
+            int minute;
+            if (minuteDigits != null) {
+                hour = Integer.parseInt(hourDigits);
+                minute = Integer.parseInt(minuteDigits);
+            } else if (hourDigits.length() == 3 || hourDigits.length() == 4) {
+                // Voice often reads 6:30 as "630" and 12:30 as "1230".
+                // Split the final two digits as minutes instead of treating 630 as hour 63.
+                hour = Integer.parseInt(hourDigits.substring(0, hourDigits.length() - 2));
+                minute = Integer.parseInt(hourDigits.substring(hourDigits.length() - 2));
+            } else {
+                hour = Integer.parseInt(hourDigits);
+                minute = 0;
+            }
             String ampm=alarm.group(3);
             if(ampm!=null) {
                 if(hour<1||hour>12)throw new IllegalArgumentException("That is not a valid alarm time.");
@@ -465,14 +526,14 @@ public final class ToolEngine {
             Intent alarmIntent=new Intent(AlarmClock.ACTION_SET_ALARM);
             alarmIntent.putExtra(AlarmClock.EXTRA_HOUR,hour);
             alarmIntent.putExtra(AlarmClock.EXTRA_MINUTES,minute);
-            alarmIntent.putExtra(AlarmClock.EXTRA_MESSAGE,"Sync AI alarm");
+            alarmIntent.putExtra(AlarmClock.EXTRA_MESSAGE,alarmLabel);
             alarmIntent.putExtra(AlarmClock.EXTRA_SKIP_UI,true);
             alarmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             String timeText=DateFormat.getTimeInstance(DateFormat.SHORT).format(cal.getTime());
             try {
                 context.startActivity(alarmIntent);
                 return result("alarm","Sent a Clock app request to set an alarm for "+timeText
-                        +". Check Clock to confirm it appears if your installed app asks for confirmation.");
+                        +" labeled “"+alarmLabel+"”. Check Clock to confirm it appears if your installed app asks for confirmation.");
             } catch(ActivityNotFoundException error) {
                 return new Result(true,false,"No installed Clock app accepted Android's alarm action. I did not create a Sync AI notification instead.","alarm",0);
             }
@@ -514,10 +575,10 @@ public final class ToolEngine {
         }
 
         Matcher open = OPEN_APP.matcher(command);
-        if (open.find()) return launchApp(open.group(1).trim());
+        if (open.find()) return launchApp(open.group(1).trim().replaceAll("[.!?,;]+$", ""));
 
         Matcher call = CALL.matcher(command);
-        if (call.find()) return callContact(call.group(1).trim());
+        if (call.find()) return callContact(call.group(1).trim().replaceAll("[.!?,;]+$", ""));
 
         return Result.none();
     }

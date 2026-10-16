@@ -11,6 +11,7 @@ public interface LocalModelBackend {
     interface GenerateCallback {
         void onToken(String token);
         void onComplete();
+        default void onCancelled() { onComplete(); }
         void onError(Exception error);
     }
 
@@ -18,4 +19,5 @@ public interface LocalModelBackend {
     void unload();
     boolean isLoaded();
     void generate(List<ChatMessage> messages, GenerationConfig config, GenerateCallback callback);
+    default void stopGeneration() {}
 }
