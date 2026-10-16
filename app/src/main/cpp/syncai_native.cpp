@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -33,6 +34,7 @@ static std::string process_memory_snapshot() {
 }
 
 static std::mutex g_mutex;
+static std::atomic<bool> g_stop_requested(false);
 static llama_model *g_model = nullptr;
 static std::string g_last_diagnostics = "No inference request recorded yet.";
 static std::string g_last_load_error = "";
@@ -489,8 +491,13 @@ static void native_generate_impl(
                             static_cast<int>(maxTokens),
                             static_cast<int>(contextSize) - promptCount - 1)));
     int generated = 0;
+    bool stoppedByUser = false;
 
     for (; generated < generationLimit; ++generated) {
+        if (g_stop_requested.load(std::memory_order_acquire)) {
+            stoppedByUser = true;
+            break;
+        }
         if (generated > 0 && generated % 32 == 0) {
             LOGI("GENERATION_PROGRESS generated=%d/%d %s",
                  generated, generationLimit, process_memory_snapshot().c_str());
@@ -561,9 +568,10 @@ static void native_generate_impl(
 
     char diagnostics[1024];
     snprintf(diagnostics, sizeof(diagnostics),
-             "Prompt tokens: %d\nContext: %u\nThreads: %d\n"
+             "%sPrompt tokens: %d\nContext: %u\nThreads: %d\n"
              "Prompt eval: %lld ms\nGeneration: %lld ms\n"
              "Generated tokens: %d\nTokens/sec: %.2f\nTotal inference: %lld ms",
+             stoppedByUser ? "Generation stopped by user.\n" : "",
              promptCount, contextSize, threads, promptMs, generationMs,
              generated, tokensPerSecond, totalMs);
     g_last_diagnostics = diagnostics;
@@ -574,6 +582,18 @@ static void native_generate_impl(
     env->CallVoidMethod(callback, completeMethod, diagnosticsValue);
     env->DeleteLocalRef(diagnosticsValue);
 }
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sam_syncai_GgufNative_nativeRequestStop(JNIEnv *, jclass) {
+    g_stop_requested.store(true, std::memory_order_release);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_sam_syncai_GgufNative_nativeResetStopRequest(JNIEnv *, jclass) {
+    g_stop_requested.store(false, std::memory_order_release);
+}
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_sam_syncai_GgufNative_nativeGenerate(

@@ -37,6 +37,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Keep debug installs separate from the production app and its private data.
+            // This suffix is deliberately dotless to produce com.sam.syncaitest.
+            applicationIdSuffix 'test'
+        }
         release {
             minifyEnabled false
             signingConfig signingConfigs.release

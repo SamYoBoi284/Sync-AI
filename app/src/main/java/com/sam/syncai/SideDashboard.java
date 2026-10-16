@@ -45,6 +45,7 @@ public final class SideDashboard extends FrameLayout {
     private FrameLayout pages;
     private LinearLayout mainContent;
     private LinearLayout settingsContent;
+    private TextView modelStatusLabel;
     private View scrim;
     private boolean open;
     private boolean dragging;
@@ -104,6 +105,14 @@ public final class SideDashboard extends FrameLayout {
         panel.addView(pages, new LinearLayout.LayoutParams(-1, 0, 1));
 
         applyProgress(0f);
+    }
+
+    /** Updates the loaded-model summary shown only inside Settings. */
+    public void setModelStatus(String status) {
+        if (modelStatusLabel != null) {
+            modelStatusLabel.setText(status == null || status.trim().isEmpty()
+                    ? "NO MODEL LOADED" : status);
+        }
     }
 
     /** Push the drawer below the system status bar (+ a little breathing room). */
@@ -171,6 +180,13 @@ public final class SideDashboard extends FrameLayout {
         item(settingsContent, "◉  Voice output", v -> actions.toggleVoiceOutput(), true);
         item(settingsContent, "◈  Appearance / themes", v -> actions.appearance(), true);
         item(settingsContent, "✦  Personality & voice", v -> actions.personality(), true);
+
+        section(settingsContent, "MODEL");
+        modelStatusLabel = label("NO MODEL LOADED", 12, palette.text, true);
+        modelStatusLabel.setPadding(dp(12), dp(9), dp(8), dp(9));
+        modelStatusLabel.setBackground(round(palette.surface2, dp(12)));
+        settingsContent.addView(modelStatusLabel,
+                new LinearLayout.LayoutParams(-1, -2));
 
         section(settingsContent, "WORKSPACE");
         item(settingsContent, "▤  File Library", v -> actions.files(), true);

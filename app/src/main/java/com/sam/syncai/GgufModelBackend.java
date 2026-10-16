@@ -3,12 +3,16 @@ package com.sam.syncai;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class GgufModelBackend implements LocalModelBackend {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile ModelInfo loaded;
     private volatile String lastGenerationDiagnostics = "";
     private volatile String runtimeDiagnostics = "No model loaded.";
+    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
+    private final Object generationLock = new Object();
+    private boolean generationRunning;
 
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
@@ -67,6 +71,14 @@ public final class GgufModelBackend implements LocalModelBackend {
         }
 
         executor.execute(() -> {
+            synchronized (generationLock) {
+                if (stopRequested.getAndSet(false)) {
+                    callback.onCancelled();
+                    return;
+                }
+                GgufNative.nativeResetStopRequest();
+                generationRunning = true;
+            }
             try {
                 GgufNative.generate(messages, config, new GgufNative.Callback() {
                     @Override public void onToken(String token) { callback.onToken(token); }
@@ -74,18 +86,41 @@ public final class GgufModelBackend implements LocalModelBackend {
                         lastGenerationDiagnostics = diagnostics == null ? "" : diagnostics;
                         runtimeDiagnostics = diagnostics == null || diagnostics.isEmpty()
                                 ? runtimeDiagnostics : diagnostics;
-                        callback.onComplete();
+                        boolean cancelled;
+                        synchronized (generationLock) {
+                            cancelled = stopRequested.getAndSet(false);
+                            generationRunning = false;
+                        }
+                        if (cancelled) callback.onCancelled();
+                        else callback.onComplete();
                     }
                     @Override public void onError(String message) {
                         runtimeDiagnostics = message == null ? "Inference error." : message;
+                        synchronized (generationLock) {
+                            stopRequested.set(false);
+                            generationRunning = false;
+                        }
                         callback.onError(new IllegalStateException(runtimeDiagnostics));
                     }
                 });
             } catch (Throwable t) {
                 runtimeDiagnostics = t.getMessage() == null ? t.toString() : t.getMessage();
+                synchronized (generationLock) {
+                    stopRequested.set(false);
+                    generationRunning = false;
+                }
                 callback.onError(new IllegalStateException(runtimeDiagnostics, t));
             }
         });
+    }
+
+    @Override
+    public void stopGeneration() {
+        synchronized (generationLock) {
+            if (stopRequested.get()) return;
+            stopRequested.set(true);
+            if (generationRunning) GgufNative.nativeRequestStop();
+        }
     }
 
     public String lastGenerationDiagnostics() {
