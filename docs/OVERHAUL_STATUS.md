@@ -9,14 +9,15 @@ This document tracks the isolated `huge-overhaul-sync-ai-15-10-2026` branch. It 
 - Camera commands route to Android's photo, video, or ordinary camera intent. Front/rear selection is a best-effort hint because external camera apps may ignore it.
 - Audio recording can be handed off to an installed system recorder when one handles Android's recording intent.
 - Basic media transport sends play, pause, next, and previous key events to the active Android media session. Acceptance is not verified.
-- Users can save an installed app as their preferred music app with commands such as `set my default music app to Lark Player`, then open it with `open my music app`. This preference currently controls app launching only; it does not imply that shuffle/repeat/playlist operations are supported.
+- Settings > Default apps lets users choose preferred music, file manager, camera, and audio recorder apps from installed launchable apps. Default selection is UI-only, not a chat command.
+- Natural-language routing can open selected music, file manager, camera, and recorder apps. App launching is not proof that playback, recording, or capture has started.
 
 ## Still outstanding
 
 - A dedicated in-Sync camera UI with preview, front/rear switching, photo/video capture, and saving media.
 - A built-in Sync recorder experience and a recording-only foreground notification.
 - A provider/capability abstraction for music apps, including explicit support detection for shuffle, repeat, playlists, and app-specific controls.
-- General preferred-app/provider selection beyond the current music-app launch preference.
+- Category-aware validation so the default-app picker can distinguish apps that support each role.
 - Speech recognition and text-to-speech evaluation/configuration, multilingual routing, and language overrides.
 - Audit and completion of productivity, Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
 - Automated build/CI verification and end-to-end device verification.
