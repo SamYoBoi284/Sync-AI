@@ -334,7 +334,10 @@ public final class SideDashboard extends FrameLayout {
             if (closeAfter) close();
         });
         Motion.pressable(t);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(48));
+        // Keep the two utility destinations slightly more compact without
+        // changing the sizing of the other sidebar rows.
+        boolean compactUtility = title.contains("Recorder") || title.contains("Tasks & notes");
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(compactUtility ? 44 : 48));
         lp.bottomMargin = dp(2);
         target.addView(t, lp);
     }
