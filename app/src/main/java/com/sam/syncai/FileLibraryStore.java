@@ -359,8 +359,8 @@ public final class FileLibraryStore {
                 boolean relevant = lowerName.endsWith(".docx")
                         ? "word/document.xml".equals(name)
                         : lowerName.endsWith(".pptx")
-                            ? name.matches("ppt/slides/slide[0-9]+\\\\.xml")
-                            : "xl/sharedStrings.xml".equals(name) || name.matches("xl/worksheets/sheet[0-9]+\\\\.xml");
+                            ? name.matches("ppt/slides/slide[0-9]+\\.xml")
+                            : "xl/sharedStrings.xml".equals(name) || name.matches("xl/worksheets/sheet[0-9]+\\.xml");
                 if (!relevant) { zip.closeEntry(); continue; }
                 ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                 int count;
@@ -378,7 +378,7 @@ public final class FileLibraryStore {
                     for (String value : values) {
                         if (!value.trim().isEmpty()) text.append(value).append(' ');
                     }
-                    text.append('\\n');
+                    text.append('\n');
                 }
                 zip.closeEntry();
             }
@@ -422,7 +422,7 @@ public final class FileLibraryStore {
                 }
                 if (value != null && !value.trim().isEmpty()) output.append(value).append(' ');
             } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && "row".equals(parser.getName())) {
-                output.append('\\n');
+                output.append('\n');
             }
         }
     }
