@@ -1166,14 +1166,14 @@ public final class ToolEngine {
     }
 
     private static boolean asksToOpenProductivity(String command) {
-        return command.matches(".*\\\\b(?:open|show|launch|bring up)\\\\s+(?:(?:my|the|sync ai)\\\\s+)?(?:tasks(?:\\\\s*(?:and|&)\\\\s*notes)?|notes|task list|to-do list|todo list)\\\\b.*")
-                || command.matches(".*\\\\b(?:show|view|open)\\\\s+(?:my\\\\s+)?(?:tasks|notes)\\\\b.*");
+        return command.matches(".*\\b(?:open|show|launch|bring up)\\s+(?:(?:my|the|sync ai)\\s+)?(?:tasks(?:\\s*(?:and|&)\\s*notes)?|notes|task list|to-do list|todo list)\\b.*")
+                || command.matches(".*\\b(?:show|view|open)\\s+(?:my\\s+)?(?:tasks|notes)\\b.*");
     }
 
     private static String extractItemText(String command, boolean task) {
         String kind = task ? "(?:task|todo|to-do)" : "(?:note|memo)";
-        Matcher matcher = Pattern.compile("(?i)^(?:(?:please|hey|bro)\\\\s+)*(?:add|create|save|make|write)\\\\s+(?:(?:a|the|new)\\\\s+)?"
-                + kind + "(?:\\\\s+(?:to|about|saying|that says|called|named))?\\\\s*[:,-]?\\\\s+(.+?)\\\\s*[.!?]*$").matcher(command);
+        Matcher matcher = Pattern.compile("(?i)^(?:(?:please|hey|bro)\\s+)*(?:add|create|save|make|write)\\s+(?:(?:a|the|new)\\s+)?"
+                + kind + "(?:\\s+(?:to|about|saying|that says|called|named))?\\s*[:,-]?\\s+(.+?)\\s*[.!?]*$").matcher(command);
         if (!matcher.matches()) return null;
         String value = matcher.group(1) == null ? "" : matcher.group(1).trim();
         return value.isEmpty() ? null : value;
