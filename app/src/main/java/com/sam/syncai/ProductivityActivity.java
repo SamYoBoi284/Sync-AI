@@ -1,6 +1,10 @@
 package com.sam.syncai;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -28,6 +32,8 @@ public final class ProductivityActivity extends Activity {
     private AppTheme palette;
     private LinearLayout notesList, tasksList;
     private EditText noteInput, taskInput;
+    private static final int REQ_NOTIFICATIONS = 7420;
+    private String pendingReminderTask;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -168,6 +174,13 @@ public final class ProductivityActivity extends Activity {
             if (done) text.setAlpha(0.55f);
             text.setPadding(dp(5), dp(6), dp(5), dp(6));
             row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+            if (task && !done) {
+                Button remind = new Button(this);
+                remind.setAllCaps(false);
+                remind.setText("Remind");
+                remind.setOnClickListener(v -> chooseReminder(value));
+                row.addView(remind, new LinearLayout.LayoutParams(dp(72), dp(42)));
+            }
             Button delete = new Button(this);
             delete.setAllCaps(false);
             delete.setText("×");
@@ -211,6 +224,51 @@ public final class ProductivityActivity extends Activity {
         try { return new JSONArray(getSharedPreferences(PREFS, MODE_PRIVATE).getString(key, "[]")); }
         catch (Exception ignored) { return new JSONArray(); }
     }
+    private void chooseReminder(String taskText) {
+        pendingReminderTask = taskText;
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
+            return;
+        }
+        showReminderChoices();
+    }
+
+    private void showReminderChoices() {
+        if (pendingReminderTask == null) return;
+        String task = pendingReminderTask;
+        String[] choices = {"In 10 minutes", "In 30 minutes", "In 1 hour", "Tomorrow"};
+        long[] delays = {10 * 60_000L, 30 * 60_000L, 60 * 60_000L, 24 * 60 * 60_000L};
+        new AlertDialog.Builder(this)
+                .setTitle("Remind me about this task")
+                .setItems(choices, (dialog, which) -> {
+                    try {
+                        ReminderScheduler.schedule(this, delays[which], "Sync AI task reminder",
+                                "Task reminder: " + task);
+                        Toast.makeText(this, "Reminder scheduled: " + choices[which].toLowerCase(), Toast.LENGTH_SHORT).show();
+                    } catch (Exception error) {
+                        Toast.makeText(this, "Couldn't schedule reminder: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                        SyncEventLogger.recordException(this, "ProductivityActivity", "TASK_REMINDER_FAILED", error, task);
+                    } finally {
+                        pendingReminderTask = null;
+                    }
+                })
+                .setOnCancelListener(dialog -> pendingReminderTask = null)
+                .show();
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_NOTIFICATIONS) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                showReminderChoices();
+            } else {
+                pendingReminderTask = null;
+                Toast.makeText(this, "Notification permission is needed to deliver task reminders.", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
     private void openCalendar() {
         try {
             Intent intent = new Intent(Intent.ACTION_MAIN);
