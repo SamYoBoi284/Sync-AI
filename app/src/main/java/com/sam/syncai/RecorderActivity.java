@@ -105,7 +105,7 @@ public final class RecorderActivity extends Activity {
         panel.addView(timerLabel, new LinearLayout.LayoutParams(-1, dp(70)));
 
         recordButton = new Button(this);
-        recordButton.setAllCaps(false);
+        styleButton(recordButton, true);
         recordButton.setText("●  Start recording");
         recordButton.setOnClickListener(v -> onRecordPressed());
         panel.addView(recordButton, new LinearLayout.LayoutParams(-1, dp(54)));
@@ -199,7 +199,7 @@ public final class RecorderActivity extends Activity {
             name.setMaxLines(2);
             row.addView(name, new LinearLayout.LayoutParams(0, dp(48), 1));
             Button play = new Button(this);
-            play.setAllCaps(false);
+            styleButton(play, false);
             play.setText("Play");
             play.setOnClickListener(v -> playRecording(file));
             row.addView(play, new LinearLayout.LayoutParams(dp(76), dp(44)));
@@ -230,6 +230,18 @@ public final class RecorderActivity extends Activity {
         view.setTextColor(color);
         if (bold) view.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         return view;
+    }
+    private void styleButton(Button button, boolean primary) {
+        AppTheme palette = AppTheme.from(this);
+        button.setAllCaps(false);
+        button.setTextSize(12);
+        button.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        button.setTextColor(primary ? AppTheme.onAccent(palette.primary) : palette.text);
+        GradientDrawable background = round(primary ? palette.primary : palette.surface2, dp(15));
+        if (!primary) background.setStroke(dp(1), palette.border);
+        button.setBackground(background);
+        button.setPadding(dp(12), 0, dp(12), 0);
+        Motion.pressable(button);
     }
     private GradientDrawable round(int color, int radius) {
         GradientDrawable d = new GradientDrawable();
