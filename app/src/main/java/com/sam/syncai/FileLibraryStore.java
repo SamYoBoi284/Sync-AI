@@ -336,39 +336,27 @@ public final class FileLibraryStore {
         return new TextContent(result.toString(), truncated, true);
     }
 
-    /** Writes generated text to the library. A non-null replaceId explicitly updates that item. */
+    /**
+     * Saves generated text as a new library item. replaceId is retained for caller
+     * compatibility but now identifies the source only; Sync never overwrites an
+     * imported original in place.
+     */
     public synchronized LibraryFile saveGeneratedText(String requestedName, String text, String replaceId)
             throws Exception {
         load();
         String name = safeName(requestedName);
-        if (name.equals("imported-file")) name = "sync-edited-file.txt";
-        byte[] bytes = (text == null ? "" : text).getBytes(StandardCharsets.UTF_8);
-
+        LibraryFile source = null;
         if (replaceId != null) {
-            LibraryFile old = get(replaceId);
-            if (old == null) throw new IllegalArgumentException("The original file is no longer in the library.");
-            if (!old.isTextReadable()) throw new IllegalArgumentException("Only text-readable files can be replaced by generated text.");
-            File temp = new File(contentDirectory, old.id + ".part");
-            File destination = new File(contentDirectory, old.id + ".bin");
-            try (FileOutputStream out = new FileOutputStream(temp)) {
-                out.write(bytes);
-                out.getFD().sync();
+            source = get(replaceId);
+            if (source == null) throw new IllegalArgumentException("The source file is no longer in the library.");
+            if (!source.isTextReadable()) {
+                throw new IllegalArgumentException("Only text-readable files can be used as a generated-text source.");
             }
-            try {
-                moveReplacing(temp, destination);
-            } catch (Exception error) {
-                temp.delete();
-                throw new IllegalStateException("Could not replace the file.", error);
-            }
-            long now = System.currentTimeMillis();
-            LibraryFile updated = new LibraryFile(old.id, old.name, old.mimeType, bytes.length,
-                    sha256(bytes), old.createdAt, now);
-            replaceMetadata(old, updated);
-            saveIndex();
-            SyncEventLogger.record(context, "FileLibraryStore", "FILE_UPDATED_FROM_SYNC", "INFO",
-                    "name=" + updated.name + " bytes=" + updated.sizeBytes);
-            return updated;
         }
+        if (name.equals("imported-file") || name.trim().isEmpty()) {
+            name = source == null ? "sync-edited-file.txt" : source.name;
+        }
+        byte[] bytes = (text == null ? "" : text).getBytes(StandardCharsets.UTF_8);
 
         String base = name;
         int dot = name.lastIndexOf('.');
@@ -396,7 +384,8 @@ public final class FileLibraryStore {
             throw error;
         }
         SyncEventLogger.record(context, "FileLibraryStore", "FILE_SAVED_FROM_SYNC", "INFO",
-                "name=" + item.name + " bytes=" + item.sizeBytes);
+                "name=" + item.name + " bytes=" + item.sizeBytes
+                        + (source == null ? "" : " source=" + source.name));
         return item;
     }
 
