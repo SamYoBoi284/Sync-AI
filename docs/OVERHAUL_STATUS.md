@@ -29,7 +29,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - Natural-language app-launch phrasing is more tolerant of conversational verbs and wrapper words.
 - Camera inventory can report Android-exposed front/rear/external camera IDs.
 - Camera commands route to Android's photo, video, or ordinary camera intent. Front/rear selection is a best-effort hint because external camera apps may ignore it.
-- Audio recording can be handed off to an installed system recorder when one handles Android's recording intent.
+- Audio recording can be handed off to an installed system recorder when one handles Android's recording intent. Explicit external requests now use the selected recorder app or standard Android recording intent; this is an app handoff, not a universal remote record/stop API.
 - Basic media transport sends play, pause, next, and previous key events to the active Android media session. Acceptance is not verified. Advanced music controls route through a conservative capability registry and are not claimed supported without a provider-specific adapter.
 - The default-app picker now puts category-matched apps first (music/audio handlers, document handlers, camera handlers, recorder handlers, and calendar/alarm/text-sharing handlers for reminders/tasks) and retains other launchable apps as explicit manual overrides. Manual-override display prefixes are not saved into the actual app label.
 - App-launch routing now ignores non-launchable packages and asks the user when two fuzzy matches are nearly tied, rather than opening an ambiguous guess.
@@ -56,7 +56,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 
 ## Latest source review notes
 
-- Source changes are committed on this branch through `7633055724528da73e5a38bc4e192a9142ea5077` plus the tracker updates. No merge, tag, release, or PR was created.
+- Source changes are committed on this branch through `c2ca60f50b5e3709fe9b23a856722e672da51f19` plus the tracker updates. No merge, tag, release, or PR was created.
 - No GitHub Actions workflow run was associated with the current branch commits through the available connector. Build success is therefore unverified; no on-device tests have been run.
 - Remaining implementation work includes provider-specific advanced music controls or explicit adapter support boundaries, recognition-engine language support handling, PDF/image/office File Library extraction, calendar-event creation inside Sync AI, app-specific external reminders integrations, and a full command-coverage audit across chat, in-app Voice Mode, and Hey Sync/default-assistant invocation. Universal external recorder voice-stop control cannot be guaranteed through Android's generic recorder intent because microphone ownership and recorder APIs vary by app. Build/device verification remains excluded until the implementation pass is complete.
 
