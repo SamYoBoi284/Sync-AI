@@ -246,6 +246,40 @@ public final class ToolEngine {
             return result("system_date", "Today is " + format.format(now) + ".");
         }
 
+        // Camera routing is deterministic: inventory/status questions never launch an app,
+        // while capture requests open Android's camera in the requested mode.
+        if (asksAboutCameraInventory(command)) {
+            return describeCameras();
+        }
+
+        if (asksToCaptureVideo(command)) {
+            return launchCameraCapture(android.provider.MediaStore.ACTION_VIDEO_CAPTURE,
+                    requestedCameraFacing(command), "video");
+        }
+
+        if (asksToCapturePhoto(command)) {
+            return launchCameraCapture(android.provider.MediaStore.ACTION_IMAGE_CAPTURE,
+                    requestedCameraFacing(command), "photo");
+        }
+
+        if (asksToOpenCamera(command)) {
+            return launchCameraCapture(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA,
+                    requestedCameraFacing(command), "camera");
+        }
+
+        if (asksToRecordAudio(command)) {
+            Intent record = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION);
+            record.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                context.startActivity(record);
+                return result("audio_recorder", "Opened the available system audio recorder. Start and stop recording in that app.");
+            } catch (ActivityNotFoundException error) {
+                return new Result(true, false,
+                        "I couldn't find a system audio recorder on this phone. You can open an installed recorder app by name.",
+                        "audio_recorder", 0);
+            }
+        }
+
         if (command.contains("flashlight") || command.contains("torch")) {
             if (command.contains("turn on") || command.endsWith(" on") || command.contains("enable")) {
                 setFlashlight(true);
@@ -907,6 +941,108 @@ public final class ToolEngine {
         flashlightCameraId = target;
         cm.setTorchMode(target, on);
         flashlightOn = on;
+    }
+
+    private static boolean asksAboutCameraInventory(String command) {
+        return command.matches(".*\\\\b(?:what|which|how many)\\\\b.*\\\\b(?:cameras?|lenses?)\\\\b.*")
+                || command.matches(".*\\\\b(?:front|back|rear|selfie)\\\\s+(?:camera|lens)\\\\b.*\\\\b(?:available|exist|have|is there|do i have)\\\\b.*")
+                || command.matches(".*\\\\b(?:is there|do i have|are there)\\\\b.*\\\\b(?:front|back|rear|selfie)\\\\s+(?:camera|lens)\\\\b.*");
+    }
+
+    private static boolean asksToCaptureVideo(String command) {
+        return command.matches(".*\\\\b(?:record|shoot|film|capture)\\\\b.*\\\\b(?:a\\\\s+)?(?:video|clip|movie)\\\\b.*")
+                || command.matches(".*\\\\b(?:video record|start recording video|start video recording)\\\\b.*");
+    }
+
+    private static boolean asksToCapturePhoto(String command) {
+        return command.matches(".*\\\\b(?:take|capture|shoot|snap)\\\\b.*\\\\b(?:a\\\\s+)?(?:photo|picture|pic|selfie)\\\\b.*")
+                || command.matches(".*\\\\b(?:take|capture|shoot)\\\\b.*\\\\b(?:a\\\\s+)?(?:selfie)\\\\b.*");
+    }
+
+    private static boolean asksToOpenCamera(String command) {
+        return command.matches(".*\\\\b(?:open|launch|start|show|bring up|pull up)\\\\b.*\\\\b(?:camera|camera app)\\\\b.*")
+                || command.equals("camera") || command.equals("open my camera")
+                || command.equals("open camera app");
+    }
+
+    private static boolean asksToRecordAudio(String command) {
+        return command.matches(".*\\\\b(?:record|start recording|open)\\\\b.*\\\\b(?:audio|voice memo|voice note|sound recording)\\\\b.*")
+                || command.equals("open voice recorder") || command.equals("open audio recorder");
+    }
+
+    private static Integer requestedCameraFacing(String command) {
+        if (command.matches(".*\\\\b(?:front|selfie|front-facing)\\\\b.*")) {
+            return android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT;
+        }
+        if (command.matches(".*\\\\b(?:back|rear|main)\\\\s+(?:camera|lens)\\\\b.*")
+                || command.matches(".*\\\\b(?:back|rear)\\\\b.*\\\\b(?:camera|lens)\\\\b.*")) {
+            return android.hardware.Camera.CameraInfo.CAMERA_FACING_BACK;
+        }
+        return null;
+    }
+
+    private Result describeCameras() {
+        CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+        if (manager == null) {
+            return new Result(true, false, "Android's camera service isn't available.", "camera_inventory", 0);
+        }
+        try {
+            int front = 0, back = 0, external = 0;
+            for (String id : manager.getCameraIdList()) {
+                Integer facing = manager.getCameraCharacteristics(id).get(
+                        android.hardware.camera2.CameraCharacteristics.LENS_FACING);
+                if (facing == null) continue;
+                if (facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT) front++;
+                else if (facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK) back++;
+                else if (facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_EXTERNAL) external++;
+            }
+            StringBuilder message = new StringBuilder("Android reports ")
+                    .append(back).append(" rear camera").append(back == 1 ? "" : "s")
+                    .append(" and ").append(front).append(" front-facing camera")
+                    .append(front == 1 ? "" : "s");
+            if (external > 0) message.append(", plus ").append(external).append(" external camera")
+                    .append(external == 1 ? "" : "s");
+            message.append(". These are camera IDs exposed by Android; a device may expose logical cameras rather than every physical lens.");
+            return result("camera_inventory", message.toString());
+        } catch (Exception error) {
+            return new Result(true, false, "I couldn't inspect the available cameras: "
+                    + error.getClass().getSimpleName() + ".", "camera_inventory", 0);
+        }
+    }
+
+    private Result launchCameraCapture(String action, Integer facing, String mode) {
+        Intent intent = new Intent(action);
+        if (facing != null) {
+            // These extras are best-effort compatibility hints; camera apps may ignore them.
+            intent.putExtra("android.intent.extras.CAMERA_FACING", facing);
+            intent.putExtra("android.intent.extras.LENS_FACING_FRONT",
+                    facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT);
+            intent.putExtra("android.intent.extras.USE_FRONT_CAMERA",
+                    facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT);
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            if (intent.resolveActivity(context.getPackageManager()) == null) {
+                // Generic camera action is a fallback for OEMs without capture-specific handlers.
+                intent = new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (intent.resolveActivity(context.getPackageManager()) == null) {
+                    return new Result(true, false, "No compatible system camera app is available.", "camera", 0);
+                }
+            }
+            context.startActivity(intent);
+            String detail = "Opened the system camera";
+            if ("photo".equals(mode)) detail += " for photo capture";
+            else if ("video".equals(mode)) detail += " for video capture";
+            if (facing != null) detail += facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT
+                    ? " (front camera requested)" : " (rear camera requested)";
+            detail += ". The camera app may ignore camera-facing hints; Sync hasn't verified a photo/video was saved.";
+            return result("camera", detail);
+        } catch (ActivityNotFoundException error) {
+            return new Result(true, false, "I couldn't open a compatible camera app.", "camera", 0);
+        } catch (SecurityException error) {
+            return new Result(true, false, "Android blocked access to the camera app.", "camera", 0);
+        }
     }
 
     private static String normalize(String input) {
