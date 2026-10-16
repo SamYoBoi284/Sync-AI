@@ -31,7 +31,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - Camera commands route to Android's photo, video, or ordinary camera intent. Front/rear selection is a best-effort hint because external camera apps may ignore it.
 - Audio recording can be handed off to an installed system recorder when one handles Android's recording intent.
 - Basic media transport sends play, pause, next, and previous key events to the active Android media session. Acceptance is not verified. Advanced music controls route through a conservative capability registry and are not claimed supported without a provider-specific adapter.
-- The default-app picker now puts category-matched apps first (music/audio handlers, document handlers, camera handlers, recorder handlers) and retains other launchable apps as explicit manual overrides.
+- The default-app picker now puts category-matched apps first (music/audio handlers, document handlers, camera handlers, recorder handlers) and retains other launchable apps as explicit manual overrides. Manual-override display prefixes are not saved into the actual app label.
 - App-launch routing now ignores non-launchable packages and asks the user when two fuzzy matches are nearly tied, rather than opening an ambiguous guess.
 - Added local-only Tasks & Notes storage with task completion, deletion, notes, and a calendar-app handoff. Existing deterministic chat reminders, alarms, and timers remain the timed-notification path; the new screen does not claim calendar events were created.
 - Audited Workspace/File Library: contextual file matching and ambiguity confirmation, bounded text injection, summary prompts, and separate Workspace artifacts already exist. Non-text PDF/image/office extraction remains unsupported.
@@ -40,7 +40,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - Voice Mode settings now expose separate speech-recognition and voice-output language choices. TTS checks whether the selected locale is supported and falls back to the system default; STT language support depends on Android’s active recognition provider.
 - Settings > Default apps lets users choose preferred music, file manager, camera, and audio recorder apps from installed launchable apps. Default selection is UI-only, not a chat command.
 - Added a dedicated Sync Recorder screen as a separate sidebar item immediately below Chat history (not inside Chat history and not under Settings). Recording requires an explicit tap and microphone permission; the foreground notification is intended only for an active recording and includes Stop. Audio is listed and playable in the recorder screen.
-- Added a dedicated Sync Camera screen with photo/video mode, front/rear switching, and media saving; its camera button is left of the composer message field. Camera uses Android’s legacy Camera API for broad compatibility; verify preview, orientation, and device-specific video support during the deferred device-test pass.
+- Added a dedicated Sync Camera screen with photo/video mode, front/rear switching, and media saving; its camera button is left of the composer message field. Camera uses Android’s legacy Camera API for broad compatibility and selects an advertised video size at or below 720p when available; verify preview, orientation, and device-specific video support during the deferred device-test pass.
 - Natural-language routing can open selected music, file manager, camera, and recorder apps. App launching is not proof that playback, recording, or capture has started.
 
 ## Still outstanding
@@ -50,6 +50,12 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - STT support depends on the installed Android recognition provider. TTS fallback is source-implemented but needs device verification. PDF/image/office extraction is not implemented.
 - Task reminders are opt-in, but Calendar events are not created inside Sync AI; the Calendar control only opens an installed calendar app.
 - Recorder files are stored in app-specific external Music storage and can be played from the recorder screen; they are not yet published to the system media library.
+
+## Latest source review notes
+
+- Source changes are committed on this branch through `7633055724528da73e5a38bc4e192a9142ea5077` plus the tracker updates. No merge, tag, release, or PR was created.
+- No GitHub Actions workflow run was associated with the current branch commits through the available connector. Build success is therefore unverified; no on-device tests have been run.
+- Remaining known limitations are provider-specific advanced music controls, recognition-engine language support, non-text File Library extraction, and calendar-event creation inside Sync AI.
 
 ## Verification rules
 
