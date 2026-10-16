@@ -451,7 +451,7 @@ public final class WorkspaceActivity extends Activity {
 
     private String buildReviewSummary(String beforeText, String afterText) {
         String[] before = beforeText.split("\\n", -1);
-        String[] after = afterText.split("\\n", -1);
+        String[] after = afterText.split("\n", -1);
         StringBuilder out = new StringBuilder();
         out.append("Before: ").append(before.length).append(" lines • ")
                 .append(beforeText.length()).append(" characters\n");
@@ -465,7 +465,7 @@ public final class WorkspaceActivity extends Activity {
             String b = i < after.length ? after[i] : null;
             if (a != null && a.equals(b)) continue;
             if (a != null) out.append("- ").append(a).append('\n');
-            if (b != null) out.append("+ ").append(b).append('\\n');
+            if (b != null) out.append("+ ").append(b).append('\n');
             shown++;
         }
         if (max > 12) out.append("\nOnly the first 12 changed line positions are shown. Review the full source in the editor before saving.");
