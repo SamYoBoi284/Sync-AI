@@ -355,6 +355,9 @@ public final class MainActivity extends Activity {
             @Override public void personality() { showAssistantStyle(); }
             @Override public void commands() { showCommandTimeline(); }
             @Override public void health() { showPerformanceHealth(); }
+            @Override public void defaultApps() {
+                startActivity(new Intent(MainActivity.this, DefaultAppsActivity.class));
+            }
         });
 
         rootFrame = frame;
