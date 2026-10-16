@@ -2947,6 +2947,41 @@ public final class MainActivity extends Activity {
         });
         content.addView(output);
 
+        TextView languageHeading = text("SPEECH LANGUAGES", 12, TEXT, true);
+        languageHeading.setPadding(0, dp(12), 0, dp(5));
+        content.addView(languageHeading);
+        TextView languageInfo = text("Recognition requests this language from Android's speech engine. Voice output uses it only when the installed TTS engine supports it; otherwise Sync falls back to the device default.", 12, MUTED, false);
+        languageInfo.setPadding(0, 0, 0, dp(8));
+        content.addView(languageInfo);
+        String[] languageLabels = {"System default", "English (US)", "Arabic", "Russian", "Spanish", "French", "German"};
+        String[] languageTags = {"", "en-US", "ar", "ru-RU", "es-ES", "fr-FR", "de-DE"};
+        Spinner recognitionLanguage = new Spinner(this);
+        ArrayAdapter<String> recognitionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, languageLabels);
+        recognitionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        recognitionLanguage.setAdapter(recognitionAdapter);
+        int recognitionIndex = 0;
+        for (int i = 0; i < languageTags.length; i++) if (languageTags[i].equals(runtime.preferences().getRecognitionLanguageTag())) recognitionIndex = i;
+        recognitionLanguage.setSelection(recognitionIndex);
+        content.addView(sectionButton("RECOGNITION LANGUAGE", "Choose a requested STT language"));
+        content.addView(recognitionLanguage);
+        Spinner ttsLanguage = new Spinner(this);
+        ArrayAdapter<String> ttsAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, languageLabels);
+        ttsAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        ttsLanguage.setAdapter(ttsAdapter);
+        int ttsIndex = 0;
+        for (int i = 0; i < languageTags.length; i++) if (languageTags[i].equals(runtime.preferences().getTtsLanguageTag())) ttsIndex = i;
+        ttsLanguage.setSelection(ttsIndex);
+        content.addView(sectionButton("VOICE OUTPUT LANGUAGE", "Uses an installed TTS language when available"));
+        content.addView(ttsLanguage);
+        Button saveSpeechLanguages = sectionButton("SAVE SPEECH LANGUAGES", "Apply selected language preferences");
+        saveSpeechLanguages.setOnClickListener(v -> {
+            runtime.preferences().setRecognitionLanguageTag(languageTags[recognitionLanguage.getSelectedItemPosition()]);
+            runtime.preferences().setTtsLanguageTag(languageTags[ttsLanguage.getSelectedItemPosition()]);
+            showToast("Speech language preferences saved. Reopen Voice Mode to apply them.");
+            showVoiceSettings();
+        });
+        content.addView(saveSpeechLanguages);
+
         LinearLayout wakeWordRow = new LinearLayout(this);
         wakeWordRow.setGravity(Gravity.CENTER_VERTICAL);
         wakeWordRow.setPadding(dp(14), dp(9), dp(10), dp(9));
