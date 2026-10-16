@@ -502,6 +502,32 @@ public final class ToolEngine {
                     " • Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
         }
 
+        if (asksToOpenProductivity(command)) {
+            try {
+                Intent productivity = new Intent(context, ProductivityActivity.class);
+                productivity.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(productivity);
+                return result("tasks_notes", "Opened Sync AI Tasks & Notes.");
+            } catch (Exception error) {
+                return new Result(true, false, "I couldn't open Tasks & Notes: "
+                        + error.getClass().getSimpleName(), "tasks_notes", 0);
+            }
+        }
+
+        String taskText = extractItemText(command, true);
+        if (taskText != null) {
+            boolean saved = saveProductivityItem(taskText, true);
+            return new Result(true, saved, saved ? "Added to Tasks & Notes: " + taskText
+                    : "I couldn't save that task.", "task", 0);
+        }
+
+        String noteText = extractItemText(command, false);
+        if (noteText != null) {
+            boolean saved = saveProductivityItem(noteText, false);
+            return new Result(true, saved, saved ? "Saved your note in Tasks & Notes: " + noteText
+                    : "I couldn't save that note.", "note", 0);
+        }
+
         Matcher reminderIn = REMINDER_IN.matcher(command);
         if (reminderIn.find()) {
             double amount = Double.parseDouble(reminderIn.group(1));
@@ -1136,6 +1162,42 @@ public final class ToolEngine {
         } catch (Exception error) {
             return new Result(true, false, "I couldn't send the media command: "
                     + error.getClass().getSimpleName() + ".", "media_control", 0);
+        }
+    }
+
+    private static boolean asksToOpenProductivity(String command) {
+        return command.matches(".*\\\\b(?:open|show|launch|bring up)\\\\s+(?:(?:my|the|sync ai)\\\\s+)?(?:tasks(?:\\\\s*(?:and|&)\\\\s*notes)?|notes|task list|to-do list|todo list)\\\\b.*")
+                || command.matches(".*\\\\b(?:show|view|open)\\\\s+(?:my\\\\s+)?(?:tasks|notes)\\\\b.*");
+    }
+
+    private static String extractItemText(String command, boolean task) {
+        String kind = task ? "(?:task|todo|to-do)" : "(?:note|memo)";
+        Matcher matcher = Pattern.compile("(?i)^(?:(?:please|hey|bro)\\\\s+)*(?:add|create|save|make|write)\\\\s+(?:(?:a|the|new)\\\\s+)?"
+                + kind + "(?:\\\\s+(?:to|about|saying|that says|called|named))?\\\\s*[:,-]?\\\\s+(.+?)\\\\s*[.!?]*$").matcher(command);
+        if (!matcher.matches()) return null;
+        String value = matcher.group(1) == null ? "" : matcher.group(1).trim();
+        return value.isEmpty() ? null : value;
+    }
+
+    private boolean saveProductivityItem(String text, boolean task) {
+        if (text == null || text.trim().isEmpty()) return false;
+        String key = task ? "tasks_json" : "notes_json";
+        try {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                    "sync_productivity", Context.MODE_PRIVATE);
+            org.json.JSONArray items = new org.json.JSONArray(prefs.getString(key, "[]"));
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("id", java.util.UUID.randomUUID().toString());
+            item.put("text", text.trim());
+            item.put("done", false);
+            item.put("created", System.currentTimeMillis());
+            item.put("source", "command");
+            items.put(item);
+            return prefs.edit().putString(key, items.toString()).commit();
+        } catch (Exception error) {
+            SyncEventLogger.recordException(context, "ToolEngine", "PRODUCTIVITY_ITEM_SAVE_FAILED",
+                    error, "kind=" + (task ? "task" : "note"));
+            return false;
         }
     }
 
