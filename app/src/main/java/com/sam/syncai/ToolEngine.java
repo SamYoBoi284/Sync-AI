@@ -1421,6 +1421,16 @@ public final class ToolEngine {
             }
         }
         Intent intent = new Intent(action);
+        android.content.SharedPreferences cameraPrefs = context.getSharedPreferences(
+                "sync_media_preferences", Context.MODE_PRIVATE);
+        String preferredCameraPackage = cameraPrefs.getString("preferred_camera_package", null);
+        if (preferredCameraPackage != null && !preferredCameraPackage.trim().isEmpty()) {
+            intent.setPackage(preferredCameraPackage);
+            if (intent.resolveActivity(context.getPackageManager()) == null) {
+                // The chosen app may launch normally but not handle this specific capture intent.
+                intent.setPackage(null);
+            }
+        }
         if (facing != null) {
             // These extras are best-effort compatibility hints; camera apps may ignore them.
             intent.putExtra("android.intent.extras.CAMERA_FACING", facing);
