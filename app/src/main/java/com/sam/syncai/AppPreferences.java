@@ -17,6 +17,8 @@ public final class AppPreferences {
     private static final String KEY_SPEECH_RATE = "speech_rate";
     private static final String KEY_SPEECH_PITCH = "speech_pitch";
     private static final String KEY_SPEECH_VOICE = "speech_voice";
+    private static final String KEY_RECOGNITION_LANGUAGE = "recognition_language";
+    private static final String KEY_TTS_LANGUAGE = "tts_language";
     private static final String KEY_AUTO_CHECK_UPDATES = "auto_check_updates";
     private static final String KEY_AUTO_CHECK_INTERVAL_HOURS = "auto_check_interval_hours";
     private static final String KEY_AUTO_DOWNLOAD_UPDATES = "auto_download_updates";
@@ -189,6 +191,24 @@ public final class AppPreferences {
 
     public void setSpeechVoiceName(String voiceName) {
         prefs.edit().putString(KEY_SPEECH_VOICE, voiceName == null ? "" : voiceName.trim()).apply();
+    }
+
+    /** Empty means use the device's default speech-recognition language. */
+    public String getRecognitionLanguageTag() {
+        return prefs.getString(KEY_RECOGNITION_LANGUAGE, "");
+    }
+
+    public void setRecognitionLanguageTag(String tag) {
+        prefs.edit().putString(KEY_RECOGNITION_LANGUAGE, tag == null ? "" : tag.trim()).apply();
+    }
+
+    /** Empty means use the device's default text-to-speech language. */
+    public String getTtsLanguageTag() {
+        return prefs.getString(KEY_TTS_LANGUAGE, "");
+    }
+
+    public void setTtsLanguageTag(String tag) {
+        prefs.edit().putString(KEY_TTS_LANGUAGE, tag == null ? "" : tag.trim()).apply();
     }
 
     /** Check for releases when Sync AI is opened. */
