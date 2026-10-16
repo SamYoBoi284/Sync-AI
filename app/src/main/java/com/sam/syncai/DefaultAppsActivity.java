@@ -88,14 +88,14 @@ public final class DefaultAppsActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.addView(section("MUSIC PLAYER", "Used when you ask Sync to open your music app.",
-                "preferred_music_package", "preferred_music_label"));
-        body.addView(section("FILE MANAGER", "Used for requests such as “open my file manager”.",
-                "preferred_file_manager_package", "preferred_file_manager_label"));
-        body.addView(section("CAMERA APP", "Preferred app for opening the camera. Capture intents may still be handled by Android's camera provider.",
-                "preferred_camera_package", "preferred_camera_label"));
-        body.addView(section("AUDIO RECORDER", "Preferred app for opening an audio recorder.",
-                "preferred_recorder_package", "preferred_recorder_label"));
+        body.addView(section("MUSIC PLAYER", "Music-capable apps first; other launchable apps remain available as a manual override.",
+                "preferred_music_package", "preferred_music_label", "music"));
+        body.addView(section("FILE MANAGER", "Apps that can browse/open documents first, with a manual override list.",
+                "preferred_file_manager_package", "preferred_file_manager_label", "files"));
+        body.addView(section("CAMERA APP", "Camera-capable apps first; capture intents may still be handled by Android.",
+                "preferred_camera_package", "preferred_camera_label", "camera"));
+        body.addView(section("AUDIO RECORDER", "Apps that handle Android's recording intent first, with a manual override list.",
+                "preferred_recorder_package", "preferred_recorder_label", "recorder"));
         scroll.addView(body);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -114,7 +114,7 @@ public final class DefaultAppsActivity extends Activity {
         setContentView(root);
     }
 
-    private LinearLayout section(String heading, String description, String key, String labelKey) {
+    private LinearLayout section(String heading, String description, String key, String labelKey, String category) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(14), dp(13), dp(14), dp(14));
@@ -133,7 +133,15 @@ public final class DefaultAppsActivity extends Activity {
 
         List<AppChoice> choices = new ArrayList<>();
         choices.add(new AppChoice("Ask Android / no preference", ""));
-        choices.addAll(launchableApps);
+        List<AppChoice> matches = categoryMatches(category);
+        choices.addAll(matches);
+        java.util.HashSet<String> matchedPackages = new java.util.HashSet<>();
+        for (AppChoice app : matches) matchedPackages.add(app.packageName);
+        for (AppChoice app : launchableApps) {
+            if (!matchedPackages.contains(app.packageName)) {
+                choices.add(new AppChoice("Manual override • " + app.label, app.packageName));
+            }
+        }
         Spinner spinner = new Spinner(this);
         spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, choices));
         String selected = getSharedPreferences(PREFS, MODE_PRIVATE).getString(key, "");
@@ -148,6 +156,54 @@ public final class DefaultAppsActivity extends Activity {
         lp.bottomMargin = dp(12);
         card.setLayoutParams(lp);
         return card;
+    }
+
+    private List<AppChoice> categoryMatches(String category) {
+        java.util.LinkedHashSet<String> packageNames = new java.util.LinkedHashSet<>();
+        PackageManager pm = getPackageManager();
+        try {
+            if ("music".equals(category)) {
+                Intent music = new Intent(Intent.ACTION_MAIN);
+                music.addCategory(Intent.CATEGORY_APP_MUSIC);
+                addResolvedPackages(pm, music, packageNames);
+                Intent audioView = new Intent(Intent.ACTION_VIEW);
+                audioView.setType("audio/*");
+                addResolvedPackages(pm, audioView, packageNames);
+            } else if ("files".equals(category)) {
+                Intent files = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                files.addCategory(Intent.CATEGORY_OPENABLE);
+                files.setType("*/*");
+                addResolvedPackages(pm, files, packageNames);
+                Intent browse = new Intent(Intent.ACTION_GET_CONTENT);
+                browse.addCategory(Intent.CATEGORY_OPENABLE);
+                browse.setType("*/*");
+                addResolvedPackages(pm, browse, packageNames);
+            } else if ("camera".equals(category)) {
+                addResolvedPackages(pm, new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE), packageNames);
+                addResolvedPackages(pm, new Intent(android.provider.MediaStore.ACTION_VIDEO_CAPTURE), packageNames);
+                addResolvedPackages(pm, new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA), packageNames);
+            } else if ("recorder".equals(category)) {
+                addResolvedPackages(pm, new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION), packageNames);
+            }
+        } catch (Exception error) {
+            SyncEventLogger.recordException(this, "DefaultAppsActivity", "CATEGORY_DISCOVERY_FAILED",
+                    error, "category=" + category);
+        }
+        List<AppChoice> result = new ArrayList<>();
+        for (AppChoice app : launchableApps) {
+            if (packageNames.contains(app.packageName)) result.add(app);
+        }
+        return result;
+    }
+
+    private void addResolvedPackages(PackageManager pm, Intent intent, java.util.Set<String> target) {
+        List<ResolveInfo> matches = pm.queryIntentActivities(intent, 0);
+        for (ResolveInfo info : matches) {
+            if (info.activityInfo != null && info.activityInfo.packageName != null
+                    && !info.activityInfo.packageName.equals(getPackageName())) {
+                target.add(info.activityInfo.packageName);
+            }
+        }
     }
 
     private void save() {
