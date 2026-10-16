@@ -249,6 +249,9 @@ public final class ToolEngine {
         Result mediaProvider = handlePreferredMusicApp(command);
         if (mediaProvider.handled) return mediaProvider;
 
+        Result musicCapability = handleMusicCapabilityCommand(command);
+        if (musicCapability.handled) return musicCapability;
+
         if (isMediaTransportCommand(command)) {
             return dispatchMediaTransport(command);
         }
@@ -1024,6 +1027,30 @@ public final class ToolEngine {
                     "I couldn't open " + label + ": " + error.getClass().getSimpleName() + ".",
                     "preferred_app", 0);
         }
+    }
+
+    private Result handleMusicCapabilityCommand(String command) {
+        String normalized = command == null ? "" : command.trim().toLowerCase(Locale.ROOT);
+        boolean shuffle = normalized.matches(".*\\b(?:shuffle|random play|shuffle mode)\\b.*")
+                && (normalized.matches(".*\\b(?:music|songs?|tracks?|playback|playlist)\\b.*")
+                    || normalized.matches("^(?:turn|switch|enable|disable|set)\\b.*"));
+        boolean repeat = normalized.matches(".*\\b(?:repeat|loop)\\b.*")
+                && (normalized.matches(".*\\b(?:music|songs?|tracks?|playback|playlist)\\b.*")
+                    || normalized.matches("^(?:turn|switch|enable|disable|set)\\b.*"));
+        boolean playlists = normalized.matches(".*\\bplaylists?\\b.*")
+                && normalized.matches(".*\\b(?:show|open|list|create|make|add|remove|play|manage|my|all)\\b.*");
+        if (!shuffle && !repeat && !playlists) return Result.none();
+
+        MusicProviderRegistry registry = new MusicProviderRegistry(context);
+        MusicProviderRegistry.Capability capability = playlists
+                ? MusicProviderRegistry.Capability.PLAYLISTS
+                : shuffle ? MusicProviderRegistry.Capability.SHUFFLE : MusicProviderRegistry.Capability.REPEAT;
+        MusicProviderRegistry.Provider provider = registry.selectedProvider();
+        if (provider.supports(capability)) {
+            // Provider-specific implementations should dispatch here once an adapter is verified.
+            return new Result(true, false, registry.unsupportedMessage(capability), "music_control", 0);
+        }
+        return new Result(true, false, registry.unsupportedMessage(capability), "music_control", 0);
     }
 
     private static boolean isMediaTransportCommand(String command) {
