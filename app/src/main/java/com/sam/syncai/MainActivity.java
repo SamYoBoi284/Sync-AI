@@ -295,11 +295,14 @@ public final class MainActivity extends Activity {
         input.setBackground(round(SURFACE_2, dp(28)));
         Button composerCamera = actionButton("📷");
         composerCamera.setContentDescription("Open Sync Camera");
-        composerCamera.setTextSize(20);
+        composerCamera.setTextSize(18);
+        composerCamera.setMinWidth(0);
+        composerCamera.setMinHeight(0);
+        composerCamera.setPadding(0, 0, 0, 0);
         composerCamera.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, CameraActivity.class)));
-        composerCamera.setBackground(round(SURFACE_2, dp(28)));
-        LinearLayout.LayoutParams cameraLp = new LinearLayout.LayoutParams(dp(44), dp(56));
-        cameraLp.rightMargin = dp(6);
+        composerCamera.setBackground(round(SURFACE_2, dp(24)));
+        LinearLayout.LayoutParams cameraLp = new LinearLayout.LayoutParams(dp(40), dp(48));
+        cameraLp.rightMargin = dp(5);
         composer.addView(composerCamera, cameraLp);
         composer.addView(input, new LinearLayout.LayoutParams(0, dp(56), 1));
 
