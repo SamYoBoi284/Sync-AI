@@ -288,6 +288,9 @@ public final class VoiceModeActivity extends Activity {
                     @Override public void onError(String id) {
                         SyncEventLogger.record(VoiceModeActivity.this, "TextToSpeech",
                                 "UTTERANCE_ERROR", "ERROR", "id=" + id);
+                        // A failed utterance must release the processing gate or the
+                        // continuous voice session can remain stuck and never listen again.
+                        processing.set(false);
                         main.postDelayed(() -> {
                             if (!destroyed && !processing.get()) startListening();
                         }, 350);
