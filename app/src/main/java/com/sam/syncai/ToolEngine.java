@@ -780,17 +780,41 @@ public final class ToolEngine {
         String packageName = null;
         CharSequence label = null;
         int bestScore = 0;
+        int secondScore = 0;
+        String secondPackageName = null;
+        CharSequence secondLabel = null;
         List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
         for (ApplicationInfo app : apps) {
+            // Ignore packages that cannot actually be launched; they are not useful
+            // candidates for a natural-language "open app" request.
+            if (pm.getLaunchIntentForPackage(app.packageName) == null) continue;
             CharSequence appLabel = pm.getApplicationLabel(app);
             String name = appLabel == null ? "" : appLabel.toString();
             String normalizedName = normalizeAppName(name);
             int score = appMatchScore(wanted, normalizedName);
             if (score > bestScore) {
+                if (packageName != null && !packageName.equals(app.packageName)) {
+                    secondScore = bestScore;
+                    secondPackageName = packageName;
+                    secondLabel = label;
+                }
                 bestScore = score;
                 packageName = app.packageName;
                 label = appLabel;
+            } else if (score > secondScore && !app.packageName.equals(packageName)) {
+                secondScore = score;
+                secondPackageName = app.packageName;
+                secondLabel = appLabel;
             }
+        }
+
+        // Near-equal fuzzy matches should be clarified instead of opening a guess.
+        if (packageName != null && secondPackageName != null && bestScore < 1000
+                && secondScore >= bestScore - 30) {
+            return new Result(true, false,
+                    "I found more than one close match: " + label + " and " + secondLabel
+                            + ". Which app did you mean?",
+                    "app_launch", 0);
         }
 
         // If the app label was hidden from the launcher listing, try ChatGPT's
