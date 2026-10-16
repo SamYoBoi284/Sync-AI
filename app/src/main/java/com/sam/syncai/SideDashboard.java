@@ -296,7 +296,9 @@ public final class SideDashboard extends FrameLayout {
         switch (glyph) {
             case "＋": return R.drawable.ic_plus;
             case "☷": return R.drawable.ic_history;
+            case "●": return R.drawable.ic_voice;
             case "◉": return R.drawable.ic_voice;
+            case "☑": return R.drawable.ic_tasks;
             case "✎": return R.drawable.ic_edit;
             case "◈": case "🎨": return R.drawable.ic_palette;
             case "⚙": case "◍": return R.drawable.ic_sliders;
