@@ -1280,30 +1280,44 @@ public final class ToolEngine {
         android.content.SharedPreferences prefs = context.getSharedPreferences(
                 "sync_media_preferences", Context.MODE_PRIVATE);
         String preferredPackage = prefs.getString("preferred_recorder_package", null);
+        Intent record = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION);
+        record.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (preferredPackage != null && !preferredPackage.trim().isEmpty()) {
+            record.setPackage(preferredPackage);
+            if (record.resolveActivity(context.getPackageManager()) != null) {
+                try {
+                    context.startActivity(record);
+                    return result("audio_recorder", "Sent the recording request to your preferred phone recorder. That app controls whether recording starts automatically; Android may give it exclusive microphone access, so Hey Sync may not hear a spoken stop command.");
+                } catch (Exception ignored) {
+                    // Try the app launch handoff if the app declares no working recording-intent path.
+                }
+            }
             Intent preferred = context.getPackageManager().getLaunchIntentForPackage(preferredPackage);
             if (preferred != null) {
                 preferred.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 try {
                     context.startActivity(preferred);
-                    return result("audio_recorder", "Opened your preferred phone recorder. Start recording in that app. Android may give it exclusive microphone access, so Hey Sync may not hear a stop command until the recorder releases the mic.");
+                    return result("audio_recorder", "Opened your preferred phone recorder. Start/stop recording in that app; Android may give it exclusive microphone access, so Hey Sync may not hear a spoken stop command.");
                 } catch (Exception ignored) {
-                    // Fall through to the standard recording intent.
+                    // Fall through to the standard Android recording intent.
                 }
             } else {
                 prefs.edit().remove("preferred_recorder_package")
                         .remove("preferred_recorder_label").apply();
             }
         }
-        Intent record = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION);
-        record.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        record.setPackage(null);
         try {
+            if (record.resolveActivity(context.getPackageManager()) == null) {
+                return new Result(true, false,
+                        "I couldn't find a compatible phone recorder. Choose an installed recorder in Sync AI Settings > Default apps, or use Sync Recorder.",
+                        "audio_recorder", 0);
+            }
             context.startActivity(record);
-            return result("audio_recorder", "Opened the phone's available recording app. Start recording there. Android may give it exclusive microphone access, so Hey Sync may not hear a stop command until the recorder releases the mic.");
-        } catch (ActivityNotFoundException error) {
-            return new Result(true, false,
-                    "I couldn't find a compatible phone recorder. Choose an installed recorder in Sync AI Settings > Default apps, or use Sync Recorder.",
-                    "audio_recorder", 0);
+            return result("audio_recorder", "Opened the phone's available recording app. That app controls whether recording starts automatically; Android may give it exclusive microphone access, so Hey Sync may not hear a spoken stop command.");
+        } catch (Exception error) {
+            return new Result(true, false, "I couldn't open a compatible phone recorder: "
+                    + error.getClass().getSimpleName(), "audio_recorder", 0);
         }
     }
 
