@@ -18,11 +18,11 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 4. **Default-app picker validation** — IMPLEMENTED IN SOURCE. Each category now prioritizes apps that resolve the relevant Android intent, while retaining a clearly labeled manual-override list of launchable apps.
 5. **Speech and language settings** — IMPLEMENTED IN SOURCE. Added separate recognition/output language preferences (system default, English, Arabic, Russian, Spanish, French, German); Voice Mode requests the selected recognition locale, while TTS checks support and falls back to the device default. Actual engine support remains device/provider-dependent.
 6. **Broader app integration and routing** — FIRST AUDIT PASS IMPLEMENTED. App launching now considers launchable packages and asks when two fuzzy matches are too close. Remaining integration coverage still needs a broader audit; existing explicit camera/recorder/music handoffs remain best-effort where Android does not report acceptance.
-7. **Productivity audit/completion** — reminders, tasks, notes, calendar/schedule; reuse existing features instead of duplicating them.
+7. **Productivity audit/completion** — FIRST PASS COMPLETE. Existing reminders/alarms/timers retained; local tasks and notes added; calendar button opens an installed calendar app but does not create events inside Sync AI.
 8. **Workspace/file context** — AUDITED; existing implementation retained. File Library supports filename/contextual reference resolution, ambiguity confirmation, bounded text excerpts, summaries via prefilled chat prompts, Workspace artifacts, and separate Workspace copies. PDFs/images/office formats still need format-specific extraction before model analysis.
 9. **Developer-safe workflows** — IMPLEMENTED IN SOURCE. Workspace edits now require a review step showing changed line positions and before/after counts. Saving an artifact to File Library never offers replacement of an existing imported original; FileLibraryStore treats legacy replaceId inputs as source references and creates a uniquely named copy instead. Review summary is a quick line-position comparison, not a semantic diff.
 10. **Memory/personalization and proactive assistance** — FIRST PASS COMPLETE. Existing explicit memory/personalization controls retained. Added task reminders only after a user taps Remind and chooses a time; Android 13+ notification permission is requested at that moment, not on launch. No unsolicited task notifications are scheduled.
-11. **Implementation review and verification prep** — NEXT. Source-level audit, build/CI where available, and a feature-by-feature device test checklist. Device testing starts only after implementation items are complete.
+11. **Implementation review and verification prep** — SOURCE REVIEW COMPLETE; build/device verification pending. No CI run was associated with the current branch commits, and no PR was opened just to trigger CI. The device-test checklist is below; run it only after the source/build review is accepted.
 
 ## Implemented first passes
 
@@ -45,14 +45,29 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 
 ## Still outstanding
 
-- Automated source review and verification remain; recorder and camera are now implemented in source, but are not yet build- or device-verified.
-- Verified provider-specific music adapters are still outstanding; current registry intentionally declines to claim advanced controls. Build/CI and device verification remain outstanding.
-- STT/TTS engine capability evaluation beyond the conservative locale request/fallback path; additional languages and engine-specific validation remain outstanding.
-- Broader app integration audit; deeper Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
-- Automated build/CI verification and end-to-end device verification. Recorder currently saves to app-specific external Music storage; recordings can be played from the recorder screen. Build and device verification for both recorder and camera is still pending.
+- Build and device verification are pending. The GitHub connector reported no workflow runs associated with the current branch commit; no pull request was opened merely to trigger CI.
+- Provider-specific shuffle/repeat/playlist adapters are not implemented; advanced controls intentionally return a capability limitation instead of claiming success.
+- STT support depends on the installed Android recognition provider. TTS fallback is source-implemented but needs device verification. PDF/image/office extraction is not implemented.
+- Task reminders are opt-in, but Calendar events are not created inside Sync AI; the Calendar control only opens an installed calendar app.
+- Recorder files are stored in app-specific external Music storage and can be played from the recorder screen; they are not yet published to the system media library.
 
 ## Verification rules
 
 - Treat camera-facing extras and media-key dispatch as best-effort platform handoffs, not proof that capture or playback state changed.
 - Keep implementation on this branch until the overhaul is complete and reviewed. Do not merge, tag, or release without explicit approval.
 - Defer on-device testing until the whole implementation pass is ready, then test features individually.
+
+## Feature-by-feature device test checklist (not yet run)
+
+- [ ] **Recorder navigation:** Sidebar > CHATS > Recorder; verify it is a separate row below Chat history and not inside Settings or the Chat history button.
+- [ ] **Recorder permissions/state:** deny microphone permission, then grant it; confirm no recording starts automatically. Start recording and verify the foreground notification appears; stop from the screen and from the notification; confirm the notification disappears and the saved file plays from the list.
+- [ ] **Camera placement:** verify the camera control is to the LEFT of the message field and opens the in-Sync camera.
+- [ ] **Camera capture:** check preview, front/rear switching, photo capture, video start/stop, media appearing in Photos/Gallery on Android 10+, and interruption behavior when leaving the screen. Confirm failed captures do not leave empty media entries.
+- [ ] **Default apps:** verify each category prioritizes intent-matched apps, manual override apps remain selectable, and saved labels do not include the “Manual override” prefix. Confirm selection is changed only in the in-app picker, not by chat commands.
+- [ ] **Music controls:** verify play/pause/next/previous are described as best-effort; shuffle/repeat/playlist requests clearly report unsupported/unverified capability without claiming they changed.
+- [ ] **Speech languages:** test System default, English, Arabic, and at least one unsupported TTS language; confirm unsupported TTS falls back and Voice Mode requests the selected STT language without crashing.
+- [ ] **App routing:** test exact app names, known aliases, fuzzy names, and two near-equal names; ambiguous matches should ask which app instead of launching a guess.
+- [ ] **Tasks & notes:** add, complete, delete, and relaunch to verify persistence. Schedule each reminder delay, deny/grant Android 13+ notification permission, and confirm reminders only schedule after explicit user action. Confirm Calendar opens an app but does not claim to create an event.
+- [ ] **File Library / Workspace:** reference imported text by filename and contextual description; confirm ambiguous matches ask for confirmation and truncated/non-text files are not presented as complete model context.
+- [ ] **Copy safety/review:** edit a Workspace artifact, inspect the review summary, cancel once, then save. Save to File Library when a same-named original exists and confirm the original remains unchanged and a separate copy is created.
+- [ ] **Existing behavior/regression:** Hey Sync wake-word mic handoff, Voice Mode, chat composer Send/Stop states, status-bar/safe-area layout, keyboard/IME movement, reminders/alarms/timers, file import/export, and Workspace generation.
