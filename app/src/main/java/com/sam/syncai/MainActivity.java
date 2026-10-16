@@ -336,6 +336,9 @@ public final class MainActivity extends Activity {
         sideDashboard = new SideDashboard(this, frame, new SideDashboard.Actions() {
             @Override public void newChat() { MainActivity.this.newChat(); }
             @Override public void chats() { showChatsDialog(); }
+            @Override public void recorder() {
+                startActivity(new Intent(MainActivity.this, RecorderActivity.class));
+            }
             @Override public void models() { showModelsDialog(); }
             @Override public void importModel() { openModelPicker(); }
             @Override public void runtime() { showRuntimeInfo(); }
