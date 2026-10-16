@@ -492,6 +492,37 @@ public final class ToolEngine {
                     " • Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
         }
 
+        if (asksToOpenExternalReminders(command)) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                    "sync_media_preferences", Context.MODE_PRIVATE);
+            String preferredPackage = prefs.getString("preferred_reminders_package", null);
+            if (preferredPackage != null && !preferredPackage.trim().isEmpty()) {
+                Intent preferred = context.getPackageManager().getLaunchIntentForPackage(preferredPackage);
+                if (preferred != null) {
+                    preferred.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        context.startActivity(preferred);
+                        return result("external_reminders", "Opened your preferred reminders/tasks app. Android doesn't provide a universal way to create items inside every app, so I won't claim a reminder was saved there unless the app confirms it.");
+                    } catch (Exception ignored) {
+                        // Try Android's calendar insert handoff below.
+                    }
+                } else {
+                    prefs.edit().remove("preferred_reminders_package")
+                            .remove("preferred_reminders_label").apply();
+                }
+            }
+            try {
+                Intent calendar = new Intent(Intent.ACTION_INSERT,
+                        android.provider.CalendarContract.Events.CONTENT_URI);
+                calendar.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(calendar);
+                return result("external_reminders", "Opened a compatible calendar app. Add the event there; Sync AI's own scheduled reminders remain available independently.");
+            } catch (Exception error) {
+                return new Result(true, false, "No compatible calendar app could be opened. You can still use Sync AI's built-in reminders and Tasks & Notes.",
+                        "external_reminders", 0);
+            }
+        }
+
         if (asksToOpenProductivity(command)) {
             try {
                 Intent productivity = new Intent(context, ProductivityActivity.class);
@@ -1153,6 +1184,12 @@ public final class ToolEngine {
             return new Result(true, false, "I couldn't send the media command: "
                     + error.getClass().getSimpleName() + ".", "media_control", 0);
         }
+    }
+
+    private static boolean asksToOpenExternalReminders(String command) {
+        return command.matches(".*\\b(?:open|launch|show)\\s+(?:(?:my|the|phone)\\s+)?(?:external )?(?:reminders?|tasks?)(?: app)?\\b.*")
+                || command.contains("open my calendar app")
+                || command.contains("open external reminders");
     }
 
     private static boolean asksToOpenProductivity(String command) {
