@@ -145,6 +145,22 @@ public final class AppTheme {
         }
     }
 
+    /** Reserve the status-bar inset for programmatic screens on edge-to-edge Android versions. */
+    public static void applyStatusBarInset(View content) {
+        if (content == null) return;
+        final int left = content.getPaddingLeft();
+        final int top = content.getPaddingTop();
+        final int right = content.getPaddingRight();
+        final int bottom = content.getPaddingBottom();
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(content, (view, insets) -> {
+            androidx.core.graphics.Insets bars =
+                    insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars());
+            view.setPadding(left, top + bars.top, right, bottom);
+            return insets;
+        });
+        androidx.core.view.ViewCompat.requestApplyInsets(content);
+    }
+
     private static AppTheme light(String safe, int accent) {
         int p = darkenForLight(accent, 0xFFFFFFFF);
         switch (safe) {
