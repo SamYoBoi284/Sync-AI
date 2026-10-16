@@ -341,10 +341,10 @@ public final class FileLibraryStore {
     }
 
     private String extractPdfText(File source) throws Exception {
-        org.apache.pdfbox.android.PDFBoxResourceLoader.init(context);
-        try (org.apache.pdfbox.pdmodel.PDDocument document =
-                     org.apache.pdfbox.pdmodel.PDDocument.load(source)) {
-            return new org.apache.pdfbox.text.PDFTextStripper().getText(document);
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context);
+        try (com.tom_roush.pdfbox.pdmodel.PDDocument document =
+                     com.tom_roush.pdfbox.pdmodel.PDDocument.load(source)) {
+            return new com.tom_roush.pdfbox.text.PDFTextStripper().getText(document);
         }
     }
 
