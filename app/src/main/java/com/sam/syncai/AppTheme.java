@@ -113,24 +113,35 @@ public final class AppTheme {
         return c;
     }
 
-    /** Status/navigation bar colors and icon tint for the current theme. Call after setContentView. */
+    /** Status/navigation bar colors and icon tint for the current theme.
+     * Safe to call before setContentView: defer insets-controller access until the decor is ready.
+     */
     public static void applySystemBars(Activity a, AppTheme t) {
+        if (a == null || a.isFinishing()) return;
         Window w = a.getWindow();
+        if (w == null) return;
         w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(t.background));
         w.setStatusBarColor(t.background);
         w.setNavigationBarColor(t.background);
+
+        // getInsetsController() can throw on Android 16 if called before PhoneWindow has
+        // initialized its DecorView. Obtain the decor first and perform the API 30+ access
+        // on its queue, after Activity.onCreate has had a chance to install the content view.
+        View decor = w.getDecorView();
         if (Build.VERSION.SDK_INT >= 30) {
-            WindowInsetsController c = w.getInsetsController();
-            if (c != null) {
-                int m = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                        | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                c.setSystemBarsAppearance(t.isLight ? m : 0, m);
-            }
+            decor.post(() -> {
+                if (a.isFinishing() || a.isDestroyed()) return;
+                WindowInsetsController c = w.getInsetsController();
+                if (c != null) {
+                    int m = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                            | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                    c.setSystemBarsAppearance(t.isLight ? m : 0, m);
+                }
+            });
         } else {
-            View d = w.getDecorView();
-            int f = d.getSystemUiVisibility();
+            int f = decor.getSystemUiVisibility();
             int m = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-            d.setSystemUiVisibility(t.isLight ? (f | m) : (f & ~m));
+            decor.setSystemUiVisibility(t.isLight ? (f | m) : (f & ~m));
         }
     }
 
