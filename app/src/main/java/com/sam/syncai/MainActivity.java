@@ -293,7 +293,7 @@ public final class MainActivity extends Activity {
             return false;
         });
         input.setBackground(round(SURFACE_2, dp(28)));
-        Button composerCamera = actionButton("▣");
+        Button composerCamera = actionButton("📷");
         composerCamera.setContentDescription("Open Sync Camera");
         composerCamera.setTextSize(20);
         composerCamera.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, CameraActivity.class)));
