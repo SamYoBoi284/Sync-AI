@@ -277,6 +277,32 @@ public final class ToolEngine {
                     requestedCameraFacing(command), "camera");
         }
 
+        // Built-in Sync Recorder commands are deterministic and shared by chat and Voice Mode.
+        if (asksToStopSyncRecording(command)) {
+            if (!SyncRecorderService.isRecording()) {
+                return result("sync_recorder", "Sync Recorder isn't recording right now.");
+            }
+            context.startService(new Intent(context, SyncRecorderService.class)
+                    .setAction(SyncRecorderService.ACTION_STOP));
+            return result("sync_recorder", "Stopping Sync Recorder and saving the recording.");
+        }
+        if (asksToStartSyncRecording(command)) {
+            if (SyncRecorderService.isRecording()) {
+                return result("sync_recorder", "Sync Recorder is already recording. Say “stop recording” when you're done.");
+            }
+            if (context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return new Result(true, false,
+                        "Sync needs microphone permission before I can start recording. Grant microphone access, then ask me to start again.",
+                        "sync_recorder", 0, android.Manifest.permission.RECORD_AUDIO);
+            }
+            Intent start = new Intent(context, SyncRecorderService.class)
+                    .setAction(SyncRecorderService.ACTION_START);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(start);
+            else context.startService(start);
+            return result("sync_recorder", "Starting Sync Recorder. The recording notification will appear only while recording is active.");
+        }
+
         if (asksToRecordAudio(command)) {
             android.content.SharedPreferences prefs = context.getSharedPreferences(
                     "sync_media_preferences", Context.MODE_PRIVATE);
@@ -1133,6 +1159,19 @@ public final class ToolEngine {
         return command.matches(".*\\b(?:open|launch|start|show|bring up|pull up)\\b.*\\b(?:camera|camera app)\\b.*")
                 || command.equals("camera") || command.equals("open my camera")
                 || command.equals("open camera app");
+    }
+
+    private static boolean asksToStopSyncRecording(String command) {
+        return command.matches(".*\\\\b(?:stop|finish|end)\\\\s+(?:(?:the|my|sync)\\\\s+)*(?:audio\\\\s+)?recording\\\\b.*")
+                || command.matches(".*\\\\b(?:stop|finish)\\\\s+(?:sync\\\\s+)?recorder\\\\b.*");
+    }
+
+    private static boolean asksToStartSyncRecording(String command) {
+        if (command.contains("external recorder") || command.contains("recorder app")
+                || command.equals("open audio recorder") || command.equals("open voice recorder")) return false;
+        return command.matches(".*\\\\b(?:start|begin)\\\\s+(?:(?:a|the|my|sync)\\\\s+)*(?:audio\\\\s+)?recording\\\\b.*")
+                || command.matches(".*\\\\b(?:record|recording)\\\\s+(?:my\\\\s+)?(?:audio|voice|a voice note|a voice memo)\\\\b.*")
+                || command.matches(".*\\\\bstart\\\\s+(?:sync\\\\s+)?recorder\\\\b.*");
     }
 
     private static boolean asksToRecordAudio(String command) {
