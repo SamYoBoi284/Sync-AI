@@ -1187,9 +1187,11 @@ public final class ToolEngine {
     }
 
     private static boolean asksToOpenExternalReminders(String command) {
-        return command.matches(".*\\b(?:open|launch|show)\\s+(?:(?:my|the|phone)\\s+)?(?:external )?(?:reminders?|tasks?)(?: app)?\\b.*")
+        return command.matches(".*\\b(?:open|launch|show)\\s+(?:(?:my|the|phone|preferred)\\s+)?(?:external )?(?:reminders?|tasks?)\\s+app\\b.*")
                 || command.contains("open my calendar app")
-                || command.contains("open external reminders");
+                || command.contains("open external reminders")
+                || command.contains("open my reminders")
+                || command.contains("open my tasks app");
     }
 
     private static boolean asksToOpenProductivity(String command) {
