@@ -33,6 +33,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - Basic media transport sends play, pause, next, and previous key events to the active Android media session. Acceptance is not verified. Advanced music controls route through a conservative capability registry and are not claimed supported without a provider-specific adapter.
 - The default-app picker now puts category-matched apps first (music/audio handlers, document handlers, camera handlers, recorder handlers) and retains other launchable apps as explicit manual overrides.
 - App-launch routing now ignores non-launchable packages and asks the user when two fuzzy matches are nearly tied, rather than opening an ambiguous guess.
+- Added local-only Tasks & Notes storage with task completion, deletion, notes, and a calendar-app handoff. Existing deterministic chat reminders, alarms, and timers remain the timed-notification path; the new screen does not claim calendar events were created.
 - Voice Mode settings now expose separate speech-recognition and voice-output language choices. TTS checks whether the selected locale is supported and falls back to the system default; STT language support depends on Android’s active recognition provider.
 - Settings > Default apps lets users choose preferred music, file manager, camera, and audio recorder apps from installed launchable apps. Default selection is UI-only, not a chat command.
 - Added a dedicated Sync Recorder screen as a separate sidebar item immediately below Chat history (not inside Chat history and not under Settings). Recording requires an explicit tap and microphone permission; the foreground notification is intended only for an active recording and includes Stop. Audio is listed and playable in the recorder screen.
@@ -44,7 +45,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - Automated source review and verification remain; recorder and camera are now implemented in source, but are not yet build- or device-verified.
 - Verified provider-specific music adapters are still outstanding; current registry intentionally declines to claim advanced controls. Build/CI and device verification remain outstanding.
 - STT/TTS engine capability evaluation beyond the conservative locale request/fallback path; additional languages and engine-specific validation remain outstanding.
-- Full integration audit and completion; productivity, Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
+- Broader app integration audit; deeper Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
 - Automated build/CI verification and end-to-end device verification. Recorder currently saves to app-specific external Music storage; recordings can be played from the recorder screen. Build and device verification for both recorder and camera is still pending.
 
 ## Verification rules
