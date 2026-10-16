@@ -14,8 +14,8 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 
 1. **Built-in Sync recorder + recording-only foreground notification** — IMPLEMENTED IN SOURCE; build/device verification deferred until the full implementation pass. Provide an in-app recording tab/experience, explicit start/stop state, saved audio, microphone permission handling, and a foreground notification only while recording.
 2. **Dedicated in-Sync camera** — IMPLEMENTED IN SOURCE; build/device verification deferred. Includes preview, front/rear switching, photo/video capture, MediaStore saving on Android 10+, app-specific storage on older Android, and a composer button LEFT of the message field. Existing external/system camera routing remains in place.
-3. **Provider-aware music controls** — capability-aware app/provider layer; only advertise shuffle, repeat, playlists, or app-specific controls where supported.
-4. **Default-app picker validation** — improve role/category matching beyond the current all-launchable-apps list without removing an intentional override.
+3. **Provider-aware music controls** — IMPLEMENTED IN SOURCE. Added a conservative provider registry: generic play/pause/next/previous remain best-effort Android media-key handoffs; shuffle, repeat, playlist management, and app-specific controls are not claimed unless a verified provider adapter supports them. No advanced provider adapters are verified yet.
+4. **Default-app picker validation** — IMPLEMENTED IN SOURCE. Each category now prioritizes apps that resolve the relevant Android intent, while retaining a clearly labeled manual-override list of launchable apps.
 5. **Speech and language settings** — evaluate STT options and configure recognition/TTS, multilingual behavior, and language overrides based on actual engine capability.
 6. **Broader app integration and routing** — audit installed-app/provider routing and make ambiguous requests ask rather than guess.
 7. **Productivity audit/completion** — reminders, tasks, notes, calendar/schedule; reuse existing features instead of duplicating them.
@@ -30,7 +30,8 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - Camera inventory can report Android-exposed front/rear/external camera IDs.
 - Camera commands route to Android's photo, video, or ordinary camera intent. Front/rear selection is a best-effort hint because external camera apps may ignore it.
 - Audio recording can be handed off to an installed system recorder when one handles Android's recording intent.
-- Basic media transport sends play, pause, next, and previous key events to the active Android media session. Acceptance is not verified.
+- Basic media transport sends play, pause, next, and previous key events to the active Android media session. Acceptance is not verified. Advanced music controls route through a conservative capability registry and are not claimed supported without a provider-specific adapter.
+- The default-app picker now puts category-matched apps first (music/audio handlers, document handlers, camera handlers, recorder handlers) and retains other launchable apps as explicit manual overrides.
 - Settings > Default apps lets users choose preferred music, file manager, camera, and audio recorder apps from installed launchable apps. Default selection is UI-only, not a chat command.
 - Added a dedicated Sync Recorder screen as a separate sidebar item immediately below Chat history (not inside Chat history and not under Settings). Recording requires an explicit tap and microphone permission; the foreground notification is intended only for an active recording and includes Stop. Audio is listed and playable in the recorder screen.
 - Added a dedicated Sync Camera screen with photo/video mode, front/rear switching, and media saving; its camera button is left of the composer message field. Camera uses Android’s legacy Camera API for broad compatibility; verify preview, orientation, and device-specific video support during the deferred device-test pass.
@@ -39,7 +40,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 ## Still outstanding
 
 - Automated source review and verification remain; recorder and camera are now implemented in source, but are not yet build- or device-verified.
-- Music provider/capability abstraction and category-aware default-app validation.
+- Verified provider-specific music adapters are still outstanding; current registry intentionally declines to claim advanced controls. Build/CI and device verification remain outstanding.
 - STT/TTS evaluation/configuration, multilingual routing, and language overrides.
 - Audit/completion of productivity, Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
 - Automated build/CI verification and end-to-end device verification. Recorder currently saves to app-specific external Music storage; recordings can be played from the recorder screen. Build and device verification for both recorder and camera is still pending.
