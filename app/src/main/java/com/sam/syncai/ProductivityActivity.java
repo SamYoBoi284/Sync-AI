@@ -109,6 +109,7 @@ public final class ProductivityActivity extends Activity {
         scroll.addView(body);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+        AppTheme.applyStatusBarInset(root);
         renderItems();
     }
 
