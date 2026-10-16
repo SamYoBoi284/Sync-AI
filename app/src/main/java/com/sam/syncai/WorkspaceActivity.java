@@ -416,26 +416,60 @@ public final class WorkspaceActivity extends Activity {
         editScroll.addView(editor);
         new AlertDialog.Builder(this)
                 .setTitle("Edit " + artifact.title)
-                .setMessage("Your changes stay in Workspace until you save them.")
+                .setMessage("Your changes stay in Workspace until you review and save them.")
                 .setView(editScroll)
                 .setNegativeButton("CANCEL", null)
+                .setPositiveButton("REVIEW CHANGES", (dialog, which) ->
+                        reviewArtifactEdits(artifact, editor.getText().toString()))
+                .show();
+    }
+
+    private void reviewArtifactEdits(WorkspaceStore.Artifact artifact, String editedContent) {
+        if (artifact.content.equals(editedContent)) {
+            Toast.makeText(this, "No changes to save.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Review changes before saving")
+                .setMessage(buildReviewSummary(artifact.content, editedContent))
+                .setNegativeButton("GO BACK", null)
                 .setPositiveButton("SAVE EDITS", (dialog, which) -> {
                     try {
                         WorkspaceStore.Artifact updated = store.updateArtifactContent(
-                                artifact.id, editor.getText().toString(),
-                                WorkspaceStore.State.COMPLETED);
+                                artifact.id, editedContent, WorkspaceStore.State.COMPLETED);
                         selected = updated;
                         showingPreview = false;
                         showArtifact(updated.id);
-                        Toast.makeText(this,
-                                updated.state == WorkspaceStore.State.COMPLETED
-                                        ? "Artifact edits saved" : "Saved, but the artifact still looks incomplete",
+                        Toast.makeText(this, "Workspace artifact edits saved. File Library originals are not changed.",
                                 Toast.LENGTH_LONG).show();
                     } catch (Exception error) {
                         Toast.makeText(this, "Could not save edits: " + error.getMessage(),
                                 Toast.LENGTH_LONG).show();
                     }
                 }).show();
+    }
+
+    private String buildReviewSummary(String beforeText, String afterText) {
+        String[] before = beforeText.split("\\n", -1);
+        String[] after = afterText.split("\\n", -1);
+        StringBuilder out = new StringBuilder();
+        out.append("Before: ").append(before.length).append(" lines • ")
+                .append(beforeText.length()).append(" characters\\n");
+        out.append("After: ").append(after.length).append(" lines • ")
+                .append(afterText.length()).append(" characters\\n\\n");
+        out.append("Changed line positions (quick review, not a full semantic diff):\\n");
+        int shown = 0;
+        int max = Math.max(before.length, after.length);
+        for (int i = 0; i < max && shown < 12; i++) {
+            String a = i < before.length ? before[i] : null;
+            String b = i < after.length ? after[i] : null;
+            if (a != null && a.equals(b)) continue;
+            if (a != null) out.append("- ").append(a).append('\\n');
+            if (b != null) out.append("+ ").append(b).append('\\n');
+            shown++;
+        }
+        if (max > 12) out.append("\\nOnly the first 12 changed line positions are shown. Review the full source in the editor before saving.");
+        return out.toString();
     }
 
     private void continueArtifactWithSync(WorkspaceStore.Artifact artifact) {
@@ -451,30 +485,13 @@ public final class WorkspaceActivity extends Activity {
     private void saveArtifactToLibrary(WorkspaceStore.Artifact artifact) {
         FileLibraryStore library = new FileLibraryStore(getApplicationContext());
         FileLibraryStore.LibraryFile existing = library.findByName(artifact.title);
-        if (existing != null && existing.isTextReadable()) {
-            new AlertDialog.Builder(this)
-                    .setTitle("File already exists")
-                    .setMessage("A library file named \"" + existing.name
-                            + "\" already exists. Choose whether to replace it or keep a separate copy.")
-                    .setNegativeButton("CANCEL", null)
-                    .setNeutralButton("SAVE AS COPY", (dialog, which) ->
-                            saveArtifactCopy(library, artifact))
-                    .setPositiveButton("REPLACE EXISTING", (dialog, which) -> {
-                        try {
-                            library.saveGeneratedText(existing.name, artifact.content, existing.id);
-                            Toast.makeText(this, "Updated " + existing.name + " in File Library",
-                                    Toast.LENGTH_LONG).show();
-                        } catch (Exception error) {
-                            Toast.makeText(this, "Could not update file: " + error.getMessage(),
-                                    Toast.LENGTH_LONG).show();
-                        }
-                    }).show();
-        } else if (existing != null) {
+        if (existing != null) {
             new AlertDialog.Builder(this)
                     .setTitle("File name already used")
-                    .setMessage("A non-text file already uses this name. Save the generated text as a separate copy?")
+                    .setMessage("A library item named \"" + existing.name
+                            + "\" already exists. Sync never overwrites imported originals. Save a separate copy?")
                     .setNegativeButton("CANCEL", null)
-                    .setPositiveButton("SAVE COPY", (dialog, which) ->
+                    .setPositiveButton("SAVE AS COPY", (dialog, which) ->
                             saveArtifactCopy(library, artifact))
                     .show();
         } else {
