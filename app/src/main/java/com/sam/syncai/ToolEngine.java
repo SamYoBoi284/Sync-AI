@@ -948,19 +948,19 @@ public final class ToolEngine {
     }
 
     private static boolean isMediaTransportCommand(String command) {
-        return command.matches(".*\\\\b(?:pause|resume|unpause|stop|next|skip|previous|prev)\\\\b.*\\\\b(?:music|song|track|playback)\\\\b.*")
-                || command.matches(".*\\\\b(?:play|pause|resume|stop)\\\\b.*\\\\b(?:the )?music\\\\b.*")
-                || command.matches(".*\\\\b(?:next song|next track|skip this song|skip this track|previous song|previous track|last song)\\\\b.*");
+        return command.matches(".*\\b(?:pause|resume|unpause|stop|next|skip|previous|prev)\\b.*\\b(?:music|song|track|playback)\\b.*")
+                || command.matches(".*\\b(?:play|pause|resume|stop)\\b.*\\b(?:the )?music\\b.*")
+                || command.matches(".*\\b(?:next song|next track|skip this song|skip this track|previous song|previous track|last song)\\b.*");
     }
 
     private Result dispatchMediaTransport(String command) {
         String action;
         int keyCode;
-        if (command.matches(".*\\\\b(?:pause|stop)\\\\b.*")) {
+        if (command.matches(".*\\b(?:pause|stop)\\b.*")) {
             action = "pause"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PAUSE;
-        } else if (command.matches(".*\\\\b(?:resume|unpause|play)\\\\b.*")) {
+        } else if (command.matches(".*\\b(?:resume|unpause|play)\\b.*")) {
             action = "resume"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PLAY;
-        } else if (command.matches(".*\\\\b(?:previous|prev|last)\\\\b.*")) {
+        } else if (command.matches(".*\\b(?:previous|prev|last)\\b.*")) {
             action = "previous track"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS;
         } else {
             action = "next track"; keyCode = android.view.KeyEvent.KEYCODE_MEDIA_NEXT;
