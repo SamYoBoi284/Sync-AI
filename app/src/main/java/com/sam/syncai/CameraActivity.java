@@ -31,6 +31,8 @@ import java.util.Locale;
 
 @SuppressWarnings("deprecation")
 public final class CameraActivity extends Activity implements TextureView.SurfaceTextureListener {
+    public static final String EXTRA_MODE = "sync_camera_mode";
+    public static final String EXTRA_FACING = "sync_camera_facing";
     private static final int REQ_CAMERA = 7410, REQ_AUDIO = 7411;
     private TextureView preview;
     private TextView status;
@@ -45,6 +47,9 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        String requestedMode = getIntent().getStringExtra(EXTRA_MODE);
+        videoMode = "video".equalsIgnoreCase(requestedMode);
+        front = "front".equalsIgnoreCase(getIntent().getStringExtra(EXTRA_FACING));
         AppTheme p = AppTheme.from(this);
         AppTheme.applySystemBars(this, p);
         getWindow().setStatusBarColor(Color.BLACK);
@@ -79,7 +84,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
         controls.setGravity(Gravity.CENTER);
         controls.setPadding(dp(12), dp(10), dp(12), dp(16));
         controls.setBackgroundColor(0xFF101014);
-        mode = new Button(this); mode.setAllCaps(false); mode.setText("Photo");
+        mode = new Button(this); mode.setAllCaps(false); mode.setText(videoMode ? "Video" : "Photo");
         mode.setOnClickListener(v -> {
             if (recording) return;
             videoMode = !videoMode;
@@ -88,7 +93,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
             status.setText(videoMode ? "Video mode" : "Photo mode");
         });
         controls.addView(mode, new LinearLayout.LayoutParams(0, dp(52), 1));
-        capture = new Button(this); capture.setAllCaps(false); capture.setText("● Capture");
+        capture = new Button(this); capture.setAllCaps(false); capture.setText(videoMode ? "● Record" : "● Capture");
         capture.setOnClickListener(v -> capture());
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(58), 2);
         cp.leftMargin = dp(8); controls.addView(capture, cp);
