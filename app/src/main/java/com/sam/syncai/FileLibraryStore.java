@@ -17,6 +17,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.IOException;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -55,7 +57,10 @@ public final class FileLibraryStore {
         }
 
         public boolean isTextReadable() {
-            return isTextName(name) || (mimeType != null && mimeType.toLowerCase(Locale.ROOT).startsWith("text/"));
+            String lower = name == null ? "" : name.toLowerCase(Locale.ROOT);
+            return isTextName(name) || lower.endsWith(".pdf") || lower.endsWith(".docx")
+                    || lower.endsWith(".pptx") || lower.endsWith(".xlsx")
+                    || (mimeType != null && mimeType.toLowerCase(Locale.ROOT).startsWith("text/"));
         }
     }
 
@@ -313,27 +318,113 @@ public final class FileLibraryStore {
         if (!item.isTextReadable()) return new TextContent("", false, false);
         int limit = Math.max(1, maxChars);
         File source = new File(contentDirectory, item.id + ".bin");
-        StringBuilder result = new StringBuilder(Math.min(limit, 4096));
-        boolean truncated = false;
-        try (Reader reader = new InputStreamReader(new FileInputStream(source), StandardCharsets.UTF_8)) {
-            char[] buffer = new char[2048];
-            int count;
-            while ((count = reader.read(buffer)) != -1) {
-                int available = limit - result.length();
-                if (count > available) {
-                    if (available > 0) result.append(buffer, 0, available);
-                    truncated = true;
-                    break;
+        String lowerName = item.name == null ? "" : item.name.toLowerCase(Locale.ROOT);
+        String extracted;
+        if (lowerName.endsWith(".pdf")) {
+            extracted = extractPdfText(source);
+        } else if (lowerName.endsWith(".docx") || lowerName.endsWith(".pptx") || lowerName.endsWith(".xlsx")) {
+            extracted = extractOfficeText(source, lowerName);
+        } else {
+            try (Reader reader = new InputStreamReader(new FileInputStream(source), StandardCharsets.UTF_8)) {
+                StringBuilder raw = new StringBuilder(Math.min(limit, 4096));
+                char[] buffer = new char[2048];
+                int count;
+                while ((count = reader.read(buffer)) != -1 && raw.length() < limit + 1) {
+                    int available = limit + 1 - raw.length();
+                    raw.append(buffer, 0, Math.min(count, available));
                 }
-                result.append(buffer, 0, count);
-                if (result.length() >= limit) {
-                    int next = reader.read();
-                    if (next != -1) truncated = true;
-                    break;
-                }
+                extracted = raw.toString();
             }
         }
-        return new TextContent(result.toString(), truncated, true);
+        boolean truncated = extracted.length() > limit;
+        return new TextContent(truncated ? extracted.substring(0, limit) : extracted, truncated, true);
+    }
+
+    private String extractPdfText(File source) throws Exception {
+        org.apache.pdfbox.android.PDFBoxResourceLoader.init(context);
+        try (org.apache.pdfbox.pdmodel.PDDocument document =
+                     org.apache.pdfbox.pdmodel.PDDocument.load(source)) {
+            return new org.apache.pdfbox.text.PDFTextStripper().getText(document);
+        }
+    }
+
+    private String extractOfficeText(File source, String lowerName) throws Exception {
+        StringBuilder text = new StringBuilder();
+        java.util.ArrayList<String> sharedStrings = new java.util.ArrayList<>();
+        try (ZipInputStream zip = new ZipInputStream(new FileInputStream(source))) {
+            ZipEntry entry;
+            byte[] buffer = new byte[8192];
+            while ((entry = zip.getNextEntry()) != null) {
+                String name = entry.getName();
+                boolean relevant = lowerName.endsWith(".docx")
+                        ? "word/document.xml".equals(name)
+                        : lowerName.endsWith(".pptx")
+                            ? name.matches("ppt/slides/slide[0-9]+\\\\.xml")
+                            : "xl/sharedStrings.xml".equals(name) || name.matches("xl/worksheets/sheet[0-9]+\\\\.xml");
+                if (!relevant) { zip.closeEntry(); continue; }
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                int count;
+                while ((count = zip.read(buffer)) != -1 && bytes.size() < 8 * 1024 * 1024) {
+                    int remaining = 8 * 1024 * 1024 - bytes.size();
+                    bytes.write(buffer, 0, Math.min(count, remaining));
+                }
+                String xml = bytes.toString("UTF-8");
+                java.util.ArrayList<String> values = extractXmlTextValues(xml);
+                if (lowerName.endsWith(".xlsx") && "xl/sharedStrings.xml".equals(name)) {
+                    sharedStrings.addAll(values);
+                } else if (lowerName.endsWith(".xlsx")) {
+                    appendSpreadsheetRows(xml, sharedStrings, text);
+                } else {
+                    for (String value : values) {
+                        if (!value.trim().isEmpty()) text.append(value).append(' ');
+                    }
+                    text.append('\\n');
+                }
+                zip.closeEntry();
+            }
+        }
+        return text.toString().trim();
+    }
+
+    private java.util.ArrayList<String> extractXmlTextValues(String xml) throws Exception {
+        java.util.ArrayList<String> values = new java.util.ArrayList<>();
+        org.xmlpull.v1.XmlPullParser parser = android.util.Xml.newPullParser();
+        parser.setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
+        parser.setInput(new java.io.StringReader(xml));
+        int event;
+        while ((event = parser.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            if (event == org.xmlpull.v1.XmlPullParser.START_TAG
+                    && ("t".equals(parser.getName()) || "v".equals(parser.getName()))) {
+                String value = parser.nextText();
+                values.add(value == null ? "" : value);
+            }
+        }
+        return values;
+    }
+
+    private void appendSpreadsheetRows(String xml, List<String> sharedStrings, StringBuilder output) throws Exception {
+        org.xmlpull.v1.XmlPullParser parser = android.util.Xml.newPullParser();
+        parser.setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
+        parser.setInput(new java.io.StringReader(xml));
+        int event;
+        boolean shared = false;
+        while ((event = parser.next()) != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            if (event == org.xmlpull.v1.XmlPullParser.START_TAG && "c".equals(parser.getName())) {
+                String type = parser.getAttributeValue(null, "t");
+                shared = "s".equals(type);
+            } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && "v".equals(parser.getName())) {
+                String value = parser.nextText();
+                if (shared && value != null) {
+                    try {
+                        int index = Integer.parseInt(value.trim());
+                        if (index >= 0 && index < sharedStrings.size()) value = sharedStrings.get(index);
+                    } catch (NumberFormatException ignored) {}
+                }
+                if (value != null && !value.trim().isEmpty()) output.append(value).append(' ');
+            } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && "row".equals(parser.getName())) {
+                output.append('\\n');
+            }
+        }
     }
 
     /**
