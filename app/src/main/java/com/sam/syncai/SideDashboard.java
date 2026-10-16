@@ -36,6 +36,7 @@ public final class SideDashboard extends FrameLayout {
         void personality();
         void commands();
         void health();
+        void defaultApps();
     }
 
     private final Activity activity;
@@ -179,6 +180,7 @@ public final class SideDashboard extends FrameLayout {
         section(settingsContent, "ASSISTANT");
         item(settingsContent, "◉  Voice output", v -> actions.toggleVoiceOutput(), true);
         item(settingsContent, "◈  Appearance / themes", v -> actions.appearance(), true);
+        item(settingsContent, "▣  Default apps", v -> actions.defaultApps(), true);
         item(settingsContent, "✦  Personality & voice", v -> actions.personality(), true);
 
         section(settingsContent, "MODEL");
