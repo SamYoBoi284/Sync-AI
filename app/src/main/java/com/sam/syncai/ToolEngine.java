@@ -263,15 +263,32 @@ public final class ToolEngine {
         }
 
         if (asksToCaptureVideo(command)) {
+            if (asksForExternalCamera(command)) {
+                return launchCameraCapture(android.provider.MediaStore.ACTION_VIDEO_CAPTURE,
+                        requestedCameraFacing(command), "video");
+            }
             return launchSyncCamera("video", requestedCameraFacing(command));
         }
 
         if (asksToCapturePhoto(command)) {
+            if (asksForExternalCamera(command)) {
+                return launchCameraCapture(android.provider.MediaStore.ACTION_IMAGE_CAPTURE,
+                        requestedCameraFacing(command), "photo");
+            }
             return launchSyncCamera("photo", requestedCameraFacing(command));
         }
 
         if (asksToOpenCamera(command)) {
+            if (asksForExternalCamera(command)) {
+                return launchCameraCapture(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA,
+                        requestedCameraFacing(command), "camera");
+            }
             return launchSyncCamera("photo", requestedCameraFacing(command));
+        }
+
+        // External recorder commands must be checked before the built-in recorder.
+        if (asksForExternalRecorder(command) && (asksToRecordAudio(command) || asksToStartSyncRecording(command))) {
+            return launchExternalRecorder();
         }
 
         // Built-in Sync Recorder commands are deterministic and shared by chat and Voice Mode.
@@ -301,34 +318,7 @@ public final class ToolEngine {
         }
 
         if (asksToRecordAudio(command)) {
-            android.content.SharedPreferences prefs = context.getSharedPreferences(
-                    "sync_media_preferences", Context.MODE_PRIVATE);
-            String preferredPackage = prefs.getString("preferred_recorder_package", null);
-            if (preferredPackage != null && !preferredPackage.trim().isEmpty()) {
-                Intent preferred = context.getPackageManager().getLaunchIntentForPackage(preferredPackage);
-                if (preferred != null) {
-                    preferred.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    try {
-                        context.startActivity(preferred);
-                        return result("audio_recorder", "Opened your preferred audio recorder. Start and stop recording in that app.");
-                    } catch (Exception ignored) {
-                        // Fall through to Android's recording handler; never claim recording started.
-                    }
-                } else {
-                    prefs.edit().remove("preferred_recorder_package")
-                            .remove("preferred_recorder_label").apply();
-                }
-            }
-            Intent record = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION);
-            record.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                context.startActivity(record);
-                return result("audio_recorder", "Opened the available system audio recorder. Start and stop recording in that app.");
-            } catch (ActivityNotFoundException error) {
-                return new Result(true, false,
-                        "I couldn't find a system audio recorder on this phone. Choose an installed recorder in Sync AI Settings > Default apps, or open one by name.",
-                        "audio_recorder", 0);
-            }
+            return launchExternalRecorder();
         }
 
         if (command.contains("flashlight") || command.contains("torch")) {
@@ -1234,6 +1224,50 @@ public final class ToolEngine {
                 || command.matches(".*\\b(?:is there|do i have|are there)\\b.*\\b(?:front|back|rear|selfie)\\s+(?:camera|lens)\\b.*");
     }
 
+    private static boolean asksForExternalCamera(String command) {
+        return command.matches(".*\\\\b(?:phone|external|default|my)\\\\s+(?:camera|camera app)\\\\b.*")
+                || command.matches(".*\\\\b(?:camera|camera app)\\\\s+(?:on my phone|app on my phone|outside sync)\\\\b.*")
+                || command.contains("use my camera app") || command.contains("use the phone camera");
+    }
+
+    private static boolean asksForExternalRecorder(String command) {
+        return command.matches(".*\\\\b(?:phone|external|default|my)\\\\s+(?:audio )?recorder\\\\b.*")
+                || command.matches(".*\\\\b(?:phone|external|default|my)\\\\s+(?:audio )?recording app\\\\b.*")
+                || command.contains("recorder app") || command.contains("outside sync")
+                || command.contains("use my phone recorder") || command.contains("use the phone recorder");
+    }
+
+    private Result launchExternalRecorder() {
+        android.content.SharedPreferences prefs = context.getSharedPreferences(
+                "sync_media_preferences", Context.MODE_PRIVATE);
+        String preferredPackage = prefs.getString("preferred_recorder_package", null);
+        if (preferredPackage != null && !preferredPackage.trim().isEmpty()) {
+            Intent preferred = context.getPackageManager().getLaunchIntentForPackage(preferredPackage);
+            if (preferred != null) {
+                preferred.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    context.startActivity(preferred);
+                    return result("audio_recorder", "Opened your preferred phone recorder. Start recording in that app. Android may give it exclusive microphone access, so Hey Sync may not hear a stop command until the recorder releases the mic.");
+                } catch (Exception ignored) {
+                    // Fall through to the standard recording intent.
+                }
+            } else {
+                prefs.edit().remove("preferred_recorder_package")
+                        .remove("preferred_recorder_label").apply();
+            }
+        }
+        Intent record = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION);
+        record.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(record);
+            return result("audio_recorder", "Opened the phone's available recording app. Start recording there. Android may give it exclusive microphone access, so Hey Sync may not hear a stop command until the recorder releases the mic.");
+        } catch (ActivityNotFoundException error) {
+            return new Result(true, false,
+                    "I couldn't find a compatible phone recorder. Choose an installed recorder in Sync AI Settings > Default apps, or use Sync Recorder.",
+                    "audio_recorder", 0);
+        }
+    }
+
     private static boolean asksToCaptureVideo(String command) {
         return command.matches(".*\\b(?:record|shoot|film|capture)\\b.*\\b(?:a\\s+)?(?:video|clip|movie)\\b.*")
                 || command.matches(".*\\b(?:video record|start recording video|start video recording)\\b.*");
@@ -1251,16 +1285,16 @@ public final class ToolEngine {
     }
 
     private static boolean asksToStopSyncRecording(String command) {
-        return command.matches(".*\\\\b(?:stop|finish|end)\\\\s+(?:(?:the|my|sync)\\\\s+)*(?:audio\\\\s+)?recording\\\\b.*")
-                || command.matches(".*\\\\b(?:stop|finish)\\\\s+(?:sync\\\\s+)?recorder\\\\b.*");
+        return command.matches(".*\\b(?:stop|finish|end)\\s+(?:(?:the|my|sync)\\s+)*(?:audio\\s+)?recording\\b.*")
+                || command.matches(".*\\b(?:stop|finish)\\s+(?:sync\\s+)?recorder\\b.*");
     }
 
     private static boolean asksToStartSyncRecording(String command) {
         if (command.contains("external recorder") || command.contains("recorder app")
                 || command.equals("open audio recorder") || command.equals("open voice recorder")) return false;
-        return command.matches(".*\\\\b(?:start|begin)\\\\s+(?:(?:a|the|my|sync)\\\\s+)*(?:audio\\\\s+)?recording\\\\b.*")
-                || command.matches(".*\\\\b(?:record|recording)\\\\s+(?:my\\\\s+)?(?:audio|voice|a voice note|a voice memo)\\\\b.*")
-                || command.matches(".*\\\\bstart\\\\s+(?:sync\\\\s+)?recorder\\\\b.*");
+        return command.matches(".*\\b(?:start|begin)\\s+(?:(?:a|the|my|sync)\\s+)*(?:audio\\s+)?recording\\b.*")
+                || command.matches(".*\\b(?:record|recording)\\s+(?:my\\s+)?(?:audio|voice|a voice note|a voice memo)\\b.*")
+                || command.matches(".*\\bstart\\s+(?:sync\\s+)?recorder\\b.*");
     }
 
     private static boolean asksToRecordAudio(String command) {
