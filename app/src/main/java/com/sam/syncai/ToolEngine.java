@@ -275,6 +275,24 @@ public final class ToolEngine {
         }
 
         if (asksToRecordAudio(command)) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                    "sync_media_preferences", Context.MODE_PRIVATE);
+            String preferredPackage = prefs.getString("preferred_recorder_package", null);
+            if (preferredPackage != null && !preferredPackage.trim().isEmpty()) {
+                Intent preferred = context.getPackageManager().getLaunchIntentForPackage(preferredPackage);
+                if (preferred != null) {
+                    preferred.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        context.startActivity(preferred);
+                        return result("audio_recorder", "Opened your preferred audio recorder. Start and stop recording in that app.");
+                    } catch (Exception ignored) {
+                        // Fall through to Android's recording handler; never claim recording started.
+                    }
+                } else {
+                    prefs.edit().remove("preferred_recorder_package")
+                            .remove("preferred_recorder_label").apply();
+                }
+            }
             Intent record = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION);
             record.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
@@ -282,7 +300,7 @@ public final class ToolEngine {
                 return result("audio_recorder", "Opened the available system audio recorder. Start and stop recording in that app.");
             } catch (ActivityNotFoundException error) {
                 return new Result(true, false,
-                        "I couldn't find a system audio recorder on this phone. You can open an installed recorder app by name.",
+                        "I couldn't find a system audio recorder on this phone. Choose an installed recorder in Sync AI Settings > Default apps, or open one by name.",
                         "audio_recorder", 0);
             }
         }
@@ -1112,6 +1130,26 @@ public final class ToolEngine {
     }
 
     private Result launchCameraCapture(String action, Integer facing, String mode) {
+        if ("camera".equals(mode)) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                    "sync_media_preferences", Context.MODE_PRIVATE);
+            String preferredPackage = prefs.getString("preferred_camera_package", null);
+            if (preferredPackage != null && !preferredPackage.trim().isEmpty()) {
+                Intent preferred = context.getPackageManager().getLaunchIntentForPackage(preferredPackage);
+                if (preferred != null) {
+                    preferred.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        context.startActivity(preferred);
+                        return result("camera", "Opened your preferred camera app. Camera-facing selection depends on that app.");
+                    } catch (Exception ignored) {
+                        // Fall back to Android's camera intent below.
+                    }
+                } else {
+                    prefs.edit().remove("preferred_camera_package")
+                            .remove("preferred_camera_label").apply();
+                }
+            }
+        }
         Intent intent = new Intent(action);
         if (facing != null) {
             // These extras are best-effort compatibility hints; camera apps may ignore them.
