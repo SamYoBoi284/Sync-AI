@@ -101,6 +101,8 @@ public final class DefaultAppsActivity extends Activity {
                 "preferred_camera_package", "preferred_camera_label", "camera"));
         body.addView(section("AUDIO RECORDER", "Apps that handle Android's recording intent first, with a manual override list.",
                 "preferred_recorder_package", "preferred_recorder_label", "recorder"));
+        body.addView(section("REMINDERS / TASKS", "Apps that accept calendar or alarm intents first; other installed apps are manual launch choices. Android has no universal API for writing tasks into every reminders app.",
+                "preferred_reminders_package", "preferred_reminders_label", "reminders"));
         scroll.addView(body);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -189,6 +191,15 @@ public final class DefaultAppsActivity extends Activity {
                 addResolvedPackages(pm, new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA), packageNames);
             } else if ("recorder".equals(category)) {
                 addResolvedPackages(pm, new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION), packageNames);
+            } else if ("reminders".equals(category)) {
+                Intent insertEvent = new Intent(Intent.ACTION_INSERT,
+                        android.provider.CalendarContract.Events.CONTENT_URI);
+                addResolvedPackages(pm, insertEvent, packageNames);
+                Intent setAlarm = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM);
+                addResolvedPackages(pm, setAlarm, packageNames);
+                Intent createNote = new Intent(Intent.ACTION_SEND);
+                createNote.setType("text/plain");
+                addResolvedPackages(pm, createNote, packageNames);
             }
         } catch (Exception error) {
             SyncEventLogger.recordException(this, "DefaultAppsActivity", "CATEGORY_DISCOVERY_FAILED",
