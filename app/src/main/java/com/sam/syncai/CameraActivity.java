@@ -6,6 +6,7 @@ import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.hardware.Camera;
 import android.media.MediaRecorder;
+import android.media.CamcorderProfile;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -40,6 +41,8 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
     private TextView status;
     private Button flip, capture, mode;
     private Camera camera;
+    private int activeCameraId = -1;
+    private Surface recorderSurface;
     private MediaRecorder recorder;
     private boolean front, videoMode, recording;
     private Uri outputUri;
@@ -101,6 +104,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
         cp.leftMargin = dp(8); controls.addView(capture, cp);
         root.addView(controls);
         setContentView(root);
+        AppTheme.applyStatusBarInset(root);
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
     }
@@ -118,6 +122,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
         if (id < 0) { status.setText("No compatible camera found."); return; }
         try {
             camera = Camera.open(id);
+            activeCameraId = id;
             Camera.CameraInfo info = new Camera.CameraInfo(); Camera.getCameraInfo(id, info);
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             int degrees = rotation == Surface.ROTATION_90 ? 90 : rotation == Surface.ROTATION_180 ? 180 : rotation == Surface.ROTATION_270 ? 270 : 0;
@@ -169,35 +174,71 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
 
     private void startVideo() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_AUDIO); return;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_AUDIO);
+            return;
         }
+        String stage = "create output";
         try {
-            outputName="Sync_Video_"+stamp()+".mp4"; outputUri=createOutput(true,outputName);
-            if (outputUri==null) throw new IllegalStateException("No video output");
-            camera.unlock(); recorder=new MediaRecorder(); recorder.setCamera(camera);
+            outputName = "Sync_Video_" + stamp() + ".mp4";
+            outputUri = createOutput(true, outputName);
+            if (outputUri == null) throw new IllegalStateException("MediaStore returned no video URI");
+
+            stage = "unlock camera";
+            camera.unlock();
+            recorder = new MediaRecorder();
+            recorder.setCamera(camera);
             recorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
             recorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
-            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC); recorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
-            recorder.setVideoEncodingBitRate(4_000_000); recorder.setVideoFrameRate(30);
-            Camera.Parameters params=camera.getParameters();
-            Camera.Size size=chooseVideoSize(params);
-            if (size != null) recorder.setVideoSize(size.width,size.height);
+
+            stage = "select supported recording profile";
+            CamcorderProfile profile;
+            if (activeCameraId >= 0 && CamcorderProfile.hasProfile(activeCameraId, CamcorderProfile.QUALITY_720P)) {
+                profile = CamcorderProfile.get(activeCameraId, CamcorderProfile.QUALITY_720P);
+            } else if (activeCameraId >= 0 && CamcorderProfile.hasProfile(activeCameraId, CamcorderProfile.QUALITY_480P)) {
+                profile = CamcorderProfile.get(activeCameraId, CamcorderProfile.QUALITY_480P);
+            } else if (activeCameraId >= 0 && CamcorderProfile.hasProfile(activeCameraId, CamcorderProfile.QUALITY_HIGH)) {
+                profile = CamcorderProfile.get(activeCameraId, CamcorderProfile.QUALITY_HIGH);
+            } else {
+                throw new IllegalStateException("No supported camcorder profile for camera " + activeCameraId);
+            }
+            // Use a camera-advertised profile instead of hard-coding 30 fps and a
+            // preview size that may not be valid for the device's video encoder.
+            recorder.setProfile(profile);
+
+            stage = "open video output";
             if (Build.VERSION.SDK_INT >= 29) {
-                outputDescriptor=getContentResolver().openFileDescriptor(outputUri,"w");
-                if (outputDescriptor==null) throw new IllegalStateException("No video descriptor");
+                outputDescriptor = getContentResolver().openFileDescriptor(outputUri, "w");
+                if (outputDescriptor == null) throw new IllegalStateException("Could not open MediaStore video descriptor");
                 recorder.setOutputFile(outputDescriptor.getFileDescriptor());
-            } else recorder.setOutputFile(legacyFile.getAbsolutePath());
+            } else {
+                if (legacyFile == null) throw new IllegalStateException("Legacy video output file is missing");
+                recorder.setOutputFile(legacyFile.getAbsolutePath());
+            }
+
+            stage = "prepare recorder";
             recorder.setOrientationHint(front ? 270 : 90);
-            recorder.setPreviewDisplay(new android.view.Surface(preview.getSurfaceTexture()));
-            recorder.prepare(); recorder.start(); recording=true;
-            capture.setText("■ Stop"); flip.setEnabled(false); mode.setEnabled(false);
-            status.setText("VIDEO RECORDING • "+outputName);
-            SyncEventLogger.record(this,"CameraActivity","VIDEO_RECORDING_STARTED","INFO",outputName);
+            recorderSurface = new Surface(preview.getSurfaceTexture());
+            recorder.setPreviewDisplay(recorderSurface);
+            recorder.prepare();
+
+            stage = "start recorder";
+            recorder.start();
+            recording = true;
+            capture.setText("■ Stop");
+            flip.setEnabled(false);
+            mode.setEnabled(false);
+            status.setText("VIDEO RECORDING • " + outputName);
+            SyncEventLogger.record(this, "CameraActivity", "VIDEO_RECORDING_STARTED", "INFO",
+                    "file=" + outputName + " profile=" + profile.videoFrameWidth + "x"
+                            + profile.videoFrameHeight + " fps=" + profile.videoFrameRate);
         } catch (Exception e) {
-            SyncEventLogger.recordException(this,"CameraActivity","VIDEO_START_FAILED",e,outputName);
-            cleanupVideo(false); try { camera.lock(); camera.startPreview(); } catch(Exception ignored){}
-            status.setText("Couldn't start video. Check permissions and storage.");
+            SyncEventLogger.recordException(this, "CameraActivity", "VIDEO_START_FAILED", e,
+                    "stage=" + stage + " file=" + outputName + " cameraId=" + activeCameraId);
+            cleanupVideo(false);
+            try { if (camera != null) { camera.lock(); camera.startPreview(); } } catch (Exception ignored) {}
+            status.setText("Couldn't start video (" + stage + "). See About & Diagnostics → Export Logs.");
+            Toast.makeText(this, "Video couldn't start. Check About & Diagnostics → Export Logs.",
+                    Toast.LENGTH_LONG).show();
         }
     }
     private void stopVideo() {
@@ -214,6 +255,7 @@ public final class CameraActivity extends Activity implements TextureView.Surfac
     private void cleanupVideo(boolean saved) {
         if(recorder!=null){try{recorder.reset();}catch(Exception ignored){} try{recorder.release();}catch(Exception ignored){} recorder=null;}
         if(outputDescriptor!=null){try{outputDescriptor.close();}catch(Exception ignored){} outputDescriptor=null;}
+        if(recorderSurface!=null){try{recorderSurface.release();}catch(Exception ignored){} recorderSurface=null;}
         if(!saved) deleteOutput();
     }
     private Camera.Size chooseVideoSize(Camera.Parameters params) {
