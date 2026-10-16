@@ -1,6 +1,28 @@
 # Sync AI overhaul status
 
-This document tracks the isolated `huge-overhaul-sync-ai-15-10-2026` branch. It is not a release-readiness claim. Device testing is intentionally deferred until the planned implementation pass is complete.
+This document is the persistent handoff tracker for the isolated `huge-overhaul-sync-ai-15-10-2026` branch. It is not a release-readiness claim. Device testing is intentionally deferred until the planned implementation pass is complete.
+
+## Working rules
+
+- Work through the queue below one item at a time, update this tracker after each meaningful step, and keep the handoff state in this file so a new chat can resume without guessing.
+- Preserve working functionality. Make the smallest targeted changes that satisfy each requirement.
+- Do not merge, tag, or release without explicit approval.
+- Defer on-device testing until the implementation pass is complete; then test features individually.
+- Never claim an action succeeded unless its outcome is observable. Record unverified behavior honestly.
+
+## Ordered implementation queue
+
+1. **Built-in Sync recorder + recording-only foreground notification** — NEXT. Provide an in-app recording tab/experience, explicit start/stop state, saved audio, microphone permission handling, and a foreground notification only while recording.
+2. **Dedicated in-Sync camera** — preview, front/rear switching, photo/video capture, and saving media, while preserving external/system camera handoffs.
+3. **Provider-aware music controls** — capability-aware app/provider layer; only advertise shuffle, repeat, playlists, or app-specific controls where supported.
+4. **Default-app picker validation** — improve role/category matching beyond the current all-launchable-apps list without removing an intentional override.
+5. **Speech and language settings** — evaluate STT options and configure recognition/TTS, multilingual behavior, and language overrides based on actual engine capability.
+6. **Broader app integration and routing** — audit installed-app/provider routing and make ambiguous requests ask rather than guess.
+7. **Productivity audit/completion** — reminders, tasks, notes, calendar/schedule; reuse existing features instead of duplicating them.
+8. **Workspace/file context** — contextual retrieval, summaries, and safe editing of imported files.
+9. **Developer-safe workflows** — work on copies, show diffs/review, never modify the original file in place.
+10. **Memory/personalization and proactive assistance** — audit current behavior and add useful, permission-respecting proactive notifications.
+11. **Implementation review and verification prep** — source-level audit, build/CI where available, and a feature-by-feature device test checklist. Device testing starts only after implementation items are complete.
 
 ## Implemented first passes
 
@@ -14,17 +36,14 @@ This document tracks the isolated `huge-overhaul-sync-ai-15-10-2026` branch. It 
 
 ## Still outstanding
 
-- A dedicated in-Sync camera UI with preview, front/rear switching, photo/video capture, and saving media.
-- A built-in Sync recorder experience and a recording-only foreground notification.
-- A provider/capability abstraction for music apps, including explicit support detection for shuffle, repeat, playlists, and app-specific controls.
-- Category-aware validation so the default-app picker can distinguish apps that support each role.
-- Speech recognition and text-to-speech evaluation/configuration, multilingual routing, and language overrides.
-- Audit and completion of productivity, Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
+- Dedicated in-Sync camera and built-in Sync recorder with recording-only foreground notification.
+- Music provider/capability abstraction and category-aware default-app validation.
+- STT/TTS evaluation/configuration, multilingual routing, and language overrides.
+- Audit/completion of productivity, Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
 - Automated build/CI verification and end-to-end device verification.
 
 ## Verification rules
 
-- Do not report a requested action as completed unless the relevant Android/app outcome is observable.
 - Treat camera-facing extras and media-key dispatch as best-effort platform handoffs, not proof that capture or playback state changed.
 - Keep implementation on this branch until the overhaul is complete and reviewed. Do not merge, tag, or release without explicit approval.
 - Defer on-device testing until the whole implementation pass is ready, then test features individually.
