@@ -293,6 +293,14 @@ public final class MainActivity extends Activity {
             return false;
         });
         input.setBackground(round(SURFACE_2, dp(28)));
+        Button composerCamera = actionButton("▣");
+        composerCamera.setContentDescription("Open Sync Camera");
+        composerCamera.setTextSize(20);
+        composerCamera.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, CameraActivity.class)));
+        composerCamera.setBackground(round(SURFACE_2, dp(28)));
+        LinearLayout.LayoutParams cameraLp = new LinearLayout.LayoutParams(dp(44), dp(56));
+        cameraLp.rightMargin = dp(6);
+        composer.addView(composerCamera, cameraLp);
         composer.addView(input, new LinearLayout.LayoutParams(0, dp(56), 1));
 
         Button composerVoice = actionButton("VOICE");
