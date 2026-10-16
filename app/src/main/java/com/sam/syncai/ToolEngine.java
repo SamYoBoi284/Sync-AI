@@ -78,7 +78,7 @@ public final class ToolEngine {
     private static final Pattern ALARM =
             Pattern.compile("(?i)(?:set\\s+(?:an\\s+)?)?(?:alarm|wake me|wake up)(?:\\s+(?:for|at))?\\s+(\\d{1,4})(?::(\\d{2}))?(?!\\d)\\s*(am|pm)?");
     private static final Pattern OPEN_APP =
-            Pattern.compile("(?i)^(?:(?:hey|bro|also|okay|alright|please)\\s+)*(?:(?:can|could|would|will)\\s+(?:you|u)\\s+)?(?:please\\s+)?(?:open|launch|start|run|go to)\\s+(.+?)\\s*[.!?,;]*$");
+            Pattern.compile("(?i)^(?:(?:hey|bro|also|okay|alright|please)\\s+)*(?:(?:can|could|would|will)\\s+(?:you|u)\\s+)?(?:please\\s+)?(?:open(?:\\s+up)?|launch|start|run|show(?:\\s+me)?|bring\\s+up|pull\\s+up|switch\\s+to|take\\s+me\\s+to|go\\s+to|go\\s+into)\\s+(.+?)\\s*[.!?,;]*$");
     private static final Pattern CALL =
             Pattern.compile("(?i)^(?:please\\s+)?(?:call|phone|ring)\\s+(.+)$");
 
@@ -575,7 +575,7 @@ public final class ToolEngine {
         }
 
         Matcher open = OPEN_APP.matcher(command);
-        if (open.find()) return launchApp(open.group(1).trim().replaceAll("[.!?,;]+$", ""));
+        if (open.find()) return launchApp(cleanAppTarget(open.group(1)));
 
         Matcher call = CALL.matcher(command);
         if (call.find()) return callContact(call.group(1).trim().replaceAll("[.!?,;]+$", ""));
@@ -653,6 +653,14 @@ public final class ToolEngine {
         }
     }
 
+    /** Removes conversational wrappers while preserving the requested app name. */
+    private static String cleanAppTarget(String raw) {
+        String target = raw == null ? "" : raw.trim();
+        target = target.replaceAll("[.!?,;]+$", "").trim();
+        target = target.replaceFirst("(?i)^(?:my|the|default|installed)\\s+", "");
+        target = target.replaceFirst("(?i)\\s+(?:app|application)$", "");
+        return target.trim();
+    }
     private static String normalizeAppName(String value) {
         return value == null ? "" : value.toLowerCase(Locale.US)
                 .replaceAll("[^a-z0-9]", "");
