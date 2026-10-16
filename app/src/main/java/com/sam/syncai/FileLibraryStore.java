@@ -351,39 +351,70 @@ public final class FileLibraryStore {
     private String extractOfficeText(File source, String lowerName) throws Exception {
         StringBuilder text = new StringBuilder();
         java.util.ArrayList<String> sharedStrings = new java.util.ArrayList<>();
+        if (lowerName.endsWith(".xlsx")) {
+            // XLSX ZIP entry order is not guaranteed. Read sharedStrings.xml first,
+            // then worksheet XML so shared-string cell indexes always resolve.
+            try (ZipInputStream zip = new ZipInputStream(new FileInputStream(source))) {
+                ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    if ("xl/sharedStrings.xml".equals(entry.getName())) {
+                        String xml = readZipEntryBounded(zip, 8 * 1024 * 1024);
+                        sharedStrings.addAll(extractXmlTextValues(xml));
+                        break;
+                    }
+                    zip.closeEntry();
+                }
+            }
+            try (ZipInputStream zip = new ZipInputStream(new FileInputStream(source))) {
+                ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    String name = entry.getName();
+                    if (!name.matches("xl/worksheets/sheet[0-9]+\\.xml")) {
+                        zip.closeEntry();
+                        continue;
+                    }
+                    String xml = readZipEntryBounded(zip, 8 * 1024 * 1024);
+                    appendSpreadsheetRows(xml, sharedStrings, text);
+                    zip.closeEntry();
+                }
+            }
+            return text.toString().trim();
+        }
+
         try (ZipInputStream zip = new ZipInputStream(new FileInputStream(source))) {
             ZipEntry entry;
-            byte[] buffer = new byte[8192];
             while ((entry = zip.getNextEntry()) != null) {
                 String name = entry.getName();
                 boolean relevant = lowerName.endsWith(".docx")
                         ? "word/document.xml".equals(name)
-                        : lowerName.endsWith(".pptx")
-                            ? name.matches("ppt/slides/slide[0-9]+\\.xml")
-                            : "xl/sharedStrings.xml".equals(name) || name.matches("xl/worksheets/sheet[0-9]+\\.xml");
-                if (!relevant) { zip.closeEntry(); continue; }
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                int count;
-                while ((count = zip.read(buffer)) != -1 && bytes.size() < 8 * 1024 * 1024) {
-                    int remaining = 8 * 1024 * 1024 - bytes.size();
-                    bytes.write(buffer, 0, Math.min(count, remaining));
+                        : name.matches("ppt/slides/slide[0-9]+\\.xml");
+                if (!relevant) {
+                    zip.closeEntry();
+                    continue;
                 }
-                String xml = bytes.toString("UTF-8");
+                String xml = readZipEntryBounded(zip, 8 * 1024 * 1024);
                 java.util.ArrayList<String> values = extractXmlTextValues(xml);
-                if (lowerName.endsWith(".xlsx") && "xl/sharedStrings.xml".equals(name)) {
-                    sharedStrings.addAll(values);
-                } else if (lowerName.endsWith(".xlsx")) {
-                    appendSpreadsheetRows(xml, sharedStrings, text);
-                } else {
-                    for (String value : values) {
-                        if (!value.trim().isEmpty()) text.append(value).append(' ');
-                    }
-                    text.append('\n');
+                for (String value : values) {
+                    if (!value.trim().isEmpty()) text.append(value).append(' ');
                 }
+                text.append('\\n');
                 zip.closeEntry();
             }
         }
         return text.toString().trim();
+    }
+
+    private String readZipEntryBounded(ZipInputStream zip, int maxBytes) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int count;
+        while ((count = zip.read(buffer)) != -1) {
+            int remaining = maxBytes - bytes.size();
+            if (remaining <= 0) break;
+            bytes.write(buffer, 0, Math.min(count, remaining));
+            if (count > remaining) break;
+        }
+        return bytes.toString("UTF-8");
     }
 
     private java.util.ArrayList<String> extractXmlTextValues(String xml) throws Exception {
