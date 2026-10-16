@@ -944,38 +944,38 @@ public final class ToolEngine {
     }
 
     private static boolean asksAboutCameraInventory(String command) {
-        return command.matches(".*\\\\b(?:what|which|how many)\\\\b.*\\\\b(?:cameras?|lenses?)\\\\b.*")
-                || command.matches(".*\\\\b(?:front|back|rear|selfie)\\\\s+(?:camera|lens)\\\\b.*\\\\b(?:available|exist|have|is there|do i have)\\\\b.*")
-                || command.matches(".*\\\\b(?:is there|do i have|are there)\\\\b.*\\\\b(?:front|back|rear|selfie)\\\\s+(?:camera|lens)\\\\b.*");
+        return command.matches(".*\\b(?:what|which|how many)\\b.*\\b(?:cameras?|lenses?)\\b.*")
+                || command.matches(".*\\b(?:front|back|rear|selfie)\\s+(?:camera|lens)\\b.*\\b(?:available|exist|have|is there|do i have)\\b.*")
+                || command.matches(".*\\b(?:is there|do i have|are there)\\b.*\\b(?:front|back|rear|selfie)\\s+(?:camera|lens)\\b.*");
     }
 
     private static boolean asksToCaptureVideo(String command) {
-        return command.matches(".*\\\\b(?:record|shoot|film|capture)\\\\b.*\\\\b(?:a\\\\s+)?(?:video|clip|movie)\\\\b.*")
-                || command.matches(".*\\\\b(?:video record|start recording video|start video recording)\\\\b.*");
+        return command.matches(".*\\b(?:record|shoot|film|capture)\\b.*\\b(?:a\\s+)?(?:video|clip|movie)\\b.*")
+                || command.matches(".*\\b(?:video record|start recording video|start video recording)\\b.*");
     }
 
     private static boolean asksToCapturePhoto(String command) {
-        return command.matches(".*\\\\b(?:take|capture|shoot|snap)\\\\b.*\\\\b(?:a\\\\s+)?(?:photo|picture|pic|selfie)\\\\b.*")
-                || command.matches(".*\\\\b(?:take|capture|shoot)\\\\b.*\\\\b(?:a\\\\s+)?(?:selfie)\\\\b.*");
+        return command.matches(".*\\b(?:take|capture|shoot|snap)\\b.*\\b(?:a\\s+)?(?:photo|picture|pic|selfie)\\b.*")
+                || command.matches(".*\\b(?:take|capture|shoot)\\b.*\\b(?:a\\s+)?(?:selfie)\\b.*");
     }
 
     private static boolean asksToOpenCamera(String command) {
-        return command.matches(".*\\\\b(?:open|launch|start|show|bring up|pull up)\\\\b.*\\\\b(?:camera|camera app)\\\\b.*")
+        return command.matches(".*\\b(?:open|launch|start|show|bring up|pull up)\\b.*\\b(?:camera|camera app)\\b.*")
                 || command.equals("camera") || command.equals("open my camera")
                 || command.equals("open camera app");
     }
 
     private static boolean asksToRecordAudio(String command) {
-        return command.matches(".*\\\\b(?:record|start recording|open)\\\\b.*\\\\b(?:audio|voice memo|voice note|sound recording)\\\\b.*")
+        return command.matches(".*\\b(?:record|start recording|open)\\b.*\\b(?:audio|voice memo|voice note|sound recording)\\b.*")
                 || command.equals("open voice recorder") || command.equals("open audio recorder");
     }
 
     private static Integer requestedCameraFacing(String command) {
-        if (command.matches(".*\\\\b(?:front|selfie|front-facing)\\\\b.*")) {
+        if (command.matches(".*\\b(?:front|selfie|front-facing)\\b.*")) {
             return android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT;
         }
-        if (command.matches(".*\\\\b(?:back|rear|main)\\\\s+(?:camera|lens)\\\\b.*")
-                || command.matches(".*\\\\b(?:back|rear)\\\\b.*\\\\b(?:camera|lens)\\\\b.*")) {
+        if (command.matches(".*\\b(?:back|rear|main)\\s+(?:camera|lens)\\b.*")
+                || command.matches(".*\\b(?:back|rear)\\b.*\\b(?:camera|lens)\\b.*")) {
             return android.hardware.Camera.CameraInfo.CAMERA_FACING_BACK;
         }
         return null;
