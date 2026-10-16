@@ -1063,12 +1063,10 @@ public final class ToolEngine {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             if (intent.resolveActivity(context.getPackageManager()) == null) {
-                // Generic camera action is a fallback for OEMs without capture-specific handlers.
-                intent = new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                if (intent.resolveActivity(context.getPackageManager()) == null) {
-                    return new Result(true, false, "No compatible system camera app is available.", "camera", 0);
-                }
+                // Never silently downgrade a requested video/photo capture into ordinary photo mode.
+                return new Result(true, false,
+                        "No compatible system camera handler is available for " + mode + " mode.",
+                        "camera", 0);
             }
             context.startActivity(intent);
             String detail = "Opened the system camera";
