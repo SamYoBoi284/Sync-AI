@@ -397,7 +397,7 @@ public final class FileLibraryStore {
                 for (String value : values) {
                     if (!value.trim().isEmpty()) text.append(value).append(' ');
                 }
-                text.append('\\n');
+                text.append('\n');
                 zip.closeEntry();
             }
         }
