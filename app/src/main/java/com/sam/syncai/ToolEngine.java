@@ -1225,14 +1225,14 @@ public final class ToolEngine {
     }
 
     private static boolean asksForExternalCamera(String command) {
-        return command.matches(".*\\\\b(?:phone|external|default|my)\\\\s+(?:camera|camera app)\\\\b.*")
-                || command.matches(".*\\\\b(?:camera|camera app)\\\\s+(?:on my phone|app on my phone|outside sync)\\\\b.*")
+        return command.matches(".*\\b(?:phone|external|default|my)\\s+(?:camera|camera app)\\b.*")
+                || command.matches(".*\\b(?:camera|camera app)\\s+(?:on my phone|app on my phone|outside sync)\\b.*")
                 || command.contains("use my camera app") || command.contains("use the phone camera");
     }
 
     private static boolean asksForExternalRecorder(String command) {
-        return command.matches(".*\\\\b(?:phone|external|default|my)\\\\s+(?:audio )?recorder\\\\b.*")
-                || command.matches(".*\\\\b(?:phone|external|default|my)\\\\s+(?:audio )?recording app\\\\b.*")
+        return command.matches(".*\\b(?:phone|external|default|my)\\s+(?:audio )?recorder\\b.*")
+                || command.matches(".*\\b(?:phone|external|default|my)\\s+(?:audio )?recording app\\b.*")
                 || command.contains("recorder app") || command.contains("outside sync")
                 || command.contains("use my phone recorder") || command.contains("use the phone recorder");
     }
