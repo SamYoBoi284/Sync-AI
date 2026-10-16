@@ -13,7 +13,7 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 ## Ordered implementation queue
 
 1. **Built-in Sync recorder + recording-only foreground notification** — IMPLEMENTED IN SOURCE; build/device verification deferred until the full implementation pass. Provide an in-app recording tab/experience, explicit start/stop state, saved audio, microphone permission handling, and a foreground notification only while recording.
-2. **Dedicated in-Sync camera** — NEXT. Preview, front/rear switching, photo/video capture, and saving media, while preserving external/system camera handoffs. Place its composer button to the LEFT of the message field.
+2. **Dedicated in-Sync camera** — IMPLEMENTED IN SOURCE; build/device verification deferred. Includes preview, front/rear switching, photo/video capture, MediaStore saving on Android 10+, app-specific storage on older Android, and a composer button LEFT of the message field. Existing external/system camera routing remains in place.
 3. **Provider-aware music controls** — capability-aware app/provider layer; only advertise shuffle, repeat, playlists, or app-specific controls where supported.
 4. **Default-app picker validation** — improve role/category matching beyond the current all-launchable-apps list without removing an intentional override.
 5. **Speech and language settings** — evaluate STT options and configure recognition/TTS, multilingual behavior, and language overrides based on actual engine capability.
@@ -33,15 +33,16 @@ This document is the persistent handoff tracker for the isolated `huge-overhaul-
 - Basic media transport sends play, pause, next, and previous key events to the active Android media session. Acceptance is not verified.
 - Settings > Default apps lets users choose preferred music, file manager, camera, and audio recorder apps from installed launchable apps. Default selection is UI-only, not a chat command.
 - Added a dedicated Sync Recorder screen as a separate sidebar item immediately below Chat history (not inside Chat history and not under Settings). Recording requires an explicit tap and microphone permission; the foreground notification is intended only for an active recording and includes Stop. Audio is listed and playable in the recorder screen.
+- Added a dedicated Sync Camera screen with photo/video mode, front/rear switching, and media saving; its camera button is left of the composer message field. Camera uses Android’s legacy Camera API for broad compatibility; verify preview, orientation, and device-specific video support during the deferred device-test pass.
 - Natural-language routing can open selected music, file manager, camera, and recorder apps. App launching is not proof that playback, recording, or capture has started.
 
 ## Still outstanding
 
-- Dedicated in-Sync camera (next), including a composer button on the left of the message field.
+- Automated source review and verification remain; recorder and camera are now implemented in source, but are not yet build- or device-verified.
 - Music provider/capability abstraction and category-aware default-app validation.
 - STT/TTS evaluation/configuration, multilingual routing, and language overrides.
 - Audit/completion of productivity, Workspace/file context, developer-safe copy-and-diff workflows, memory/personalization, and proactive notifications.
-- Automated build/CI verification and end-to-end device verification. Recorder currently saves to app-specific external Music storage; user-visible media-library export is not yet implemented.
+- Automated build/CI verification and end-to-end device verification. Recorder currently saves to app-specific external Music storage; recordings can be played from the recorder screen. Build and device verification for both recorder and camera is still pending.
 
 ## Verification rules
 
