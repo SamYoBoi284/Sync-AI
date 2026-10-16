@@ -37,6 +37,7 @@ public final class SideDashboard extends FrameLayout {
         void commands();
         void health();
         void defaultApps();
+        void recorder();
     }
 
     private final Activity activity;
@@ -139,6 +140,7 @@ public final class SideDashboard extends FrameLayout {
         section(mainContent, "CHATS");
         item(mainContent, "＋  New chat", v -> actions.newChat(), true);
         item(mainContent, "☷  Chat history", v -> actions.chats(), true);
+        item(mainContent, "●  Recorder", v -> actions.recorder(), true);
 
         section(mainContent, "WORKSPACE");
         item(mainContent, "◉  Voice mode", v -> actions.assistant(), true);
