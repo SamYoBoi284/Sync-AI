@@ -48,6 +48,12 @@
         android:supportsRtl="true">
 
         <activity
+            android:name=".DefaultAppsActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.SyncAI" />
+
+        <activity
             android:name=".AppearanceActivity"
             android:screenOrientation="portrait"
             android:exported="false"
