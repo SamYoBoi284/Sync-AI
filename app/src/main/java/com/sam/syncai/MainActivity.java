@@ -347,6 +347,9 @@ public final class MainActivity extends Activity {
             @Override public void recorder() {
                 startActivity(new Intent(MainActivity.this, RecorderActivity.class));
             }
+            @Override public void productivity() {
+                startActivity(new Intent(MainActivity.this, ProductivityActivity.class));
+            }
             @Override public void models() { showModelsDialog(); }
             @Override public void importModel() { openModelPicker(); }
             @Override public void runtime() { showRuntimeInfo(); }
