@@ -38,6 +38,7 @@ public final class SideDashboard extends FrameLayout {
         void health();
         void defaultApps();
         void recorder();
+        void productivity();
     }
 
     private final Activity activity;
@@ -145,6 +146,7 @@ public final class SideDashboard extends FrameLayout {
         section(mainContent, "WORKSPACE");
         item(mainContent, "◉  Voice mode", v -> actions.assistant(), true);
         item(mainContent, "✎  Workspace", v -> actions.canvas(), true);
+        item(mainContent, "☑  Tasks & notes", v -> actions.productivity(), true);
         item(mainContent, "◈  Appearance", v -> actions.appearance(), true);
 
         section(mainContent, "SETTINGS");
