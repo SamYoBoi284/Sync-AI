@@ -1,13 +1,10 @@
 package com.sam.syncai;
 
-import android.content.Context;
-
 import org.json.JSONObject;
 import org.vosk.Model;
 import org.vosk.Recognizer;
 import org.vosk.android.SpeechService;
 
-import java.io.File;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -61,7 +58,14 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
             speechService.startListening(new org.vosk.android.RecognitionListener() {
                 @Override public void onPartialResult(String hypothesis) {
                     String text = extract(hypothesis, "partial");
-                    if (!text.isEmpty() && !stopped.get()) listener.onPartial(text);
+                    if (!text.isEmpty() && !stopped.get()) {
+                        synchronized (VoskVoiceRecognitionSession.this) {
+                            // A new partial indicates a new utterance may be in progress,
+                            // so a user can legitimately repeat the same sentence.
+                            lastDelivered = "";
+                        }
+                        listener.onPartial(text);
+                    }
                 }
 
                 @Override public void onResult(String hypothesis) {
@@ -81,6 +85,7 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
                 }
             });
         } catch (Exception error) {
+            stopped.set(true);
             stopInternal();
             throw error;
         }
