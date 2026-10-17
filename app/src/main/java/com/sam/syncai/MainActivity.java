@@ -2956,9 +2956,10 @@ public final class MainActivity extends Activity {
         content.setPadding(dp(18), dp(4), dp(18), dp(4));
 
         TextView info = text(
-                "Voice Mode still uses Android's assistant route. Hey Sync is optional and runs "
-                        + "only while its visible foreground notification is active. Import the "
-                        + "offline Vosk ZIP once; wake-word spotting does not load the GGUF model.",
+                "Voice Mode uses Android's assistant route. Hey Sync is optional and runs only while "
+                        + "its visible foreground notification is active. Import separate Vosk ZIPs "
+                        + "for wake-word detection and conversational Voice Mode; neither requires GGUF "
+                        + "for speech recognition, but conversational replies use the selected GGUF model.",
                 13, MUTED, false);
         info.setPadding(0, 0, 0, dp(12));
         content.addView(info);
