@@ -9,8 +9,6 @@ import android.os.Looper;
 import android.os.Process;
 import android.view.Gravity;
 import android.view.View;
-import android.os.Build;
-import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -65,17 +63,7 @@ public final class ResourceManagerActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(palette.background);
         root.setPadding(dp(18), dp(10), dp(18), dp(12));
-        root.setOnApplyWindowInsetsListener((view, insets) -> {
-            int topInset;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                topInset = insets.getInsets(WindowInsets.Type.statusBars()
-                        | WindowInsets.Type.displayCutout()).top;
-            } else {
-                topInset = insets.getSystemWindowInsetTop();
-            }
-            root.setPadding(dp(18), dp(10) + topInset, dp(18), dp(12));
-            return insets;
-        });
+        AppTheme.applyStatusBarInset(root);
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
