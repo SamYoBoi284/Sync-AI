@@ -96,6 +96,12 @@
             android:theme="@style/Theme.SyncAI" />
 
         <activity
+            android:name=".ResourceManagerActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.SyncAI" />
+
+        <activity
             android:name=".AppearanceActivity"
             android:screenOrientation="portrait"
             android:exported="false"
