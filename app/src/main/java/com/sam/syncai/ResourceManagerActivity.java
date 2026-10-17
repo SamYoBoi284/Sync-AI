@@ -2,14 +2,11 @@ package com.sam.syncai;
 
 import android.app.Activity;
 import android.app.ActivityManager;
-import android.content.Context;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
-import android.os.StatFs;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -19,6 +16,8 @@ import android.widget.TextView;
 
 import java.io.File;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** Lightweight, on-demand process and component resource dashboard. */
 public final class ResourceManagerActivity extends Activity {
@@ -37,6 +36,9 @@ public final class ResourceManagerActivity extends Activity {
     private long lastCpuTimeMs;
     private long lastWallTimeMs;
     private boolean resumed;
+    private volatile long appDataBytes = -1L;
+    private volatile long voskBytes = -1L;
+    private final ExecutorService storageScanner = Executors.newSingleThreadExecutor();
 
     private final Runnable refreshTask = new Runnable() {
         @Override public void run() {
@@ -107,6 +109,15 @@ public final class ResourceManagerActivity extends Activity {
         lastCpuTimeMs = Process.getElapsedCpuTime();
         lastWallTimeMs = android.os.SystemClock.elapsedRealtime();
         refreshMetrics();
+        storageScanner.execute(() -> {
+            long appBytes = directoryBytes(getFilesDir());
+            long modelBytes = directoryBytes(VoskModelInstaller.modelDirectory(this));
+            appDataBytes = appBytes;
+            voskBytes = modelBytes;
+            runOnUiThread(() -> {
+                if (!isFinishing()) refreshMetrics();
+            });
+        });
     }
 
     @Override protected void onResume() {
@@ -149,8 +160,9 @@ public final class ResourceManagerActivity extends Activity {
 
         cpuValue.setText(String.format(Locale.US, "%.1f%% of one core", cpuPercent)
                 + (SyncRuntime.get(this).backend().isGenerating() ? " • LLM generating" : ""));
-        storageValue.setText(formatBytes(getFilesDir().getTotalSpace() - getFilesDir().getUsableSpace())
-                + " used on app data volume • " + formatBytes(getFilesDir().getUsableSpace()) + " available");
+        storageValue.setText(appDataBytes < 0L ? "Scanning app-private files…" :
+                formatBytes(appDataBytes) + " app-private data • "
+                        + formatBytes(getFilesDir().getUsableSpace()) + " volume space available");
 
         SyncRuntime runtime = SyncRuntime.get(this);
         ModelInfo model = runtime.modelManager().getLoadedModel();
@@ -167,12 +179,12 @@ public final class ResourceManagerActivity extends Activity {
         }
 
         File voskDir = VoskModelInstaller.modelDirectory(this);
-        long voskBytes = directoryBytes(voskDir);
+        long voskBytesSnapshot = voskBytes;
         boolean voskInstalled = VoskModelInstaller.isInstalled(this);
         boolean conversational = VoskVoiceRecognitionSession.isSessionActive();
         voskValue.setText((conversational ? "ACTIVE • conversational session" : "IDLE")
                 + "\nModel installed: " + (voskInstalled ? "yes" : "no")
-                + " • model files on disk: " + formatBytes(voskBytes)
+                + " • model files on disk: " + (voskBytesSnapshot < 0L ? "scanning…" : formatBytes(voskBytesSnapshot))
                 + "\nVosk's exact in-memory allocation is included in app PSS above, not separately exposed by Android.");
 
         boolean wakeRunning = SyncAssistantService.isRunning();
@@ -284,6 +296,12 @@ public final class ResourceManagerActivity extends Activity {
             unit++;
         }
         return String.format(Locale.US, "%.1f %s", value, units[unit]);
+    }
+
+    @Override protected void onDestroy() {
+        handler.removeCallbacks(refreshTask);
+        storageScanner.shutdownNow();
+        super.onDestroy();
     }
 
     private int dp(int value) {
