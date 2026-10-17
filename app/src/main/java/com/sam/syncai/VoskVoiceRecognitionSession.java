@@ -86,7 +86,7 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
             });
         } catch (Exception error) {
             stopped.set(true);
-            stopInternal();
+            stopInternal(false);
             throw error;
         }
     }
@@ -110,13 +110,13 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
         }
     }
 
-    /** Stops audio capture and closes this session's recognizer and model. */
+    /** Stops microphone capture but keeps the model loaded for the next turn. */
     public synchronized void stop() {
         if (!stopped.compareAndSet(false, true)) return;
-        stopInternal();
+        stopInternal(false);
     }
 
-    private void stopInternal() {
+    private void stopInternal(boolean closeModel) {
         SpeechService service = speechService;
         speechService = null;
         if (service != null) {
@@ -130,14 +130,21 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
             try { oldRecognizer.close(); } catch (Exception ignored) {}
         }
 
-        try { model.close(); } catch (Exception ignored) {}
+        if (closeModel) {
+            try { model.close(); } catch (Exception ignored) {}
+        }
     }
 
     public boolean isRunning() {
         return !stopped.get();
     }
 
-    @Override public void close() {
-        stop();
+    @Override public synchronized void close() {
+        if (stopped.compareAndSet(false, true)) {
+            stopInternal(true);
+        } else {
+            // stop() releases the recognizer but deliberately retains the model.
+            stopInternal(true);
+        }
     }
 }
