@@ -12,7 +12,7 @@ public final class GgufModelBackend implements LocalModelBackend {
     private volatile String runtimeDiagnostics = "No model loaded.";
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private final Object generationLock = new Object();
-    private boolean generationRunning;
+    private volatile boolean generationRunning;
 
     @Override
     public void load(ModelInfo model, LoadCallback callback) {
@@ -60,6 +60,11 @@ public final class GgufModelBackend implements LocalModelBackend {
     @Override
     public boolean isLoaded() {
         return loaded != null;
+    }
+
+    /** True only while a native generation request is actively running. */
+    public boolean isGenerating() {
+        return generationRunning;
     }
 
     @Override
