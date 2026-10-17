@@ -9,6 +9,8 @@ import android.os.Looper;
 import android.os.Process;
 import android.view.Gravity;
 import android.view.View;
+import android.os.Build;
+import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -38,6 +40,7 @@ public final class ResourceManagerActivity extends Activity {
     private boolean resumed;
     private volatile long appDataBytes = -1L;
     private volatile long voskBytes = -1L;
+    private volatile long wakeBytes = -1L;
     private long llmCpuMs;
     private long voskCpuMs;
     private long wakeCpuMs;
@@ -62,6 +65,17 @@ public final class ResourceManagerActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(palette.background);
         root.setPadding(dp(18), dp(10), dp(18), dp(12));
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            int topInset;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                topInset = insets.getInsets(WindowInsets.Type.statusBars()
+                        | WindowInsets.Type.displayCutout()).top;
+            } else {
+                topInset = insets.getSystemWindowInsetTop();
+            }
+            root.setPadding(dp(18), dp(10) + topInset, dp(18), dp(12));
+            return insets;
+        });
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -116,9 +130,11 @@ public final class ResourceManagerActivity extends Activity {
         refreshMetrics();
         storageScanner.execute(() -> {
             long appBytes = directoryBytes(getFilesDir());
-            long modelBytes = directoryBytes(VoskModelInstaller.modelDirectory(this));
+            long voiceModelBytes = directoryBytes(VoskModelInstaller.voiceModelDirectory(this));
+            long wakeModelBytes = directoryBytes(VoskModelInstaller.wakeWordModelDirectory(this));
             appDataBytes = appBytes;
-            voskBytes = modelBytes;
+            voskBytes = voiceModelBytes;
+            wakeBytes = wakeModelBytes;
             runOnUiThread(() -> {
                 if (!isFinishing()) refreshMetrics();
             });
@@ -196,19 +212,23 @@ public final class ResourceManagerActivity extends Activity {
         }
 
         long voskBytesSnapshot = voskBytes;
-        boolean voskInstalled = VoskModelInstaller.isInstalled(this);
+        boolean voskInstalled = VoskModelInstaller.isVoiceModelInstalled(this);
         boolean conversational = VoskVoiceRecognitionSession.isSessionActive();
         voskValue.setText((conversational ? "ACTIVE • conversational session" : "IDLE")
-                + "\nModel installed: " + (voskInstalled ? "yes" : "no")
+                + "\nVoice Mode model installed: " + (voskInstalled ? "yes" : "no")
                 + " • model files on disk: " + (voskBytesSnapshot < 0L ? "scanning…" : formatBytes(voskBytesSnapshot))
                 + "\nEstimated CPU sampled during listening windows: " + formatDuration(voskCpuMs)
                 + "\nVosk's exact in-memory allocation is included in app PSS above, not separately exposed by Android.");
 
         boolean wakeRunning = SyncAssistantService.isRunning();
+        long wakeBytesSnapshot = wakeBytes;
+        boolean wakeModelInstalled = VoskModelInstaller.isWakeWordInstalled(this);
         wakeValue.setText((wakeRunning ? "SERVICE RUNNING" : "STOPPED")
+                + "\nWake-word model installed: " + (wakeModelInstalled ? "yes" : "no")
+                + " • model files on disk: " + (wakeBytesSnapshot < 0L ? "scanning…" : formatBytes(wakeBytesSnapshot))
                 + "\nWake-word listener is " + (wakeRunning ? "enabled / background-capable" : "not running")
                 + "\nEstimated CPU sampled during wake-service windows: " + formatDuration(wakeCpuMs)
-                + "\nUses the installed Vosk model when active; its memory is included in app PSS.");
+                + "\nIts memory is included in app PSS above.");
 
         boolean voiceActive = VoiceModeActivity.isVoiceModeActive();
         voiceValue.setText((voiceActive ? "VOICE MODE OPEN" : "VOICE MODE CLOSED")
