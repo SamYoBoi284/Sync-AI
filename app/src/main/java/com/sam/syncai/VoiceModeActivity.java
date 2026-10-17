@@ -27,9 +27,13 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import org.vosk.Model;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class VoiceModeActivity extends Activity {
@@ -37,7 +41,20 @@ public final class VoiceModeActivity extends Activity {
     private SyncRuntime runtime;
 
     private SpeechRecognizer recognizer;
+    private VoskVoiceRecognitionSession voskSession;
+    private final ExecutorService voskModelExecutor = Executors.newSingleThreadExecutor();
     private TextToSpeech tts;
+    private Button backendToggle;
+    private boolean useVosk;
+    private boolean voskModelLoading;
+    private String pendingVoskFinal = "";
+    private final Runnable deliverVoskFinal = () -> {
+        String finalText = pendingVoskFinal;
+        pendingVoskFinal = "";
+        if (destroyed || !useVosk || processing.get() || finalText.trim().isEmpty()) return;
+        if (voskSession != null) voskSession.stop(); // release mic before model/tools/TTS work
+        handleVoiceText(finalText);
+    };
     private TextView stateView;
     private TextView transcriptView;
     private TextView responseView;
@@ -86,6 +103,7 @@ public final class VoiceModeActivity extends Activity {
         View content = onCreateContentView();
         setContentView(content);
         initSpeech();
+        updateBackendToggle();
         initTts();
         restoreSelectedModel();
         startListeningOrRequestPermission();
@@ -124,7 +142,18 @@ public final class VoiceModeActivity extends Activity {
 
         stateView = text("LISTENING", 11, accent, true);
         stateView.setGravity(Gravity.CENTER_HORIZONTAL);
-        panel.addView(stateView, new LinearLayout.LayoutParams(-1, dp(26)));
+        panel.addView(stateView, new LinearLayout.LayoutParams(-1, dp(24)));
+
+        backendToggle = new Button(this);
+        backendToggle.setAllCaps(false);
+        backendToggle.setTextSize(10);
+        backendToggle.setTextColor(palette.text);
+        backendToggle.setText("STT: ANDROID • TAP TO SWITCH");
+        backendToggle.setBackground(round(AppTheme.mix(palette.text, palette.surface, 0.9f), 18));
+        backendToggle.setOnClickListener(v -> toggleSpeechBackend());
+        LinearLayout.LayoutParams backendLp = new LinearLayout.LayoutParams(-1, dp(28));
+        backendLp.bottomMargin = dp(2);
+        panel.addView(backendToggle, backendLp);
 
         micButton = new Button(this);
         ((Button) micButton).setText("◉");
@@ -161,7 +190,7 @@ public final class VoiceModeActivity extends Activity {
         panel.addView(responseScroll, new LinearLayout.LayoutParams(-1, dp(135)));
 
         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
-                dp(330), dp(385), Gravity.CENTER);
+                dp(330), dp(410), Gravity.CENTER);
         root.addView(panel, panelLp);
         panelView = panel;
         if (!Motion.reduced(this)) {
@@ -336,16 +365,25 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private void startListening() {
-        SyncEventLogger.record(this, "SpeechRecognizer", "START_LISTENING_ATTEMPT",
-                "INFO", "destroyed=" + destroyed);
-        if (destroyed || recognizer == null ||
-                this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                        != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
+        SyncEventLogger.record(this, useVosk ? "VoskVoiceRecognitionSession" : "SpeechRecognizer",
+                "START_LISTENING_ATTEMPT", "INFO",
+                "destroyed=" + destroyed + " backend=" + (useVosk ? "VOSK" : "ANDROID"));
+        if (destroyed || this.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) return;
         processing.set(false);
         transcriptView.setText("Listening…");
         updateState("LISTENING");
+        if (useVosk) {
+            startVoskListening();
+            return;
+        }
+        if (recognizer == null) {
+            initSpeech();
+            if (recognizer == null) {
+                updateState("SPEECH UNAVAILABLE");
+                return;
+            }
+        }
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -360,6 +398,133 @@ public final class VoiceModeActivity extends Activity {
             updateState("MIC ERROR");
             showResponse(e.getMessage() == null ? e.toString() : e.getMessage());
         }
+    }
+
+    private void updateBackendToggle() {
+        if (backendToggle == null) return;
+        backendToggle.setText(useVosk
+                ? "STT: VOSK OFFLINE • TAP TO SWITCH"
+                : "STT: ANDROID • TAP TO SWITCH");
+        backendToggle.setContentDescription(useVosk
+                ? "Experimental Vosk speech recognition selected. Tap to switch to Android speech recognition."
+                : "Android speech recognition selected. Tap to switch to experimental Vosk.");
+    }
+
+    private void toggleSpeechBackend() {
+        if (destroyed || processing.get() || voskModelLoading) {
+            if (voskModelLoading) showResponse("Vosk model is still loading. Please wait a moment.");
+            return;
+        }
+        if (recognizer != null) {
+            try { recognizer.cancel(); } catch (Exception ignored) {}
+        }
+        main.removeCallbacks(deliverVoskFinal);
+        pendingVoskFinal = "";
+        if (voskSession != null) voskSession.stop();
+        useVosk = !useVosk;
+        updateBackendToggle();
+        SyncEventLogger.record(this, "VoiceModeActivity", "STT_BACKEND_SELECTED", "INFO",
+                "backend=" + (useVosk ? "VOSK" : "ANDROID"));
+        transcriptView.setText(useVosk
+                ? "Vosk offline mode selected. Speak after listening starts."
+                : "Android speech recognition selected.");
+        // Give Android/Vosk a short handoff window so they never capture simultaneously.
+        main.postDelayed(this::startListeningOrRequestPermission, 350);
+    }
+
+    private void startVoskListening() {
+        if (destroyed || !useVosk || processing.get() || voskModelLoading) return;
+        if (!VoskModelInstaller.isInstalled(this)) {
+            updateState("VOSK MODEL MISSING");
+            showResponse("Import the Vosk model in Sync AI settings/tools before selecting Vosk. Android STT is still available using the switch above.");
+            return;
+        }
+        if (voskSession != null) {
+            try {
+                voskSession.start();
+                updateState("LISTENING • VOSK");
+            } catch (Exception error) {
+                onVoskError(error);
+            }
+            return;
+        }
+        voskModelLoading = true;
+        updateState("LOADING VOSK");
+        transcriptView.setText("Loading local Vosk model…");
+        voskModelExecutor.execute(() -> {
+            Model loaded = null;
+            Exception failure = null;
+            try {
+                loaded = new Model(VoskModelInstaller.modelDirectory(this).getAbsolutePath());
+            } catch (Exception error) {
+                failure = error;
+            }
+            final Model model = loaded;
+            final Exception loadError = failure;
+            main.post(() -> {
+                voskModelLoading = false;
+                if (destroyed || !useVosk) {
+                    if (model != null) try { model.close(); } catch (Exception ignored) {}
+                    return;
+                }
+                if (loadError != null || model == null) {
+                    SyncEventLogger.recordException(this, "VoiceModeActivity",
+                            "VOSK_CONVERSATION_MODEL_LOAD_ERROR",
+                            loadError == null ? new IllegalStateException("Vosk model was null") : loadError,
+                            "could not load installed local Vosk model");
+                    updateState("VOSK LOAD ERROR");
+                    showResponse("Couldn't load the installed Vosk model. Switch back to Android STT and check the imported model.");
+                    return;
+                }
+                voskSession = new VoskVoiceRecognitionSession(model, new VoskVoiceRecognitionSession.Listener() {
+                    @Override public void onPartial(String text) {
+                        main.post(() -> {
+                            if (!destroyed && useVosk && !processing.get()) {
+                                transcriptView.setText(text);
+                                updateState("LISTENING • VOSK");
+                            }
+                        });
+                    }
+                    @Override public void onFinal(String text) {
+                        main.post(() -> {
+                            if (destroyed || !useVosk || processing.get()) return;
+                            pendingVoskFinal = text;
+                            main.removeCallbacks(deliverVoskFinal);
+                            // onResult and onFinalResult can report the same utterance; debounce them.
+                            main.postDelayed(deliverVoskFinal, 450);
+                        });
+                    }
+                    @Override public void onError(Exception error) {
+                        main.post(() -> onVoskError(error));
+                    }
+                    @Override public void onTimeout() {
+                        main.post(() -> {
+                            if (!destroyed && useVosk && !processing.get()) {
+                                SyncEventLogger.record(VoiceModeActivity.this,
+                                        "VoskVoiceRecognitionSession", "RECOGNITION_TIMEOUT",
+                                        "WARN", "no final transcript");
+                            }
+                        });
+                    }
+                });
+                try {
+                    voskSession.start();
+                    updateState("LISTENING • VOSK");
+                    transcriptView.setText("Vosk is listening locally…");
+                } catch (Exception error) {
+                    onVoskError(error);
+                }
+            });
+        });
+    }
+
+    private void onVoskError(Exception error) {
+        if (voskSession != null) voskSession.stop();
+        SyncEventLogger.recordException(this, "VoiceModeActivity",
+                "VOSK_CONVERSATION_STT_ERROR", error, "experimental Vosk recognizer failed");
+        updateState("VOSK ERROR");
+        transcriptView.setText("Vosk stopped. Switch to Android STT to continue.");
+        showResponse("Experimental Vosk recognition failed. Your Android STT baseline is still available from the switch above.");
     }
 
     private void handleVoiceText(String text) {
@@ -710,6 +875,13 @@ public final class VoiceModeActivity extends Activity {
 
     private void cleanup() {
         stopMicPulse();
+        main.removeCallbacks(deliverVoskFinal);
+        pendingVoskFinal = "";
+        if (voskSession != null) {
+            try { voskSession.close(); } catch (Exception ignored) {}
+            voskSession = null;
+        }
+        voskModelExecutor.shutdownNow();
         if (recognizer != null) {
             try { recognizer.cancel(); } catch (Exception ignored) {}
             try { recognizer.destroy(); } catch (Exception ignored) {}
