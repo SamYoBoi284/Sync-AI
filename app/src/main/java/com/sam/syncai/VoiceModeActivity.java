@@ -50,6 +50,8 @@ public final class VoiceModeActivity extends Activity {
     private TextToSpeech tts;
     private Button backendToggle;
     private boolean useVosk;
+    private boolean modelRestorePending;
+    private boolean modelRestoreFailed;
     private boolean voskModelLoading;
     private String pendingVoskFinal = "";
     private TextView stateView;
@@ -104,6 +106,7 @@ public final class VoiceModeActivity extends Activity {
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         runtime = SyncRuntime.get(this);
+        useVosk = "vosk".equals(runtime.preferences().getVoiceRecognitionBackend());
         palette = AppTheme.from(this);
         accent = palette.primary;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -340,14 +343,34 @@ public final class VoiceModeActivity extends Activity {
         if (runtime.backend().isLoaded()) return;
         ModelInfo model = runtime.modelManager().getLoadedModel();
         if (model == null) return;
+        modelRestorePending = true;
         updateState("LOADING MODEL");
+        transcriptView.setText("Loading your selected local model before listening…");
+        SyncEventLogger.record(this, "VoiceModeActivity", "VOICE_MODEL_RESTORE_START",
+                "INFO", "model=" + model.name + " id=" + model.id);
         runtime.backend().load(model, new LocalModelBackend.LoadCallback() {
             @Override public void onLoaded() {
-                main.post(() -> updateState("LISTENING"));
+                main.post(() -> {
+                    modelRestorePending = false;
+                    modelRestoreFailed = false;
+                    updateState("LISTENING");
+                    transcriptView.setText("Model ready. Listening…");
+                    SyncEventLogger.record(VoiceModeActivity.this, "VoiceModeActivity",
+                            "VOICE_MODEL_RESTORE_COMPLETE", "INFO", "model=" + model.name);
+                    startListeningOrRequestPermission();
+                });
             }
             @Override public void onError(Exception error) {
-                main.post(() -> showResponse(
-                        "Model load failed; deterministic tools remain available."));
+                main.post(() -> {
+                    modelRestorePending = false;
+                    modelRestoreFailed = true;
+                    updateState("MODEL LOAD ERROR");
+                    transcriptView.setText("The selected GGUF model couldn't be loaded.");
+                    SyncEventLogger.recordException(VoiceModeActivity.this,
+                            "VoiceModeActivity", "VOICE_MODEL_RESTORE_ERROR", error,
+                            "model=" + model.name + " id=" + model.id);
+                    startListeningOrRequestPermission();
+                });
             }
         });
     }
@@ -372,6 +395,11 @@ public final class VoiceModeActivity extends Activity {
     }
 
     private void startListening() {
+        if (modelRestorePending) {
+            transcriptView.setText("Loading your selected local model…");
+            updateState("LOADING MODEL");
+            return;
+        }
         SyncEventLogger.record(this, useVosk ? "VoskVoiceRecognitionSession" : "SpeechRecognizer",
                 "START_LISTENING_ATTEMPT", "INFO",
                 "destroyed=" + destroyed + " backend=" + (useVosk ? "VOSK" : "ANDROID"));
@@ -429,6 +457,7 @@ public final class VoiceModeActivity extends Activity {
         pendingVoskFinal = "";
         if (voskSession != null) voskSession.stop();
         useVosk = !useVosk;
+        runtime.preferences().setVoiceRecognitionBackend(useVosk ? "vosk" : "android");
         updateBackendToggle();
         SyncEventLogger.record(this, "VoiceModeActivity", "STT_BACKEND_SELECTED", "INFO",
                 "backend=" + (useVosk ? "VOSK" : "ANDROID"));
@@ -441,7 +470,7 @@ public final class VoiceModeActivity extends Activity {
 
     private void startVoskListening() {
         if (destroyed || !useVosk || processing.get() || voskModelLoading) return;
-        if (!VoskModelInstaller.isInstalled(this)) {
+        if (!VoskModelInstaller.isVoiceModelInstalled(this)) {
             updateState("VOSK MODEL MISSING");
             showResponse("Import the Vosk model in Sync AI settings/tools before selecting Vosk. Android STT is still available using the switch above.");
             return;
@@ -462,7 +491,7 @@ public final class VoiceModeActivity extends Activity {
             Model loaded = null;
             Exception failure = null;
             try {
-                loaded = new Model(VoskModelInstaller.modelDirectory(this).getAbsolutePath());
+                loaded = new Model(VoskModelInstaller.voiceModelDirectory(this).getAbsolutePath());
             } catch (Exception error) {
                 failure = error;
             }
@@ -584,10 +613,12 @@ public final class VoiceModeActivity extends Activity {
         }
 
         if (!runtime.backend().isLoaded()) {
-            String fallback = casualFallback(clean);
+            String fallback = modelRestoreFailed
+                    ? "I couldn't load your selected GGUF model, bro. Open Local Models, select it again, and retry. Deterministic tools are still available."
+                    : casualFallback(clean);
             appendVoiceChat(clean, fallback, null);
             processing.set(false);
-            updateState("RESPONDING");
+            updateState(modelRestoreFailed ? "MODEL LOAD ERROR" : "RESPONDING");
             showResponse(fallback);
             speakAndMaybeListen(fallback, false);
             return;
