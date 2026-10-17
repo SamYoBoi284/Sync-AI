@@ -13,29 +13,56 @@ import java.util.zip.ZipInputStream;
 
 /** Installs the optional offline Vosk model into app-private storage. */
 public final class VoskModelInstaller {
-    private static final String MODEL_DIR = "vosk-model";
+    private static final String WAKE_MODEL_DIR = "vosk-model";
+    private static final String VOICE_MODEL_DIR = "vosk-voice-model";
     private static final long MAX_UNPACKED_BYTES = 3L * 1024L * 1024L * 1024L;
 
     private VoskModelInstaller() {}
 
+    /** Existing install path retained for Hey Sync wake-word compatibility. */
     public static File modelDirectory(Context context) {
-        return new File(context.getApplicationContext().getFilesDir(), MODEL_DIR);
+        return wakeWordModelDirectory(context);
+    }
+
+    public static File wakeWordModelDirectory(Context context) {
+        return new File(context.getApplicationContext().getFilesDir(), WAKE_MODEL_DIR);
+    }
+
+    public static File voiceModelDirectory(Context context) {
+        return new File(context.getApplicationContext().getFilesDir(), VOICE_MODEL_DIR);
     }
 
     public static boolean isInstalled(Context context) {
-        File root = modelDirectory(context);
-        return nonEmpty(new File(root, "am/final.mdl"))
-                && nonEmpty(new File(root, "conf/model.conf"))
-                && nonEmpty(new File(root, "graph/HCLr.fst"))
-                && nonEmpty(new File(root, "graph/Gr.fst"));
+        return isValidModel(wakeWordModelDirectory(context));
     }
 
+    public static boolean isWakeWordInstalled(Context context) {
+        return isInstalled(context);
+    }
+
+    public static boolean isVoiceModelInstalled(Context context) {
+        return isValidModel(voiceModelDirectory(context));
+    }
+
+    /** Backward-compatible entry point: legacy imports belong to the wake-word model. */
     public static void importZip(Context context, Uri uri) throws Exception {
+        importWakeWordZip(context, uri);
+    }
+
+    public static void importWakeWordZip(Context context, Uri uri) throws Exception {
+        importZipInto(context, uri, WAKE_MODEL_DIR, wakeWordModelDirectory(context));
+    }
+
+    public static void importVoiceZip(Context context, Uri uri) throws Exception {
+        importZipInto(context, uri, VOICE_MODEL_DIR, voiceModelDirectory(context));
+    }
+
+    private static void importZipInto(Context context, Uri uri, String directoryName,
+                                      File target) throws Exception {
         Context app = context.getApplicationContext();
         File files = app.getFilesDir();
-        File temp = new File(files, MODEL_DIR + ".importing");
-        File target = modelDirectory(app);
-        File backup = new File(files, MODEL_DIR + ".backup");
+        File temp = new File(files, directoryName + ".importing");
+        File backup = new File(files, directoryName + ".backup");
         deleteRecursively(temp);
         if (!target.exists() && backup.exists()) backup.renameTo(target);
         deleteRecursively(backup);
