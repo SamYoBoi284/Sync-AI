@@ -38,6 +38,11 @@ public final class ResourceManagerActivity extends Activity {
     private boolean resumed;
     private volatile long appDataBytes = -1L;
     private volatile long voskBytes = -1L;
+    private long llmCpuMs;
+    private long voskCpuMs;
+    private long wakeCpuMs;
+    private long voiceCpuMs;
+    private long unassignedCpuMs;
     private final ExecutorService storageScanner = Executors.newSingleThreadExecutor();
 
     private final Runnable refreshTask = new Runnable() {
@@ -142,6 +147,17 @@ public final class ResourceManagerActivity extends Activity {
         lastCpuTimeMs = nowCpu;
         lastWallTimeMs = nowWall;
 
+        SyncRuntime runtime = SyncRuntime.get(this);
+        boolean llmActive = runtime.backend().isGenerating();
+        boolean voskActive = VoskVoiceRecognitionSession.isSessionActive();
+        boolean voiceActive = VoiceModeActivity.isVoiceModeActive();
+        boolean wakeActive = SyncAssistantService.isRunning() && !voiceActive;
+        if (llmActive) llmCpuMs += cpuDelta;
+        else if (voskActive) voskCpuMs += cpuDelta;
+        else if (wakeActive) wakeCpuMs += cpuDelta;
+        else if (voiceActive) voiceCpuMs += cpuDelta;
+        else unassignedCpuMs += cpuDelta;
+
         Debug.MemoryInfo memoryInfo = new Debug.MemoryInfo();
         Debug.getMemoryInfo(memoryInfo);
         long pssKb = Math.max(0, memoryInfo.getTotalPss());
@@ -159,12 +175,11 @@ public final class ResourceManagerActivity extends Activity {
                 + (systemMemory.lowMemory ? "\nAndroid reports low-memory pressure." : ""));
 
         cpuValue.setText(String.format(Locale.US, "%.1f%% of one core", cpuPercent)
-                + (SyncRuntime.get(this).backend().isGenerating() ? " • LLM generating" : ""));
+                + (llmActive ? " • LLM generating" : ""));
         storageValue.setText(appDataBytes < 0L ? "Scanning app-private files…" :
                 formatBytes(appDataBytes) + " app-private data • "
                         + formatBytes(getFilesDir().getUsableSpace()) + " volume space available");
 
-        SyncRuntime runtime = SyncRuntime.get(this);
         ModelInfo model = runtime.modelManager().getLoadedModel();
         boolean loaded = runtime.backend().isLoaded();
         if (loaded && model != null) {
@@ -283,6 +298,11 @@ public final class ResourceManagerActivity extends Activity {
         File[] children = file.listFiles();
         if (children != null) for (File child : children) total += directoryBytes(child);
         return total;
+    }
+
+    private String formatDuration(long millis) {
+        if (millis < 1000L) return millis + " ms";
+        return String.format(Locale.US, "%.1f s", millis / 1000.0);
     }
 
     private String formatBytes(long bytes) {
