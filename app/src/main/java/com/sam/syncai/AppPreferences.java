@@ -17,6 +17,7 @@ public final class AppPreferences {
     private static final String KEY_SPEECH_RATE = "speech_rate";
     private static final String KEY_SPEECH_PITCH = "speech_pitch";
     private static final String KEY_SPEECH_VOICE = "speech_voice";
+    private static final String KEY_VOICE_RECOGNITION_BACKEND = "voice_recognition_backend";
     private static final String KEY_RECOGNITION_LANGUAGE = "recognition_language";
     private static final String KEY_TTS_LANGUAGE = "tts_language";
     private static final String KEY_AUTO_CHECK_UPDATES = "auto_check_updates";
@@ -182,6 +183,16 @@ public final class AppPreferences {
 
     public void setSpeechPitch(float pitch) {
         prefs.edit().putFloat(KEY_SPEECH_PITCH, Math.max(0.75f, Math.min(1.35f, pitch))).apply();
+    }
+
+    /** Persist the last chosen Voice Mode speech-recognition engine. */
+    public String getVoiceRecognitionBackend() {
+        return prefs.getString(KEY_VOICE_RECOGNITION_BACKEND, "android");
+    }
+
+    public void setVoiceRecognitionBackend(String backend) {
+        String safe = "vosk".equalsIgnoreCase(backend) ? "vosk" : "android";
+        prefs.edit().putString(KEY_VOICE_RECOGNITION_BACKEND, safe).apply();
     }
 
     /** Empty means let Android's selected TTS engine choose its default voice. */
