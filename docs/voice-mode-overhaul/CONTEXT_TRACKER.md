@@ -10,7 +10,9 @@ Status: experimental branch only; not merged or released. Code changes are commi
 - `44fe94308d5ae0ce8f01a4a5e97a43a7e2ab109b` — added an isolated `VoskVoiceRecognitionSession` prototype using the already-present Vosk Android library. It exposes partial/final/error/timeout callbacks and documents microphone ownership.
 - `7d80af306ebdd36f1d4d04bb5351ad4e6c66dc1f` — enabled the debug APK workflow on this branch.
 - `5f027bd4f56c217cce88d74327d507866837a704` — hardened Vosk adapter start/stop/error handling and duplicate-final suppression.
-- Pending commit — wired Vosk conversational STT into Voice Mode behind a visible Android/Vosk switch; kept Android STT as the default; added async local model loading and safe per-turn mic release.
+- `aab37c8360ea143820f90fcc66360f154908dd48` — changed the Vosk session to release the microphone between turns while keeping its model resident; model closes on session cleanup.
+- `38a40cb183703d20f83202fd32e85b394e17ae5d` — wired Vosk conversational STT into Voice Mode behind a visible Android/Vosk switch; kept Android STT as the default; added asynchronous local model loading, final-result debounce, and per-turn mic release.
+- `7e600b4a74d0193f7e40b660815383bb03d107c5` — updated this tracker for the integration.
 
 The adapter is now wired into VoiceModeActivity behind an explicit on-screen STT switch. Android SpeechRecognizer remains the default; Vosk is opt-in for this experimental branch. The Vosk model is loaded off the UI thread, kept resident between turns, and microphone capture is stopped before Sync processes a recognized utterance. Build and device testing are still required.
 
@@ -60,6 +62,9 @@ Do not claim a latency target (including <1.5 s) before measuring it. Do not add
 - [ ] Investigate Sherpa-ONNX Android integration and identify one small, supported streaming model before adding dependencies/assets.
 - [ ] Investigate Piper or another suitable offline neural TTS model; verify Android packaging and license.
 - [ ] Add timing/resource diagnostics without recording raw audio or sensitive transcript content.
+- [ ] Build the latest branch head and fix any compile/API issues before device testing.
+- [ ] Install the debug APK. **Debug uses application ID `com.sam.syncaitest`**, so it has separate private storage: import the Vosk model into the debug app itself before selecting Vosk.
+- [ ] In Voice Mode, leave **STT: ANDROID** selected for baseline, then tap the STT switch to select **STT: VOSK OFFLINE**. Confirm partial transcript, final transcript, response, and repeated turns.
 - [ ] Install and benchmark on the Galaxy A16.
 - [ ] Re-check wake-word microphone release/resume, hardware assistant overlay, Recorder, WhatsApp, and Instagram voice notes.
 - [ ] Update this tracker with exact commits, build results, measurements, blockers, and next action.
