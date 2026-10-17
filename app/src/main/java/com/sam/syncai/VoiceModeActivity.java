@@ -48,13 +48,6 @@ public final class VoiceModeActivity extends Activity {
     private boolean useVosk;
     private boolean voskModelLoading;
     private String pendingVoskFinal = "";
-    private final Runnable deliverVoskFinal = () -> {
-        String finalText = pendingVoskFinal;
-        pendingVoskFinal = "";
-        if (destroyed || !useVosk || processing.get() || finalText.trim().isEmpty()) return;
-        if (voskSession != null) voskSession.stop(); // release mic before model/tools/TTS work
-        handleVoiceText(finalText);
-    };
     private TextView stateView;
     private TextView transcriptView;
     private TextView responseView;
@@ -71,6 +64,15 @@ public final class VoiceModeActivity extends Activity {
     private boolean ttsReady;
     private boolean destroyed;
     private final AtomicBoolean processing = new AtomicBoolean(false);
+
+    // Declared after the fields it reads to avoid Java illegal-forward-reference errors.
+    private final Runnable deliverVoskFinal = () -> {
+        String finalText = pendingVoskFinal;
+        pendingVoskFinal = "";
+        if (destroyed || !useVosk || processing.get() || finalText.trim().isEmpty()) return;
+        if (voskSession != null) voskSession.stop(); // release mic before model/tools/TTS work
+        handleVoiceText(finalText);
+    };
 
     @Override protected void onCreate(Bundle state) {
         SyncEventLogger.install(this);
