@@ -341,5 +341,5 @@ Branch: `feat/resource-manager-task-manager-17-10-2026`, based on `dev-testing-n
 - Settings → Voice & Wake Word now has separate import buttons and app-private directories for the Hey Sync wake-word Vosk model and conversational Voice Mode Vosk model. The existing wake-word directory remains unchanged for backward compatibility; both imports retain the 3 GiB expanded ZIP cap.
 - Voice Mode restores the selected GGUF before starting speech capture, logs load success/failure, and reports a model-load error instead of a misleading import prompt when a registered model fails to load.
 - Voice Mode remembers the last STT engine (`android` or `vosk`) across sessions; Android remains the default for existing installs.
-- Resource Manager applies status-bar/display-cutout insets and reports the two Vosk model footprints independently.
+- Resource Manager applies status-bar insets and reports the two Vosk model footprints independently.
 - Build/CI and Galaxy A16 runtime verification pending. No merge/release without explicit approval.
