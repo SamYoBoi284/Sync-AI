@@ -37,6 +37,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class VoiceModeActivity extends Activity {
+    private static volatile boolean voiceModeActive;
+
+    public static boolean isVoiceModeActive() { return voiceModeActive; }
+
     private final Handler main = new Handler(Looper.getMainLooper());
     private SyncRuntime runtime;
 
@@ -77,6 +81,7 @@ public final class VoiceModeActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         SyncEventLogger.install(this);
         super.onCreate(state);
+        voiceModeActive = true;
         SyncAssistantService.setVoiceModeUiActive(true);
         SyncEventLogger.record(this, "VoiceModeActivity", "onCreate", "INFO",
                 "savedState=" + (state != null) + " taskId=" + getTaskId()
@@ -866,6 +871,7 @@ public final class VoiceModeActivity extends Activity {
                 + isFinishing() + " changingConfigurations=" + isChangingConfigurations()
                 + " taskId=" + getTaskId());
         destroyed = true;
+        voiceModeActive = false;
         // Release SpeechRecognizer and TTS before the wake service reclaims the microphone.
         cleanup();
         if (SyncAssistantService.isRunning()) {
