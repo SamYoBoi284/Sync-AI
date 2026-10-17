@@ -472,7 +472,7 @@ public final class VoiceModeActivity extends Activity {
         if (destroyed || !useVosk || processing.get() || voskModelLoading) return;
         if (!VoskModelInstaller.isVoiceModelInstalled(this)) {
             updateState("VOSK MODEL MISSING");
-            showResponse("Import the Vosk model in Sync AI settings/tools before selecting Vosk. Android STT is still available using the switch above.");
+            showResponse("Import a separate Voice Mode Vosk ZIP from Settings → Voice & Wake Word before selecting Vosk. Android STT is still available using the switch above.");
             return;
         }
         if (voskSession != null) {
