@@ -150,12 +150,12 @@ public final class ResourceManagerActivity extends Activity {
         SyncRuntime runtime = SyncRuntime.get(this);
         boolean llmActive = runtime.backend().isGenerating();
         boolean voskActive = VoskVoiceRecognitionSession.isSessionActive();
-        boolean voiceActive = VoiceModeActivity.isVoiceModeActive();
-        boolean wakeActive = SyncAssistantService.isRunning() && !voiceActive;
+        boolean voiceModeActiveNow = VoiceModeActivity.isVoiceModeActive();
+        boolean wakeActive = SyncAssistantService.isRunning() && !voiceModeActiveNow;
         if (llmActive) llmCpuMs += cpuDelta;
         else if (voskActive) voskCpuMs += cpuDelta;
         else if (wakeActive) wakeCpuMs += cpuDelta;
-        else if (voiceActive) voiceCpuMs += cpuDelta;
+        else if (voiceModeActiveNow) voiceCpuMs += cpuDelta;
         else unassignedCpuMs += cpuDelta;
 
         Debug.MemoryInfo memoryInfo = new Debug.MemoryInfo();
@@ -191,7 +191,8 @@ public final class ResourceManagerActivity extends Activity {
                     + "\nEstimated CPU sampled during active windows: " + formatDuration(llmCpuMs));
         } else {
             llmValue.setText("IDLE • no model loaded"
-                    + (model == null ? "" : "\nSelected model file: " + formatBytes(model.file().length())));
+                    + (model == null ? "" : "\nSelected model file: " + formatBytes(model.file().length()))
+                    + "\nEstimated CPU sampled during active windows: " + formatDuration(llmCpuMs));
         }
 
         long voskBytesSnapshot = voskBytes;
