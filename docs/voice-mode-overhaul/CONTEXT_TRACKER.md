@@ -13,6 +13,8 @@ Status: experimental branch only; not merged or released. Code changes are commi
 - `aab37c8360ea143820f90fcc66360f154908dd48` — changed the Vosk session to release the microphone between turns while keeping its model resident; model closes on session cleanup.
 - `38a40cb183703d20f83202fd32e85b394e17ae5d` — wired Vosk conversational STT into Voice Mode behind a visible Android/Vosk switch; kept Android STT as the default; added asynchronous local model loading, final-result debounce, and per-turn mic release.
 - `7e600b4a74d0193f7e40b660815383bb03d107c5` — updated this tracker for the integration.
+- `6ab6b81e5ce6f444f525aa51859fc2d0593abcee` — fixed a Java illegal forward reference in `VoiceModeActivity` reported by CI.
+- `b114046b44a9f7ec0505863bd1edd2b76e779bf5` — raised the Vosk ZIP import limit from 150 MiB to 3 GiB unpacked for testing larger models.
 
 The adapter is now wired into VoiceModeActivity behind an explicit on-screen STT switch. Android SpeechRecognizer remains the default; Vosk is opt-in for this experimental branch. The Vosk model is loaded off the UI thread, kept resident between turns, and microphone capture is stopped before Sync processes a recognized utterance. Build and device testing are still required.
 
@@ -26,7 +28,7 @@ Evaluate a genuinely offline voice pipeline for Sync AI on the Galaxy A16 (4 GB 
 - Wake-word handoff stops the Vosk speech pipeline before launching `VoiceModeActivity`; voice mode announces start/finish so the wake service releases and later resumes the microphone.
 - `VoiceModeActivity` currently uses Android `SpeechRecognizer` for conversational STT and Android `TextToSpeech` for speech output.
 - The LLM uses existing llama.cpp through JNI and the `LocalModelBackend` callback interface; token callbacks are already streamed to the response UI, but speech output currently waits for completed generation.
-- `app/build.gradle` includes `com.alphacephei:vosk-android:0.3.75`; the app-private Vosk model is installed by `VoskModelInstaller` and currently capped at 150 MiB unpacked.
+- `app/build.gradle` includes `com.alphacephei:vosk-android:0.3.75`; the app-private Vosk model is installed by `VoskModelInstaller` and now capped at 3 GiB unpacked (the selected ZIP is extracted into app-private storage).
 - The project is Java/native C++, not React Native. PocketPal's React Native architecture is not a drop-in dependency.
 - CI workflow now includes this branch in its push trigger. No successful build has yet been confirmed for the new branch.
 
@@ -56,6 +58,7 @@ Do not claim a latency target (including <1.5 s) before measuring it. Do not add
 ## Session handoff / next steps
 
 - [ ] Confirm CI build result for the latest branch head; fix any compile/API errors found.
+- [x] Raise the Vosk model import cap to 3 GiB unpacked for testing larger models; keep import explicit and app-private.
 - [x] Add an explicit experimental STT selector (Android SpeechRecognizer vs Vosk) and backend diagnostics.
 - [x] Integrate Vosk with mic lifecycle: one conversational STT backend at a time, stop capture before handling a final transcript, retain the loaded model between turns, and close it on activity cleanup.
 - [ ] Add phrase-buffered TTS with cancellation/interrupt guards, retaining the existing system TTS path.
