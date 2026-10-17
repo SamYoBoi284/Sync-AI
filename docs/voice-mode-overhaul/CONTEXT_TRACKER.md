@@ -10,8 +10,9 @@ Status: experimental branch only; not merged or released. Code changes are commi
 - `44fe94308d5ae0ce8f01a4a5e97a43a7e2ab109b` — added an isolated `VoskVoiceRecognitionSession` prototype using the already-present Vosk Android library. It exposes partial/final/error/timeout callbacks and documents microphone ownership.
 - `7d80af306ebdd36f1d4d04bb5351ad4e6c66dc1f` — enabled the debug APK workflow on this branch.
 - `5f027bd4f56c217cce88d74327d507866837a704` — hardened Vosk adapter start/stop/error handling and duplicate-final suppression.
+- Pending commit — wired Vosk conversational STT into Voice Mode behind a visible Android/Vosk switch; kept Android STT as the default; added async local model loading and safe per-turn mic release.
 
-Important: the adapter is **not yet wired into VoiceModeActivity**. The current Android SpeechRecognizer + Android TextToSpeech behavior remains unchanged. This is intentional until the prototype compiles and an explicit experimental provider selector is added.
+The adapter is now wired into VoiceModeActivity behind an explicit on-screen STT switch. Android SpeechRecognizer remains the default; Vosk is opt-in for this experimental branch. The Vosk model is loaded off the UI thread, kept resident between turns, and microphone capture is stopped before Sync processes a recognized utterance. Build and device testing are still required.
 
 ## Goal
 
@@ -52,9 +53,9 @@ Do not claim a latency target (including <1.5 s) before measuring it. Do not add
 
 ## Session handoff / next steps
 
-- [ ] Confirm CI build result for the latest branch head; fix any compile/API errors before integrating the adapter.
-- [ ] Add and review an explicit experimental STT selector (Android SpeechRecognizer vs Vosk) and backend diagnostics.
-- [ ] Integrate Vosk with safe mic lifecycle: stop wake service first, release mic, run conversation session, stop it before wake service resumes.
+- [ ] Confirm CI build result for the latest branch head; fix any compile/API errors found.
+- [x] Add an explicit experimental STT selector (Android SpeechRecognizer vs Vosk) and backend diagnostics.
+- [x] Integrate Vosk with mic lifecycle: one conversational STT backend at a time, stop capture before handling a final transcript, retain the loaded model between turns, and close it on activity cleanup.
 - [ ] Add phrase-buffered TTS with cancellation/interrupt guards, retaining the existing system TTS path.
 - [ ] Investigate Sherpa-ONNX Android integration and identify one small, supported streaming model before adding dependencies/assets.
 - [ ] Investigate Piper or another suitable offline neural TTS model; verify Android packaging and license.
