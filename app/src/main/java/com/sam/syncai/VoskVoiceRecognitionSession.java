@@ -19,6 +19,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * when the session is stopped.</p>
  */
 public final class VoskVoiceRecognitionSession implements AutoCloseable {
+    private static volatile boolean sessionActive;
+
+    public static boolean isSessionActive() { return sessionActive; }
     public interface Listener {
         /** Interim text; safe to show as a live transcript, not yet a committed turn. */
         void onPartial(String text);
@@ -84,7 +87,9 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
                     if (!stopped.get()) listener.onTimeout();
                 }
             });
+            sessionActive = true;
         } catch (Exception error) {
+            sessionActive = false;
             stopped.set(true);
             stopInternal(false);
             throw error;
@@ -113,6 +118,7 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
     /** Stops microphone capture but keeps the model loaded for the next turn. */
     public synchronized void stop() {
         if (!stopped.compareAndSet(false, true)) return;
+        sessionActive = false;
         stopInternal(false);
     }
 
@@ -140,6 +146,7 @@ public final class VoskVoiceRecognitionSession implements AutoCloseable {
     }
 
     @Override public synchronized void close() {
+        sessionActive = false;
         if (stopped.compareAndSet(false, true)) {
             stopInternal(true);
         } else {
