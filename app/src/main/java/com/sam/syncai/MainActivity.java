@@ -60,6 +60,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_EXPORT_CHAT = 1204;
     private static final int REQ_EXPORT_LOGS = 1205;
     private static final int REQ_IMPORT_VOSK_MODEL = 1206;
+    private static final int REQ_IMPORT_VOICE_VOSK_MODEL = 1207;
     private static final int REQ_WAKE_MIC_PERMISSION = 1207;
     private static final int REQ_ASSISTANT_ROLE = 1208;
     private static final int REQ_IMPORT_CHATS = 1209;
@@ -572,7 +573,12 @@ public final class MainActivity extends Activity {
         }
         if (requestCode == REQ_IMPORT_VOSK_MODEL && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
-            if (uri != null) importVoskModel(uri);
+            if (uri != null) importVoskModel(uri, false);
+            return;
+        }
+        if (requestCode == REQ_IMPORT_VOICE_VOSK_MODEL && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) importVoskModel(uri, true);
             return;
         }
         if (requestCode == REQ_IMPORT_MEMORY && resultCode == RESULT_OK && data != null) {
@@ -607,31 +613,45 @@ public final class MainActivity extends Activity {
     }
 
     private void openVoskModelPicker() {
+        openVoskModelPicker(REQ_IMPORT_VOSK_MODEL);
+    }
+
+    private void openVoiceVoskModelPicker() {
+        openVoskModelPicker(REQ_IMPORT_VOICE_VOSK_MODEL);
+    }
+
+    private void openVoskModelPicker(int requestCode) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
         intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/x-zip-compressed"});
-        startActivityForResult(intent, REQ_IMPORT_VOSK_MODEL);
+        startActivityForResult(intent, requestCode);
     }
 
-    private void importVoskModel(Uri uri) {
+    private void importVoskModel(Uri uri, boolean voiceModel) {
         showProgress(true);
         ioExecutor.execute(() -> {
             try {
-                VoskModelInstaller.importZip(this, uri);
+                if (voiceModel) VoskModelInstaller.importVoiceZip(this, uri);
+                else VoskModelInstaller.importWakeWordZip(this, uri);
                 SyncEventLogger.record(this, "VoskModelInstaller", "MODEL_IMPORT_SUCCESS",
-                        "INFO", "offline Vosk model installed in app-private storage");
+                        "INFO", "target=" + (voiceModel ? "conversational-voice" : "wake-word")
+                                + " offline Vosk model installed in app-private storage");
                 runOnUiThread(() -> {
                     showProgress(false);
-                    showToast("Vosk model installed. Hey Sync is ready to enable.");
+                    showToast(voiceModel
+                            ? "Voice Mode Vosk model installed."
+                            : "Hey Sync wake-word Vosk model installed.");
                     showVoiceSettings();
                 });
             } catch (Exception error) {
                 SyncEventLogger.recordException(this, "VoskModelInstaller", "MODEL_IMPORT_ERROR",
-                        error, "uri=" + uri);
+                        error, "target=" + (voiceModel ? "conversational-voice" : "wake-word")
+                                + " uri=" + uri);
                 runOnUiThread(() -> {
                     showProgress(false);
-                    showError("Vosk model import failed", error);
+                    showError(voiceModel ? "Voice Mode Vosk import failed"
+                            : "Wake-word Vosk import failed", error);
                 });
             }
         });
@@ -3024,10 +3044,17 @@ public final class MainActivity extends Activity {
         wakeRowLp.bottomMargin = dp(8);
         content.addView(wakeWordRow, wakeRowLp);
 
-        Button importVosk = sectionButton("IMPORT VOSK MODEL ZIP",
-                VoskModelInstaller.isInstalled(this) ? "Offline speech model installed" : "Choose vosk-model-small-en-us-0.15.zip");
-        importVosk.setOnClickListener(v -> openVoskModelPicker());
-        content.addView(importVosk);
+        Button importWakeVosk = sectionButton("IMPORT WAKE-WORD VOSK ZIP",
+                VoskModelInstaller.isWakeWordInstalled(this)
+                        ? "Hey Sync model installed" : "Model used only for Hey Sync detection");
+        importWakeVosk.setOnClickListener(v -> openVoskModelPicker());
+        content.addView(importWakeVosk);
+
+        Button importVoiceVosk = sectionButton("IMPORT VOICE MODE VOSK ZIP",
+                VoskModelInstaller.isVoiceModelInstalled(this)
+                        ? "Conversational speech model installed" : "Separate offline speech-to-text model");
+        importVoiceVosk.setOnClickListener(v -> openVoiceVoskModelPicker());
+        content.addView(importVoiceVosk);
 
         Button assistant = sectionButton(
                 "ANDROID ASSISTANT SETTINGS",
