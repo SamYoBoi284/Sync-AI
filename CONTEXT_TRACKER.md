@@ -320,3 +320,17 @@ The older core branch remains:
 - Keep wake-word/background microphone behavior out of the project.
 - Keep model files out of GitHub.
 - Treat source code + CI + physical-device tests as the authority; tracker text alone never proves runtime behavior.
+
+
+## 2026-10-17 — Resource Manager / Task Manager view (new development branch)
+
+Branch: `feat/resource-manager-task-manager-17-10-2026`, based on `dev-testing-new-voice-mode-overhaul-16-10-2026`.
+
+- Added **Settings → About & Diagnostics → OPEN RM**. Existing About diagnostics, Copy, Export Logs, and Close actions are preserved.
+- New `ResourceManagerActivity` samples the Sync AI process CPU time and process memory while the screen is open, refreshes every 1.5 seconds, and stops periodic sampling when paused.
+- Overview includes process CPU as a percentage of one CPU core, process PSS/private dirty, Java heap, native heap, system available/total RAM, and app-private storage plus available volume space.
+- Component rows identify LLM load/generation state and GGUF file size; Vosk conversational listening state and installed model footprint; wake-word service state; and voice-mode state.
+- Storage footprint scanning runs off the UI thread and is cached for the current Resource Manager screen rather than recursively walking a potentially large model directory every refresh.
+- Important measurement boundary: Android exposes total process CPU/PSS here, not trustworthy per-library CPU/RAM attribution. Component-specific RAM is therefore not invented; the UI explains that Vosk/LLM allocations are included in process totals. CPU attribution by component is not yet implemented.
+- Added read-only runtime-state accessors for LLM generation, conversational Vosk listening, and voice-mode activity.
+- Not yet considered complete until CI build succeeds and the screen is tested on the Galaxy A16, especially with the LLM generating, Vosk conversational STT active, and wake-word service enabled.
