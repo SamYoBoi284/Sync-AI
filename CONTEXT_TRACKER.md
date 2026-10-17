@@ -1,8 +1,8 @@
 # Sync AI — Context Tracker
 
 > Living handoff/context document for the Sync AI project.
-> Updated: 2026-10-13
-> Current feature branch: `feat/file-library-context-generation-1024` (build and phone verification pending)
+> Updated: 2026-10-17
+> Current feature branch: `feat/resource-manager-task-manager-17-10-2026` (CI and phone verification pending)
 > Stable development base: `fix/generation-timer-alarm-export`
 > This tracker records implemented work and known verification status. Source code / CI remains authoritative.
 
@@ -334,3 +334,12 @@ Branch: `feat/resource-manager-task-manager-17-10-2026`, based on `dev-testing-n
 - Important measurement boundary: Android exposes total process CPU/PSS here, not trustworthy per-library CPU/RAM attribution. Component-specific RAM is therefore not invented; the UI explains that Vosk/LLM allocations are included in process totals. The screen estimates component CPU time from process CPU deltas sampled every 1.5 seconds while each component is active; overlap is assigned by a documented priority order, so these are estimates—not kernel-level attribution—and only accumulate while the monitor is open.
 - Added read-only runtime-state accessors for LLM generation, conversational Vosk listening, and voice-mode activity.
 - Not yet considered complete until CI build succeeds and the screen is tested on the Galaxy A16, especially with the LLM generating, Vosk conversational STT active, and wake-word service enabled.
+
+
+## 2026-10-17 — Voice and Resource Manager fixes
+
+- Settings → Voice & Wake Word now has separate import buttons and app-private directories for the Hey Sync wake-word Vosk model and conversational Voice Mode Vosk model. The existing wake-word directory remains unchanged for backward compatibility; both imports retain the 3 GiB expanded ZIP cap.
+- Voice Mode restores the selected GGUF before starting speech capture, logs load success/failure, and reports a model-load error instead of a misleading import prompt when a registered model fails to load.
+- Voice Mode remembers the last STT engine (`android` or `vosk`) across sessions; Android remains the default for existing installs.
+- Resource Manager applies status-bar/display-cutout insets and reports the two Vosk model footprints independently.
+- Build/CI and Galaxy A16 runtime verification pending. No merge/release without explicit approval.
