@@ -14,7 +14,7 @@ import java.util.zip.ZipInputStream;
 /** Installs the optional offline Vosk model into app-private storage. */
 public final class VoskModelInstaller {
     private static final String MODEL_DIR = "vosk-model";
-    private static final long MAX_UNPACKED_BYTES = 150L * 1024L * 1024L;
+    private static final long MAX_UNPACKED_BYTES = 3L * 1024L * 1024L * 1024L;
 
     private VoskModelInstaller() {}
 
@@ -81,7 +81,7 @@ public final class VoskModelInstaller {
                         while ((count = zip.read(buffer)) != -1) {
                             unpacked += count;
                             if (unpacked > MAX_UNPACKED_BYTES) {
-                                throw new IllegalArgumentException("The selected ZIP is larger than the allowed model size.");
+                                throw new IllegalArgumentException("The selected ZIP expands beyond the 3 GiB Vosk model limit.");
                             }
                             output.write(buffer, 0, count);
                         }
