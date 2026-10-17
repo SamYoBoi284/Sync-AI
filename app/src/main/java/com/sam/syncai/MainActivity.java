@@ -3062,9 +3062,27 @@ public final class MainActivity extends Activity {
                 "\n\nLatest request diagnostics:\n" +
                 (latest.isEmpty() ? "No request recorded yet." : latest);
 
+        LinearLayout aboutContent = new LinearLayout(this);
+        aboutContent.setOrientation(LinearLayout.VERTICAL);
+        aboutContent.setPadding(dp(4), dp(4), dp(4), dp(4));
+        ScrollView aboutScroll = new ScrollView(this);
+        TextView aboutText = text(message, 13, TEXT, false);
+        aboutText.setTextIsSelectable(true);
+        aboutText.setPadding(dp(4), dp(4), dp(4), dp(12));
+        aboutScroll.addView(aboutText, new ScrollView.LayoutParams(-1, -2));
+        aboutContent.addView(aboutScroll, new LinearLayout.LayoutParams(-1, dp(310)));
+        Button openResourceManager = actionButton("OPEN RM");
+        openResourceManager.setContentDescription("Open Resource Manager");
+        openResourceManager.setOnClickListener(v -> {
+            startActivity(new Intent(MainActivity.this, ResourceManagerActivity.class));
+        });
+        LinearLayout.LayoutParams rmLp = new LinearLayout.LayoutParams(-1, dp(48));
+        rmLp.topMargin = dp(6);
+        aboutContent.addView(openResourceManager, rmLp);
+
         SyncDialog dialog = new SyncDialog.Builder(this, accent)
                 .setTitle("ABOUT & DIAGNOSTICS")
-                .setMessage(message)
+                .setView(aboutContent)
                 .setPositiveButton("EXPORT LOGS", (d, w) -> exportAllDiagnostics())
                 .setNeutralButton("COPY", (d, w) -> copyDiagnostics(message))
                 .setNegativeButton("CLOSE", null)
