@@ -185,35 +185,40 @@ public final class ResourceManagerActivity extends Activity {
         if (loaded && model != null) {
             llmValue.setText("RUNNING / READY: " + model.name
                     + "\nModel file on disk: " + formatBytes(model.file().length())
-                    + "\n" + (runtime.backend().isGenerating()
+                    + "\n" + (llmActive
                     ? "Inference is active; CPU above is process-wide."
-                    : "Model is loaded; inference currently idle."));
+                    : "Model is loaded; inference currently idle.")
+                    + "\nEstimated CPU sampled during active windows: " + formatDuration(llmCpuMs));
         } else {
             llmValue.setText("IDLE • no model loaded"
                     + (model == null ? "" : "\nSelected model file: " + formatBytes(model.file().length())));
         }
 
-        File voskDir = VoskModelInstaller.modelDirectory(this);
         long voskBytesSnapshot = voskBytes;
         boolean voskInstalled = VoskModelInstaller.isInstalled(this);
         boolean conversational = VoskVoiceRecognitionSession.isSessionActive();
         voskValue.setText((conversational ? "ACTIVE • conversational session" : "IDLE")
                 + "\nModel installed: " + (voskInstalled ? "yes" : "no")
                 + " • model files on disk: " + (voskBytesSnapshot < 0L ? "scanning…" : formatBytes(voskBytesSnapshot))
+                + "\nEstimated CPU sampled during listening windows: " + formatDuration(voskCpuMs)
                 + "\nVosk's exact in-memory allocation is included in app PSS above, not separately exposed by Android.");
 
         boolean wakeRunning = SyncAssistantService.isRunning();
         wakeValue.setText((wakeRunning ? "SERVICE RUNNING" : "STOPPED")
                 + "\nWake-word listener is " + (wakeRunning ? "enabled / background-capable" : "not running")
+                + "\nEstimated CPU sampled during wake-service windows: " + formatDuration(wakeCpuMs)
                 + "\nUses the installed Vosk model when active; its memory is included in app PSS.");
 
         boolean voiceActive = VoiceModeActivity.isVoiceModeActive();
         voiceValue.setText((voiceActive ? "VOICE MODE OPEN" : "VOICE MODE CLOSED")
                 + "\nAndroid SpeechRecognizer / TextToSpeech resources are managed by Android."
+                + "\nEstimated CPU sampled during voice-mode windows: " + formatDuration(voiceCpuMs)
                 + (voiceActive ? "\nCPU above includes voice work and any concurrent app activity." : ""));
 
         notesValue.setText("Last sample: " + android.text.format.DateFormat.format("HH:mm:ss", System.currentTimeMillis())
-                + "\nThis monitor samples the Sync AI process only. Android does not provide trustworthy per-library CPU/RAM splits here, so component-specific memory is intentionally not guessed.");
+                + "\nComponent CPU is a rough estimate from process CPU deltas sampled every 1.5s while a component is active, with overlap assigned by priority (LLM, conversational Vosk, wake service, voice pipeline)."
+                + "\nUnassigned sampled CPU: " + formatDuration(unassignedCpuMs)
+                + "\nAndroid does not provide trustworthy per-library RAM splits here, so component-specific memory is intentionally not guessed.");
     }
 
     private void addSection(String title, String subtitle) {
