@@ -5,7 +5,9 @@
 #include <cstring>
 #include <mutex>
 #include <string>
-#include <vector>\n#include <unistd.h>\n#include <cstdio>
+#include <vector>
+#include <unistd.h>
+#include <cstdio>
 #include <thread>
 
 #include "llama.h"
@@ -47,6 +49,7 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
     std::string modelPath = jstring_to_string(env, path);
     llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = 0;
+    // Current llama.cpp master no longer exposes legacy use_mmap/use_mlock toggles.
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
     if (!g_model) {
@@ -147,10 +150,14 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
         std::min<int32_t>(4096, std::max<int32_t>(1024, trainedCtx))
     );
     ctxParams.n_ctx = contextSize;
-    ctxParams.n_batch = 512;
-    ctxParams.n_ubatch = 512;
+    // Low-memory test: bound prompt-prefill batches.
+    ctxParams.n_batch = 32;
+    ctxParams.n_ubatch = 32;
+    // Experimental quantized KV cache; validate on-device compatibility.
+    ctxParams.type_k = GGML_TYPE_Q4_0;
+    ctxParams.type_v = GGML_TYPE_Q4_0;
     const int cpuCount = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
-    const int threads = std::max(2, std::min(6, cpuCount - 1));
+    const int threads = std::max(2, std::min(4, cpuCount - 1));
     ctxParams.n_threads = threads;
     ctxParams.n_threads_batch = threads;
 
@@ -194,9 +201,9 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     const int promptCount = -llama_tokenize(
         vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
         nullptr, 0, true, true);
-    if (promptCount <= 0 || promptCount >= static_cast<int>(contextSize)) {
+    if (promptCount <= 0) {
         llama_free(ctx);
-        jstring message = env->NewStringUTF("Prompt is too large for the selected context window.");
+        jstring message = env->NewStringUTF("Tokenization failed or produced an empty prompt.");
         env->CallVoidMethod(callback, errorMethod, message);
         env->DeleteLocalRef(message);
         return;
@@ -205,12 +212,19 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     std::vector<llama_token> tokens(promptCount);
     if (llama_tokenize(
             vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
-            tokens.data(), tokens.size(), true, true) < 0) {
+            tokens.data(), static_cast<int32_t>(tokens.size()), true, true) < 0) {
         llama_free(ctx);
         jstring message = env->NewStringUTF("Tokenization failed.");
         env->CallVoidMethod(callback, errorMethod, message);
         env->DeleteLocalRef(message);
         return;
+    }
+
+    // If the submitted conversation exceeds the window, retain its newest tokens.
+    // This generic fallback can discard system instructions; smarter trimming is preferable.
+    if (tokens.size() >= contextSize) {
+        tokens.erase(tokens.begin(), tokens.end() - (contextSize - 1));
+        LOGE("Prompt exceeded context; retained newest %zu tokens.", tokens.size());
     }
 
     llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
@@ -221,8 +235,26 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(safeTemp));
     llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
-    llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
-    if (llama_decode(ctx, batch) != 0) {
+    // Prefill in bounded chunks so n_batch=32 works with longer prompts.
+    llama_batch batch = llama_batch_init(static_cast<int32_t>(ctxParams.n_batch), 0, 1);
+    bool prefillFailed = false;
+    for (size_t offset = 0; offset < tokens.size() && !prefillFailed; ) {
+        const size_t chunk = std::min<size_t>(ctxParams.n_batch, tokens.size() - offset);
+        for (size_t i = 0; i < chunk; ++i) {
+            const size_t index = offset + i;
+            batch.token[i] = tokens[index];
+            batch.pos[i] = static_cast<llama_pos>(index);
+            batch.n_seq_id[i] = 1;
+            batch.seq_id[i][0] = 0;
+            batch.logits[i] = (index + 1 == tokens.size()) ? 1 : 0;
+        }
+        batch.n_tokens = static_cast<int32_t>(chunk);
+        if (llama_decode(ctx, batch) != 0) prefillFailed = true;
+        offset += chunk;
+    }
+    llama_batch_free(batch);
+
+    if (prefillFailed) {
         llama_sampler_free(sampler);
         llama_free(ctx);
         jstring message = env->NewStringUTF("Model evaluation failed during prompt processing.");
@@ -232,6 +264,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
     }
 
     std::string pendingUtf8;
+    std::vector<llama_token> contextTokens = tokens;
     const int generationLimit = std::max(1, std::min(1024, static_cast<int>(maxTokens)));
 
     for (int generated = 0; generated < generationLimit; ++generated) {
@@ -264,6 +297,24 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
             pendingUtf8.erase(0, emitLen);
         }
 
+        // Context shifting: discard the oldest half when the window fills.
+        if (contextTokens.size() >= contextSize) {
+            llama_memory_t memory = llama_get_memory(ctx);
+            const size_t discard = std::max<size_t>(1, contextTokens.size() / 2);
+            if (!llama_memory_can_shift(memory) ||
+                !llama_memory_seq_rm(memory, 0, 0, static_cast<llama_pos>(discard))) {
+                llama_sampler_free(sampler);
+                llama_free(ctx);
+                jstring message = env->NewStringUTF("Context is full and this model cache cannot be shifted.");
+                env->CallVoidMethod(callback, errorMethod, message);
+                env->DeleteLocalRef(message);
+                return;
+            }
+            llama_memory_seq_add(memory, 0, static_cast<llama_pos>(discard), -1,
+                                 -static_cast<llama_pos>(discard));
+            contextTokens.erase(contextTokens.begin(), contextTokens.begin() + discard);
+        }
+
         batch = llama_batch_get_one(&token, 1);
         if (llama_decode(ctx, batch) != 0) {
             llama_sampler_free(sampler);
@@ -273,6 +324,7 @@ Java_com_sam_syncai_GgufNative_nativeGenerate(
             env->DeleteLocalRef(message);
             return;
         }
+        contextTokens.push_back(token);
     }
 
     if (!pendingUtf8.empty()) emit(env, callback, tokenMethod, pendingUtf8);
