@@ -49,7 +49,9 @@ Java_com_sam_syncai_GgufNative_nativeLoad(JNIEnv * env, jclass, jstring path) {
     std::string modelPath = jstring_to_string(env, path);
     llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = 0;
-    // Current llama.cpp master no longer exposes legacy use_mmap/use_mlock toggles.
+    // Stage 4 experiment: disable mmap/mlock special loading modes using the
+    // current llama.cpp API. Compare load stability and memory with AUTO later.
+    params.load_mode = LLAMA_LOAD_MODE_NONE;
 
     g_model = llama_model_load_from_file(modelPath.c_str(), params);
     if (!g_model) {
