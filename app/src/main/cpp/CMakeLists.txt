@@ -18,7 +18,7 @@ set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     llama
     GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
-    GIT_TAG master
+    GIT_TAG 7894e8b92481a8bb8ffe94f73b656ffe0dd01e10
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(llama)
